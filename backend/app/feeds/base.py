@@ -59,38 +59,49 @@ class BaseFeed(ABC):
         This method should be run as an asyncio Task.
         """
         self._stop_requested = False
+        if self._task is None:
+            self._task = asyncio.current_task()
+
         self._running = True
         interval = self.config.get("interval_sec", 5)
 
         self.logger.info(f"Starting feed {self.feed_id} with interval {interval}s")
 
-        while self._running:
-            try:
-                # Wait for the configured interval before fetching
-                await asyncio.sleep(interval)
-
-                # Fetch data from source
-                payload = await self.fetch_data()
-
-                # Publish event to hub
-                await self.hub.publish_feed_event(self.feed_id, payload)
-
-                if self._stop_requested:
+        try:
+            while self._running and not self._stop_requested:
+                # Sleep between iterations so cancellation stops before the next
+                # publish when stop() is called mid-sleep.
+                try:
+                    await asyncio.sleep(interval)
+                except asyncio.CancelledError:
+                    self.logger.info(f"Feed {self.feed_id} cancelled")
                     break
 
-                # Wait for next interval
-                await asyncio.sleep(interval)
+                if not self._running or self._stop_requested:
+                    break
 
-            except asyncio.CancelledError:
-                self.logger.info(f"Feed {self.feed_id} cancelled")
-                break
-            except Exception as e:
-                self.logger.error(f"Error in feed {self.feed_id}: {e}", exc_info=True)
-                # Continue running despite errors, wait before retry
-                await asyncio.sleep(interval)
+                try:
+                    # Fetch data from source
+                    payload = await self.fetch_data()
 
-        self._running = False
-        self.logger.info(f"Feed {self.feed_id} stopped")
+                    if not self._running or self._stop_requested:
+                        break
+
+                    # Publish event to hub
+                    await self.hub.publish_feed_event(self.feed_id, payload)
+
+                except asyncio.CancelledError:
+                    self.logger.info(f"Feed {self.feed_id} cancelled")
+                    break
+                except Exception as e:
+                    self.logger.error(
+                        f"Error in feed {self.feed_id}: {e}", exc_info=True
+                    )
+                    # Continue running despite errors, wait before retry
+                    continue
+        finally:
+            self._running = False
+            self.logger.info(f"Feed {self.feed_id} stopped")
 
     async def start(self) -> None:
         """Start the feed as an asyncio Task."""
@@ -102,17 +113,14 @@ class BaseFeed(ABC):
     async def stop(self) -> None:
         """Stop the feed."""
         self._stop_requested = True
+        self._running = False
         if self._task and not self._task.done():
             try:
-                await asyncio.wait_for(
-                    self._task, timeout=self.config.get("interval_sec", 5) + 1
-                )
-            except asyncio.TimeoutError:
                 self._task.cancel()
-                try:
-                    await self._task
-                except asyncio.CancelledError:
-                    pass
+                await self._task
+            except asyncio.CancelledError:
+                pass
+        self._task = None
         self.logger.info(f"Feed {self.feed_id} stopped")
 
     def is_running(self) -> bool:
