@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(dos2unix:*)",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(/mnt/c/Users/jekyt/AppData/Local/Programs/Python/Python*/python.exe)"
     ],
     "deny": [],
     "ask": []
