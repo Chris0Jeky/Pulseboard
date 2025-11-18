@@ -54,7 +54,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const dataPoints = ref<Array<{ timestamp: string; value: number }>>([])
 
-const fieldName = computed(() => props.options.field || 'value')
+const fieldName = computed(() => props.options?.field || 'value')
 const maxDataPoints = 50 // Keep last 50 points
 
 // Watch for feed updates
@@ -63,7 +63,7 @@ watch(
   () => {
     if (props.feedIds.length === 0) return
 
-    const feedId = props.feedIds[0] // Use first feed
+    const feedId = props.feedIds[0]! // Use first feed
     const feedData = liveDataStore.latest[feedId]
 
     if (feedData && feedData.payload) {
@@ -92,7 +92,7 @@ watch(
   () => props.feedIds,
   () => {
     if (props.feedIds.length > 0) {
-      const feedId = props.feedIds[0]
+      const feedId = props.feedIds[0]!
       const history = liveDataStore.getHistory(feedId)
 
       if (history.length > 0) {

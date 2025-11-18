@@ -178,7 +178,7 @@ describe('Dashboards Store', () => {
       await store.deleteDashboard('1')
 
       expect(store.dashboards).toHaveLength(1)
-      expect(store.dashboards[0].id).toBe('2')
+      expect(store.dashboards[0]!.id).toBe('2')
     })
 
     it('should clear current dashboard if deleted', async () => {

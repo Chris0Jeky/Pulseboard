@@ -37,7 +37,7 @@ describe('Live Data Store', () => {
       store.applyFeedUpdate(event)
 
       expect(store.history['feed-1']).toHaveLength(1)
-      expect(store.history['feed-1'][0]).toEqual(event)
+      expect(store.history['feed-1']![0]).toEqual(event)
     })
 
     it('should trim history to max size', () => {
@@ -54,8 +54,8 @@ describe('Live Data Store', () => {
 
       expect(store.history['feed-1']).toHaveLength(100)
       // Should keep the most recent events
-      expect(store.history['feed-1'][0].payload.value).toBe(5)
-      expect(store.history['feed-1'][99].payload.value).toBe(104)
+      expect(store.history['feed-1']![0]!.payload.value).toBe(5)
+      expect(store.history['feed-1']![99]!.payload.value).toBe(104)
     })
 
     it('should handle multiple feeds', () => {
@@ -75,8 +75,8 @@ describe('Live Data Store', () => {
 
       expect(store.latest['feed-1']).toBeDefined()
       expect(store.latest['feed-2']).toBeDefined()
-      expect(store.latest['feed-1'].payload.cpu).toBe(50)
-      expect(store.latest['feed-2'].payload.ram).toBe(70)
+      expect(store.latest['feed-1']!.payload.cpu).toBe(50)
+      expect(store.latest['feed-2']!.payload.ram).toBe(70)
     })
   })
 
@@ -106,7 +106,7 @@ describe('Live Data Store', () => {
       store.setHistory('feed-1', events)
 
       expect(store.history['feed-1']).toHaveLength(100)
-      expect(store.history['feed-1'][0].payload.value).toBe(50)
+      expect(store.history['feed-1']![0]!.payload.value).toBe(50)
     })
   })
 

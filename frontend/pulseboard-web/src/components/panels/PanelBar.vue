@@ -68,7 +68,7 @@ watch(
   () => {
     if (props.feedIds.length === 0) return
 
-    const feedId = props.feedIds[0] // Use first feed
+    const feedId = props.feedIds[0]! // Use first feed
     const feedData = liveDataStore.latest[feedId]
 
     if (feedData && feedData.payload) {
@@ -99,7 +99,7 @@ watch(
 
 // ECharts option
 const chartOption = computed(() => {
-  const color = props.options.color || '#60a5fa'
+  const color = props.options?.color || '#60a5fa'
 
   return {
     grid: {

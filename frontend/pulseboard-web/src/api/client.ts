@@ -96,6 +96,13 @@ class ApiClient {
     })
   }
 
+  async updateFeed(id: string, data: Partial<FeedCreate>): Promise<FeedDefinition> {
+    return this.request<FeedDefinition>(`/api/feeds/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
   async deleteFeed(id: string): Promise<void> {
     return this.request<void>(`/api/feeds/${id}`, {
       method: 'DELETE',

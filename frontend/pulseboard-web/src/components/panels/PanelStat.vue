@@ -53,7 +53,7 @@ const error = ref<string | null>(null)
 const value = ref<number | null>(null)
 const previousValue = ref<number | null>(null)
 
-const fieldName = computed(() => props.options.field || 'value')
+const fieldName = computed(() => props.options?.field || 'value')
 const label = computed(() => props.title)
 
 // Extract value from latest feed data
@@ -62,7 +62,7 @@ watch(
   () => {
     if (props.feedIds.length === 0) return
 
-    const feedId = props.feedIds[0] // Use first feed
+    const feedId = props.feedIds[0]! // Use first feed
     const feedData = liveDataStore.latest[feedId]
 
     if (feedData && feedData.payload) {
