@@ -11,6 +11,7 @@ import type {
   FeedType,
   Panel,
   PanelCreate,
+  PanelUpdate,
 } from '../types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -118,6 +119,13 @@ class ApiClient {
   async createPanel(dashboardId: string, data: PanelCreate): Promise<Panel> {
     return this.request<Panel>(`/api/dashboards/${dashboardId}/panels`, {
       method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updatePanel(dashboardId: string, panelId: string, data: PanelUpdate): Promise<Panel> {
+    return this.request<Panel>(`/api/dashboards/${dashboardId}/panels/${panelId}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     })
   }

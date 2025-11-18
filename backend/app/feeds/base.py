@@ -36,6 +36,7 @@ class BaseFeed(ABC):
         self.hub = hub
         self._running = False
         self._task: asyncio.Task | None = None
+        self._stop_requested = False
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @abstractmethod
@@ -57,8 +58,7 @@ class BaseFeed(ABC):
 
         This method should be run as an asyncio Task.
         """
-        # Ensure we can cancel the currently running task even when run() is
-        # scheduled outside of ``start`` (e.g., directly in tests).
+        self._stop_requested = False
         if self._task is None:
             self._task = asyncio.current_task()
 
@@ -68,7 +68,7 @@ class BaseFeed(ABC):
         self.logger.info(f"Starting feed {self.feed_id} with interval {interval}s")
 
         try:
-            while self._running:
+            while self._running and not self._stop_requested:
                 # Sleep between iterations so cancellation stops before the next
                 # publish when stop() is called mid-sleep.
                 try:
@@ -77,14 +77,14 @@ class BaseFeed(ABC):
                     self.logger.info(f"Feed {self.feed_id} cancelled")
                     break
 
-                if not self._running:
+                if not self._running or self._stop_requested:
                     break
 
                 try:
                     # Fetch data from source
                     payload = await self.fetch_data()
 
-                    if not self._running:
+                    if not self._running or self._stop_requested:
                         break
 
                     # Publish event to hub
@@ -112,10 +112,11 @@ class BaseFeed(ABC):
 
     async def stop(self) -> None:
         """Stop the feed."""
+        self._stop_requested = True
         self._running = False
         if self._task and not self._task.done():
-            self._task.cancel()
             try:
+                self._task.cancel()
                 await self._task
             except asyncio.CancelledError:
                 pass
