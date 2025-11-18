@@ -3,9 +3,17 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div class="flex items-center justify-between mb-8">
         <h1 class="text-3xl font-bold text-white">Dashboards</h1>
-        <button @click="showCreateDialog = true" class="btn-primary">
-          + Create Dashboard
-        </button>
+        <div class="flex gap-3">
+          <router-link
+            :to="{ name: 'feeds' }"
+            class="btn-secondary"
+          >
+            Manage Feeds
+          </router-link>
+          <button @click="showCreateDialog = true" class="btn-primary">
+            + Create Dashboard
+          </button>
+        </div>
       </div>
 
       <!-- Loading state -->

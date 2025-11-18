@@ -8,6 +8,7 @@ import type {
   DashboardUpdate,
   FeedDefinition,
   FeedCreate,
+  FeedType,
   Panel,
   PanelCreate,
 } from '../types'
@@ -85,6 +86,10 @@ class ApiClient {
     return this.request<FeedDefinition[]>('/api/feeds')
   }
 
+  async getFeedTypes(): Promise<FeedType[]> {
+    return this.request<FeedType[]>('/api/feeds/types')
+  }
+
   async getFeed(id: string): Promise<FeedDefinition> {
     return this.request<FeedDefinition>(`/api/feeds/${id}`)
   }
@@ -92,6 +97,13 @@ class ApiClient {
   async createFeed(data: FeedCreate): Promise<FeedDefinition> {
     return this.request<FeedDefinition>('/api/feeds', {
       method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateFeed(id: string, data: Partial<FeedCreate>): Promise<FeedDefinition> {
+    return this.request<FeedDefinition>(`/api/feeds/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     })
   }

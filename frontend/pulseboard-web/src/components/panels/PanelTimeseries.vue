@@ -54,7 +54,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const dataPoints = ref<Array<{ timestamp: string; value: number }>>([])
 
-const fieldName = computed(() => props.options.field || 'value')
+const fieldName = computed(() => props.options?.field || 'value')
 const maxDataPoints = 50 // Keep last 50 points
 
 // Watch for feed updates

@@ -5,6 +5,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import DashboardListView from '../views/DashboardListView.vue'
 import DashboardLiveView from '../views/DashboardLiveView.vue'
+import FeedsView from '../views/FeedsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -27,6 +28,14 @@ const router = createRouter({
       component: DashboardLiveView,
       meta: {
         title: 'Dashboard - Pulseboard',
+      },
+    },
+    {
+      path: '/feeds',
+      name: 'feeds',
+      component: FeedsView,
+      meta: {
+        title: 'Feeds - Pulseboard',
       },
     },
   ],

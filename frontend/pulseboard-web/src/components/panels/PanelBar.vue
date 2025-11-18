@@ -101,7 +101,7 @@ watch(
 
 // ECharts option
 const chartOption = computed(() => {
-  const color = props.options.color || '#60a5fa'
+  const color = props.options?.color || '#60a5fa'
 
   return {
     grid: {

@@ -53,7 +53,7 @@ const error = ref<string | null>(null)
 const value = ref<number | null>(null)
 const previousValue = ref<number | null>(null)
 
-const fieldName = computed(() => props.options.field || 'value')
+const fieldName = computed(() => props.options?.field || 'value')
 const label = computed(() => props.title)
 
 // Extract value from latest feed data

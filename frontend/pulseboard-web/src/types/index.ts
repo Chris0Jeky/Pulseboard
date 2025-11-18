@@ -34,6 +34,13 @@ export interface FeedDefinition {
   updated_at: string
 }
 
+export interface FeedType {
+  type: string
+  name: string
+  description: string
+  default_config: Record<string, unknown>
+}
+
 export interface FeedCreate {
   type: string
   name: string
