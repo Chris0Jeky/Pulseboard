@@ -1,15 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cd:*)",
-      "Bash(dos2unix:*)",
-      "Bash(python3:*)",
-      "Bash(source:*)",
-      "Bash(pip install:*)",
-      "Bash(/mnt/c/Users/jekyt/AppData/Local/Programs/Python/Python*/python.exe)",
-      "Bash(../venv/Scripts/python.exe:*)",
-      "Bash(curl:*)",
-      "Bash(./venv/Scripts/python.exe -c \"\nimport sqlite3\nconn = sqlite3.connect(''backend/pulseboard.db'')\ncursor = conn.cursor()\ncursor.execute(''SELECT id, name, type, enabled FROM feeddefinition'')\nfor row in cursor.fetchall():\n    print(f''{row[0][:8]}... | {row[1]:20} | {row[2]:15} | enabled={row[3]}'')\nconn.close()\n\")"
+      "Bash(./venv/Scripts/python.exe -c \"\nimport sqlite3\nconn = sqlite3.connect(''backend/pulseboard.db'')\ncursor = conn.cursor()\ncursor.execute(''SELECT name FROM sqlite_master WHERE type=\"\"table\"\"'')\nprint(''Tables:'', [row[0] for row in cursor.fetchall()])\nconn.close()\n\")"
     ],
     "deny": [],
     "ask": []
