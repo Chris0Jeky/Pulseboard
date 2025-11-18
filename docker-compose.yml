@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Backend API service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pulseboard-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=info
+      - DATABASE_PATH=/app/data/pulseboard.db
+      - CORS_ORIGINS=http://localhost,http://localhost:80,http://frontend
+    volumes:
+      # Persist database
+      - backend-data:/app/data
+      # Optional: Mount logs
+      - backend-logs:/app/logs
+    networks:
+      - pulseboard-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Frontend web service
+  frontend:
+    build:
+      context: ./frontend/pulseboard-web
+      dockerfile: Dockerfile
+    container_name: pulseboard-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - pulseboard-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+
+networks:
+  pulseboard-network:
+    driver: bridge
+    name: pulseboard-network
+
+volumes:
+  backend-data:
+    name: pulseboard-backend-data
+  backend-logs:
+    name: pulseboard-backend-logs

@@ -134,6 +134,110 @@ npm run dev
 npm run build
 ```
 
+## Docker Deployment (Production)
+
+The easiest way to deploy Pulseboard is using Docker. All necessary configuration files are included.
+
+### Prerequisites
+
+- Docker 20.10 or later
+- Docker Compose 2.0 or later
+
+### Quick Start with Docker
+
+1. **Clone the repository**
+
+```bash
+git clone <repository-url>
+cd Pulseboard
+```
+
+2. **Configure environment** (optional)
+
+```bash
+cp .env.example .env
+# Edit .env if needed
+```
+
+3. **Start with one command**
+
+```bash
+# Using the helper script
+./scripts/start.sh --build --detach
+
+# Or directly with docker-compose
+docker-compose up -d
+```
+
+4. **Access the application**
+
+- Frontend: http://localhost
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+
+### Docker Management
+
+```bash
+# View logs
+docker-compose logs -f
+
+# Check status
+docker-compose ps
+./scripts/status.sh
+
+# Stop services
+docker-compose stop
+./scripts/stop.sh
+
+# Restart services
+docker-compose restart
+
+# Backup database
+./scripts/backup.sh
+
+# Restore from backup
+./scripts/restore.sh ./backups/pulseboard_backup_YYYYMMDD_HHMMSS.db
+```
+
+### Development Mode with Docker
+
+For local development with hot-reload:
+
+```bash
+# Using the helper script
+./scripts/start.sh --dev
+
+# Or directly with docker-compose
+docker-compose -f docker-compose.dev.yml up
+```
+
+Features:
+- Live code reload for backend and frontend
+- Source code mounted as volumes
+- Debug logging enabled
+
+### Docker Architecture
+
+**Backend Container**
+- Multi-stage build (Python 3.11 slim)
+- Non-root user for security
+- SQLite database persisted in volume
+- Health checks enabled
+- Port 8000 exposed
+
+**Frontend Container**
+- Built with Node 20, served with Nginx
+- Optimized static files
+- Gzip compression
+- SPA routing configured
+- Port 80 exposed
+
+**Volumes**
+- `pulseboard-backend-data`: Persistent SQLite database
+- `pulseboard-backend-logs`: Application logs
+
+For detailed Docker documentation, see [DOCKER.md](DOCKER.md).
+
 ## Architecture
 
 ### Data Flow
@@ -353,8 +457,12 @@ pulseboard/
 - [x] ECharts integration
 - [x] Real-time WebSocket updates
 - [x] Dark mode UI with TailwindCSS
-- [ ] Panel editing and dashboard layout customization
-- [ ] PWA support
+- [x] Panel editing and dashboard management UI
+- [x] Feed management UI
+- [x] Docker deployment setup
+- [x] Comprehensive test coverage (30+ unit tests)
+- [ ] PWA support (manifest, service worker)
+- [ ] E2E testing with Playwright
 - [ ] Additional feed types (Git metrics, Taskdeck)
 - [ ] Desktop wrapper (Electron/Tauri)
 - [ ] User authentication and multi-tenancy
