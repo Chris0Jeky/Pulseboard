@@ -6,7 +6,8 @@
       "Bash(python3:*)",
       "Bash(source:*)",
       "Bash(pip install:*)",
-      "Bash(/mnt/c/Users/jekyt/AppData/Local/Programs/Python/Python*/python.exe)"
+      "Bash(/mnt/c/Users/jekyt/AppData/Local/Programs/Python/Python*/python.exe)",
+      "Bash(../venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []
