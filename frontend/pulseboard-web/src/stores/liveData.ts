@@ -34,8 +34,12 @@ export const useLiveDataStore = defineStore('liveData', () => {
 
   function setHistory(feedId: string, events: FeedEvent[]) {
     history.value[feedId] = events.slice(-maxHistorySize)
-    if (events.length > 0) {
-      latest.value[feedId] = events[events.length - 1]
+
+    const latestEvent = events.length > 0 ? events[events.length - 1] : undefined
+    if (latestEvent) {
+      latest.value[feedId] = latestEvent
+    } else {
+      delete latest.value[feedId]
     }
   }
 
