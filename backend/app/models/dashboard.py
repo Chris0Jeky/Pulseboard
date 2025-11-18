@@ -25,10 +25,14 @@ class Dashboard(DashboardBase, table=True):
 
     id: UUID = SQLField(default_factory=uuid4, primary_key=True)
     created_at: datetime = SQLField(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+        default_factory=datetime.utcnow,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
     updated_at: datetime = SQLField(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+        default_factory=datetime.utcnow,
+        sa_column=Column(
+            DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        ),
     )
 
     # Relationship to panels
