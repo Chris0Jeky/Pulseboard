@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./venv/Scripts/python.exe -c \"\nimport sqlite3\nconn = sqlite3.connect(''backend/pulseboard.db'')\ncursor = conn.cursor()\ncursor.execute(''SELECT name FROM sqlite_master WHERE type=\"\"table\"\"'')\nprint(''Tables:'', [row[0] for row in cursor.fetchall()])\nconn.close()\n\")"
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []
