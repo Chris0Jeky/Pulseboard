@@ -27,7 +27,7 @@
       <!-- Error state -->
       <div v-else-if="error" class="text-center py-12">
         <div class="text-red-400">{{ error }}</div>
-        <button @click="loadFeeds" class="btn-secondary mt-4">
+        <button @click="loadData" class="btn-secondary mt-4">
           Retry
         </button>
       </div>
@@ -128,14 +128,14 @@
                 <select
                   v-model="feedForm.type"
                   required
-                  :disabled="!!editingFeed"
+                  :disabled="!!editingFeed || feedTypes.length === 0"
                   class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
                   @change="updateConfigTemplate"
                 >
-                  <option value="">Select type...</option>
-                  <option value="system_metrics">System Metrics</option>
-                  <option value="http_json">HTTP JSON</option>
-                  <option value="crypto_price">Crypto Price</option>
+                  <option value="" disabled>Select type...</option>
+                  <option v-for="type in feedTypes" :key="type.type" :value="type.type">
+                    {{ type.name }}
+                  </option>
                 </select>
               </div>
 
@@ -226,11 +226,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import apiClient from '../api/client'
-import type { FeedDefinition } from '../types'
+import type { FeedDefinition, FeedType } from '../types'
 
 const feeds = ref<FeedDefinition[]>([])
+const feedTypes = ref<FeedType[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const showCreateDialog = ref(false)
@@ -248,49 +249,19 @@ const feedForm = ref({
   enabled: true,
 })
 
-const configTemplates = {
-  system_metrics: JSON.stringify(
-    {
-      interval_sec: 5,
-      include_disk: false,
-      include_network: false,
-    },
-    null,
-    2
-  ),
-  http_json: JSON.stringify(
-    {
-      url: 'https://api.example.com/data',
-      interval_sec: 60,
-      method: 'GET',
-    },
-    null,
-    2
-  ),
-  crypto_price: JSON.stringify(
-    {
-      coin_id: 'bitcoin',
-      vs_currency: 'usd',
-      interval_sec: 30,
-    },
-    null,
-    2
-  ),
-}
+const selectedFeedType = computed(() =>
+  feedTypes.value.find((type) => type.type === feedForm.value.type)
+)
 
 function getConfigHelp(type: string): string {
-  const help = {
-    system_metrics: 'interval_sec, include_disk, include_network',
-    http_json: 'url (required), interval_sec, method, headers, path',
-    crypto_price: 'coin_id (required), vs_currency, interval_sec, include_market_data',
-  }
-  return help[type as keyof typeof help] || 'Enter valid JSON configuration'
+  const metadata = feedTypes.value.find((feedType) => feedType.type === type)
+  return metadata?.description || 'Enter valid JSON configuration'
 }
 
 function updateConfigTemplate() {
   if (feedForm.value.type && !editingFeed.value) {
-    feedForm.value.config_json =
-      configTemplates[feedForm.value.type as keyof typeof configTemplates] || '{}'
+    const template = selectedFeedType.value?.default_config || {}
+    feedForm.value.config_json = JSON.stringify(template, null, 2)
   }
 }
 
@@ -314,12 +285,17 @@ function validateConfig(): boolean {
   }
 }
 
-async function loadFeeds() {
+async function loadData() {
   loading.value = true
   error.value = null
 
   try {
-    feeds.value = await apiClient.getFeeds()
+    const [types, feedList] = await Promise.all([
+      apiClient.getFeedTypes(),
+      apiClient.getFeeds(),
+    ])
+    feedTypes.value = types
+    feeds.value = feedList
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load feeds'
   } finally {
@@ -426,6 +402,6 @@ function closeDialog() {
 }
 
 onMounted(() => {
-  loadFeeds()
+  loadData()
 })
 </script>
