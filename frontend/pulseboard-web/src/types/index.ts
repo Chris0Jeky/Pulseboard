@@ -65,6 +65,17 @@ export interface PanelCreate {
   height?: number
 }
 
+export interface PanelUpdate {
+  type?: string
+  title?: string
+  feed_ids_json?: string
+  options_json?: string
+  position_x?: number
+  position_y?: number
+  width?: number
+  height?: number
+}
+
 export interface FeedEvent {
   feed_id: string
   ts: string
