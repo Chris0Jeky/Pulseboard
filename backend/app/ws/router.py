@@ -7,10 +7,8 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
-from sqlmodel import Session
 
 from app.api.deps import SessionDep
-from app.db.session import get_session
 from app.hub.hub import DataHub
 from app.models import Dashboard
 
@@ -40,6 +38,8 @@ router = APIRouter()
 async def websocket_dashboard(
     websocket: WebSocket,
     dashboard_id: UUID,
+    session: SessionDep,
+    hub: DataHub = Depends(get_hub),
 ):
     """
     WebSocket endpoint for real-time dashboard updates.
@@ -47,15 +47,6 @@ async def websocket_dashboard(
     Accepts connection, registers with DataHub, and keeps connection alive.
     DataHub will send feed updates to this connection.
     """
-    hub = get_hub()
-
-    # Get a database session
-    # Note: We need to manually create a session here since WebSocket
-    # doesn't support normal dependency injection the same way
-    from app.db.base import engine
-
-    session = Session(engine)
-
     try:
         # Verify dashboard exists
         dashboard = session.get(Dashboard, dashboard_id)
@@ -109,4 +100,3 @@ async def websocket_dashboard(
     finally:
         # Unregister from DataHub
         await hub.unregister_connection(dashboard_id, websocket)
-        session.close()

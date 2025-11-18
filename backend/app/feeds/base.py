@@ -36,6 +36,7 @@ class BaseFeed(ABC):
         self.hub = hub
         self._running = False
         self._task: asyncio.Task | None = None
+        self._stop_requested = False
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @abstractmethod
@@ -57,6 +58,7 @@ class BaseFeed(ABC):
 
         This method should be run as an asyncio Task.
         """
+        self._stop_requested = False
         self._running = True
         interval = self.config.get("interval_sec", 5)
 
@@ -64,11 +66,17 @@ class BaseFeed(ABC):
 
         while self._running:
             try:
+                # Wait for the configured interval before fetching
+                await asyncio.sleep(interval)
+
                 # Fetch data from source
                 payload = await self.fetch_data()
 
                 # Publish event to hub
                 await self.hub.publish_feed_event(self.feed_id, payload)
+
+                if self._stop_requested:
+                    break
 
                 # Wait for next interval
                 await asyncio.sleep(interval)
@@ -81,23 +89,30 @@ class BaseFeed(ABC):
                 # Continue running despite errors, wait before retry
                 await asyncio.sleep(interval)
 
+        self._running = False
         self.logger.info(f"Feed {self.feed_id} stopped")
 
     async def start(self) -> None:
         """Start the feed as an asyncio Task."""
         if self._task is None or self._task.done():
+            self._running = True
             self._task = asyncio.create_task(self.run())
             self.logger.info(f"Feed {self.feed_id} task started")
 
     async def stop(self) -> None:
         """Stop the feed."""
-        self._running = False
+        self._stop_requested = True
         if self._task and not self._task.done():
-            self._task.cancel()
             try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+                await asyncio.wait_for(
+                    self._task, timeout=self.config.get("interval_sec", 5) + 1
+                )
+            except asyncio.TimeoutError:
+                self._task.cancel()
+                try:
+                    await self._task
+                except asyncio.CancelledError:
+                    pass
         self.logger.info(f"Feed {self.feed_id} stopped")
 
     def is_running(self) -> bool:

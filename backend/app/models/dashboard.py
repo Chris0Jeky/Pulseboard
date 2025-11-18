@@ -2,7 +2,7 @@
 Dashboard database models and schemas.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID, uuid4
 
@@ -25,10 +25,12 @@ class Dashboard(DashboardBase, table=True):
 
     id: UUID = SQLField(default_factory=uuid4, primary_key=True)
     created_at: datetime = SQLField(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
     updated_at: datetime = SQLField(
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
     )
 
     # Relationship to panels
