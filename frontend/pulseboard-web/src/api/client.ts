@@ -8,6 +8,7 @@ import type {
   DashboardUpdate,
   FeedDefinition,
   FeedCreate,
+  FeedType,
   Panel,
   PanelCreate,
 } from '../types'
@@ -83,6 +84,10 @@ class ApiClient {
   // Feed endpoints
   async getFeeds(): Promise<FeedDefinition[]> {
     return this.request<FeedDefinition[]>('/api/feeds')
+  }
+
+  async getFeedTypes(): Promise<FeedType[]> {
+    return this.request<FeedType[]>('/api/feeds/types')
   }
 
   async getFeed(id: string): Promise<FeedDefinition> {

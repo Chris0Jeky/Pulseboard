@@ -8,14 +8,24 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel
 
 from app.api.deps import SessionDep
-from app.feeds import get_feed_class
+from app.feeds import FEED_METADATA, FEED_TYPES, get_feed_class
 from app.models import FeedCreate, FeedDefinition, FeedRead, FeedUpdate
 from sqlmodel import select
 
 router = APIRouter(prefix="/feeds", tags=["feeds"])
 logger = logging.getLogger(__name__)
+
+
+class FeedTypeInfo(BaseModel):
+    """Response schema for feed type metadata."""
+
+    type: str
+    name: str
+    description: str
+    default_config: dict
 
 
 @router.get("", response_model=List[FeedRead])
@@ -24,6 +34,26 @@ def list_feeds(session: SessionDep) -> List[FeedDefinition]:
     statement = select(FeedDefinition)
     feeds = session.exec(statement).all()
     return list(feeds)
+
+
+@router.get("/types", response_model=List[FeedTypeInfo])
+def list_feed_types() -> List[FeedTypeInfo]:
+    """Return available feed types and default configuration templates."""
+
+    feed_types: list[FeedTypeInfo] = []
+
+    for feed_type in FEED_TYPES.keys():
+        metadata = FEED_METADATA.get(feed_type, {})
+        feed_types.append(
+            FeedTypeInfo(
+                type=feed_type,
+                name=metadata.get("name", feed_type),
+                description=metadata.get("description", ""),
+                default_config=metadata.get("default_config", {}),
+            )
+        )
+
+    return feed_types
 
 
 @router.post("", response_model=FeedRead, status_code=status.HTTP_201_CREATED)
