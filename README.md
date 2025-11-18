@@ -98,6 +98,42 @@ cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+### Frontend Setup
+
+1. **Use the development startup script**
+
+```bash
+./scripts/dev_start_frontend.sh
+```
+
+This script will:
+- Install dependencies if needed
+- Start the frontend development server on `http://localhost:5173`
+
+2. **Access the application**
+
+Open your browser and navigate to `http://localhost:5173`
+
+The frontend will automatically proxy API requests to the backend.
+
+### Manual Frontend Setup
+
+If you prefer manual setup:
+
+```bash
+# Navigate to frontend directory
+cd frontend/pulseboard-web
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+```
+
 ## Architecture
 
 ### Data Flow
@@ -127,12 +163,24 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - **`app/ws/`** - WebSocket router and connection manager
 - **`app/main.py`** - FastAPI application and lifespan management
 
-#### Frontend (Coming Soon)
+#### Frontend
 
-- Vue 3 single-page application
-- Real-time dashboard views
-- Panel components for different visualization types
-- WebSocket client for live updates
+- **`src/types/`** - TypeScript interfaces matching backend models
+- **`src/api/`** - API client for backend communication
+- **`src/stores/`** - Pinia stores for state management
+  - `dashboards.ts` - Dashboard CRUD operations
+  - `liveData.ts` - Feed event storage and history
+  - `ui.ts` - UI state (WebSocket status, dark mode)
+- **`src/composables/`** - Reusable composition functions
+  - `useDashboardWebSocket.ts` - WebSocket management with auto-reconnect
+- **`src/components/panels/`** - Panel components
+  - `PanelStat.vue` - Single value with trend
+  - `PanelTimeseries.vue` - Line chart with ECharts
+  - `PanelBar.vue` - Bar chart with ECharts
+- **`src/views/`** - Page components
+  - `DashboardListView.vue` - Dashboard grid and creation
+  - `DashboardLiveView.vue` - Live dashboard with panels
+- **`src/router/`** - Vue Router configuration
 
 ## API Endpoints
 
@@ -300,12 +348,16 @@ pulseboard/
 - [x] REST API endpoints
 - [x] WebSocket streaming
 - [x] Seed demo data
-- [ ] Vue 3 frontend
-- [ ] Dashboard and panel components
-- [ ] ECharts integration
+- [x] Vue 3 frontend with TypeScript
+- [x] Dashboard and panel components
+- [x] ECharts integration
+- [x] Real-time WebSocket updates
+- [x] Dark mode UI with TailwindCSS
+- [ ] Panel editing and dashboard layout customization
 - [ ] PWA support
 - [ ] Additional feed types (Git metrics, Taskdeck)
 - [ ] Desktop wrapper (Electron/Tauri)
+- [ ] User authentication and multi-tenancy
 
 ## License
 
