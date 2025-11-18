@@ -68,7 +68,9 @@ watch(
   () => {
     if (props.feedIds.length === 0) return
 
-    const feedId = props.feedIds[0]! // Use first feed
+    const feedId = props.feedIds[0]
+    if (!feedId) return
+
     const feedData = liveDataStore.latest[feedId]
 
     if (feedData && feedData.payload) {
