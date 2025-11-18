@@ -1,39 +1,62 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import './tailwind.generated.css';
 
-@layer base {
-  body {
-    @apply bg-gray-900 text-gray-100;
-  }
+body {
+  background-color: #111827;
+  color: #f3f4f6;
 }
 
-@layer components {
-  .panel {
-    @apply bg-gray-800 rounded-lg border border-gray-700 p-4;
-  }
+.panel {
+  background-color: #1f2937;
+  border-radius: 0.5rem;
+  border: 1px solid #374151;
+  padding: 1rem;
+}
 
-  .panel-header {
-    @apply mb-3 flex items-center justify-between;
-  }
+.panel-header {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
-  .panel-title {
-    @apply text-sm font-semibold text-gray-200;
-  }
+.panel-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #e5e7eb;
+}
 
-  .stat-value {
-    @apply text-3xl font-bold;
-  }
+.stat-value {
+  font-size: 1.875rem;
+  font-weight: 700;
+}
 
-  .stat-label {
-    @apply text-sm text-gray-400;
-  }
+.stat-label {
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
 
-  .btn-primary {
-    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium px-4 py-2 rounded-lg transition-colors;
-  }
+.btn-primary {
+  background-color: #2563eb;
+  color: #ffffff;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  transition: background-color 150ms ease-in-out;
+}
 
-  .btn-secondary {
-    @apply bg-gray-700 hover:bg-gray-600 text-gray-100 font-medium px-4 py-2 rounded-lg transition-colors;
-  }
+.btn-primary:hover {
+  background-color: #1d4ed8;
+}
+
+.btn-secondary {
+  background-color: #374151;
+  color: #f9fafb;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  transition: background-color 150ms ease-in-out;
+}
+
+.btn-secondary:hover {
+  background-color: #4b5563;
 }
