@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(cd:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(./venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []
