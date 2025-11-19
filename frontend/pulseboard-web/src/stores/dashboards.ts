@@ -6,6 +6,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Dashboard } from '../types'
 import apiClient from '../api/client'
+import { useNotificationsStore } from './notifications'
 
 export const useDashboardsStore = defineStore('dashboards', () => {
   // State
@@ -13,6 +14,8 @@ export const useDashboardsStore = defineStore('dashboards', () => {
   const currentDashboard = ref<Dashboard | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  const notifications = useNotificationsStore()
 
   // Actions
   async function fetchDashboards() {
@@ -23,6 +26,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
       dashboards.value = await apiClient.getDashboards()
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch dashboards'
+      notifications.error(error.value)
       console.error('Error fetching dashboards:', e)
     } finally {
       loading.value = false
@@ -37,6 +41,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
       currentDashboard.value = await apiClient.getDashboard(id)
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to fetch dashboard'
+      notifications.error(error.value)
       console.error('Error fetching dashboard:', e)
       throw e
     } finally {
@@ -51,9 +56,11 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     try {
       const dashboard = await apiClient.createDashboard({ name, description })
       dashboards.value.push(dashboard)
+      notifications.success(`Dashboard "${name}" created successfully`)
       return dashboard
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create dashboard'
+      notifications.error(error.value)
       console.error('Error creating dashboard:', e)
       throw e
     } finally {
@@ -66,13 +73,16 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     error.value = null
 
     try {
+      const dashboard = dashboards.value.find((d) => d.id === id)
       await apiClient.deleteDashboard(id)
       dashboards.value = dashboards.value.filter((d) => d.id !== id)
       if (currentDashboard.value?.id === id) {
         currentDashboard.value = null
       }
+      notifications.success(`Dashboard "${dashboard?.name || 'Unknown'}" deleted`)
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to delete dashboard'
+      notifications.error(error.value)
       console.error('Error deleting dashboard:', e)
       throw e
     } finally {
