@@ -73,9 +73,11 @@ npm run dev         # Development server on http://localhost:5173
 npm run build       # Production build
 npm run preview     # Preview production build
 
-# Testing (infrastructure exists but tests not yet written)
-npm run test        # Run tests
+# Testing (56 tests passing)
+npm run test        # Run tests in watch mode
 npm run test:ui     # Test UI
+npm run test:run    # Run tests once
+npm run test:coverage  # Run with coverage report
 ```
 
 ## Core Architecture
@@ -193,10 +195,11 @@ npm run test:ui     # Test UI
 - Uses in-memory SQLite for test isolation
 - Async tests via `pytest-asyncio`
 
-**Frontend (tests planned but not written):**
-- Infrastructure: Vitest configured in `vite.config.ts`
-- Test stores, composables, and components
-- Target: 70%+ coverage before production deployment
+**Frontend (56 tests passing):**
+- API client tests: 9 tests covering all CRUD operations
+- Stores tests: 47 tests (dashboardsStore, liveDataStore, uiStore)
+- Test infrastructure: Vitest with happy-dom, comprehensive helpers
+- Missing: Component tests, composable tests, E2E tests (planned)
 
 ## Configuration
 
@@ -233,12 +236,25 @@ npm run test:ui     # Test UI
 
 **Health:** `GET /health`, `GET /`
 
-## Current Status (Phase 4 - UX Features)
+## Current Status (Phase 4 Complete - Production Ready)
 
-**Complete:** Core functionality, 3 feed types, 3 panel types, backend tests, real-time streaming
+**Complete:**
+- Core functionality, 3 feed types, 3 panel types
+- Backend tests (85% coverage)
+- Frontend tests (56 tests passing)
+- Real-time streaming with WebSocket
+- Feed management UI with testing
+- Panel drag and drop repositioning
+- Panel resize with grid snapping
+- PWA support (installable app)
 
-**In Progress:** Feed management UI, panel creation/editing UI, frontend tests
+**Planned:**
+- Panel add/delete UI from dashboard view
+- Component and E2E tests
+- Additional feeds (RepoScope, Taskdeck)
+- Desktop wrapper (Electron/Tauri)
+- Authentication and alerting
 
-**Planned:** PWA support, additional feeds (RepoScope, Taskdeck), desktop wrapper, alerting
+**Status:** Ready for production deployment (internal use). Add authentication for public deployment.
 
 See STATUS.md for detailed implementation status.
