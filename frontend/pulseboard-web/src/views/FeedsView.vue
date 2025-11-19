@@ -299,6 +299,58 @@
           </div>
         </div>
       </div>
+
+      <!-- Test Result Dialog -->
+      <div
+        v-if="testResult"
+        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto"
+        @click.self="testResult = null"
+      >
+        <div class="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-3xl w-full mx-4 my-8 shadow-2xl">
+          <div class="flex items-center gap-3 mb-6">
+            <div
+              class="w-12 h-12 rounded-lg flex items-center justify-center border"
+              :class="testResult.success ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20'"
+            >
+              <svg v-if="testResult.success" class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <svg v-else class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="flex-1">
+              <h2 class="text-2xl font-bold text-white">
+                {{ testResult.success ? 'Feed Test Successful' : 'Feed Test Failed' }}
+              </h2>
+              <p class="text-gray-400 text-sm mt-1">
+                {{ new Date(testResult.timestamp).toLocaleString() }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Error Message -->
+          <div v-if="!testResult.success && testResult.error" class="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <h3 class="text-sm font-semibold text-red-400 mb-2">Error</h3>
+            <pre class="text-sm text-red-300 font-mono whitespace-pre-wrap">{{ testResult.error }}</pre>
+          </div>
+
+          <!-- Success Data -->
+          <div v-if="testResult.success && testResult.data" class="mb-6">
+            <h3 class="text-sm font-semibold text-gray-300 mb-3">Fetched Data</h3>
+            <div class="bg-black/30 border border-white/10 rounded-lg p-4 max-h-96 overflow-auto">
+              <pre class="text-sm text-gray-300 font-mono">{{ JSON.stringify(testResult.data, null, 2) }}</pre>
+            </div>
+          </div>
+
+          <button
+            @click="testResult = null"
+            class="btn-primary-modern w-full"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -306,7 +358,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import apiClient from '../api/client'
-import type { FeedDefinition, FeedType } from '../types'
+import type { FeedDefinition, FeedTestResult, FeedType } from '../types'
 
 const feeds = ref<FeedDefinition[]>([])
 const feedTypes = ref<FeedType[]>([])
@@ -319,6 +371,8 @@ const submitting = ref(false)
 const deleting = ref<string | null>(null)
 const toggling = ref<string | null>(null)
 const configError = ref<string | null>(null)
+const testing = ref<string | null>(null)
+const testResult = ref<FeedTestResult | null>(null)
 
 const feedForm = ref({
   name: '',
