@@ -62,14 +62,16 @@
 
       <!-- Dashboard grid -->
       <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <router-link
+        <div
           v-for="dashboard in dashboards"
           :key="dashboard.id"
-          :to="{ name: 'dashboard-live', params: { id: dashboard.id } }"
           class="dashboard-card group"
         >
           <div class="flex items-start justify-between mb-3">
-            <div class="flex items-center gap-3">
+            <router-link
+              :to="{ name: 'dashboard-live', params: { id: dashboard.id } }"
+              class="flex items-center gap-3 flex-1 min-w-0"
+            >
               <div class="w-10 h-10 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-lg flex items-center justify-center border border-blue-500/30">
                 <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
@@ -80,10 +82,28 @@
                   {{ dashboard.name }}
                 </h2>
               </div>
+            </router-link>
+            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                @click.stop="handleClone(dashboard.id)"
+                class="p-2 rounded-lg hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 transition-colors"
+                title="Clone dashboard"
+                :disabled="cloning === dashboard.id"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+              <button
+                @click.stop="handleDelete(dashboard)"
+                class="p-2 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors"
+                title="Delete dashboard"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
             </div>
-            <svg class="w-5 h-5 text-gray-600 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
           </div>
           <p v-if="dashboard.description" class="text-gray-400 text-sm mb-4 line-clamp-2">
             {{ dashboard.description }}
@@ -102,7 +122,7 @@
               <span>{{ formatDate(dashboard.updated_at) }}</span>
             </div>
           </div>
-        </router-link>
+        </div>
       </div>
 
       <!-- Create dialog -->
@@ -130,7 +150,7 @@
                 v-model="newDashboard.name"
                 type="text"
                 required
-                class="w-full px-3 py-2"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="My Dashboard"
               />
             </div>
@@ -142,7 +162,7 @@
               <textarea
                 v-model="newDashboard.description"
                 rows="3"
-                class="w-full px-3 py-2"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Optional description..."
               />
             </div>
@@ -165,6 +185,43 @@
           </form>
         </div>
       </div>
+
+      <!-- Delete Confirmation Dialog -->
+      <div
+        v-if="dashboardToDelete"
+        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+        @click.self="dashboardToDelete = null"
+      >
+        <div class="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center border border-red-500/20">
+              <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 class="text-xl font-bold text-white">Confirm Delete</h2>
+          </div>
+          <p class="text-gray-300 mb-6">
+            Are you sure you want to delete "<span class="font-semibold text-white">{{ dashboardToDelete.name }}</span>"?
+            This action cannot be undone.
+          </p>
+          <div class="flex gap-3">
+            <button
+              @click="confirmDelete"
+              class="flex-1 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium px-4 py-2.5 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30"
+              :disabled="deleting"
+            >
+              {{ deleting ? 'Deleting...' : 'Delete' }}
+            </button>
+            <button
+              @click="dashboardToDelete = null"
+              class="btn-secondary-modern flex-1"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -173,6 +230,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDashboardsStore } from '../stores/dashboards'
+import type { Dashboard } from '../types'
 
 const router = useRouter()
 const dashboardsStore = useDashboardsStore()
@@ -183,6 +241,9 @@ const error = computed(() => dashboardsStore.error)
 
 const showCreateDialog = ref(false)
 const creating = ref(false)
+const cloning = ref<string | null>(null)
+const dashboardToDelete = ref<Dashboard | null>(null)
+const deleting = ref(false)
 const newDashboard = ref({
   name: '',
   description: '',
@@ -211,6 +272,37 @@ async function handleCreate() {
     console.error('Failed to create dashboard:', e)
   } finally {
     creating.value = false
+  }
+}
+
+async function handleClone(id: string) {
+  cloning.value = id
+  try {
+    const cloned = await dashboardsStore.cloneDashboard(id)
+    // Navigate to cloned dashboard
+    router.push({ name: 'dashboard-live', params: { id: cloned.id } })
+  } catch (e) {
+    console.error('Failed to clone dashboard:', e)
+  } finally {
+    cloning.value = null
+  }
+}
+
+function handleDelete(dashboard: Dashboard) {
+  dashboardToDelete.value = dashboard
+}
+
+async function confirmDelete() {
+  if (!dashboardToDelete.value) return
+
+  deleting.value = true
+  try {
+    await dashboardsStore.deleteDashboard(dashboardToDelete.value.id)
+    dashboardToDelete.value = null
+  } catch (e) {
+    console.error('Failed to delete dashboard:', e)
+  } finally {
+    deleting.value = false
   }
 }
 
