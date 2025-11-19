@@ -1,20 +1,43 @@
 <template>
-  <div class="min-h-screen bg-gray-900">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div class="flex items-center justify-between mb-8">
-        <h1 class="text-3xl font-bold text-white">Dashboards</h1>
-        <div class="flex gap-3">
-          <router-link
-            :to="{ name: 'feeds' }"
-            class="btn-secondary"
-          >
-            Manage Feeds
-          </router-link>
-          <button @click="showCreateDialog = true" class="btn-primary">
-            + Create Dashboard
-          </button>
+  <div class="min-h-screen">
+    <!-- Hero Header -->
+    <div class="header-gradient border-b border-white/10 backdrop-blur-sm">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-3 mb-2">
+              <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <h1 class="text-4xl font-bold text-white tracking-tight">Pulseboard</h1>
+            </div>
+            <p class="text-gray-400 ml-13">Real-time data visualization dashboards</p>
+          </div>
+          <div class="flex gap-3">
+            <router-link
+              :to="{ name: 'feeds' }"
+              class="btn-secondary-modern"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              Manage Feeds
+            </router-link>
+            <button @click="showCreateDialog = true" class="btn-primary-modern">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Create Dashboard
+            </button>
+          </div>
         </div>
       </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
       <!-- Loading state -->
       <div v-if="loading" class="text-center py-12">
