@@ -92,13 +92,42 @@ curl http://localhost:8000/api/feeds
 - `src/composables/useDashboardWebSocket.ts` - WebSocket with auto-reconnect
 - `src/components/panels/` - Panel types (Stat, Timeseries, Bar)
 
+## New Features in Phase 4
+
+### ✅ Feed Management UI
+- **Feeds page** at `/feeds` with full CRUD interface
+- **Test feeds** with live results dialog showing success/error and data
+- Create, edit, delete feeds directly from the browser
+- Visual status indicators for enabled/disabled feeds
+
+### ✅ Panel Drag and Drop
+- **Drag panels** to reposition them on the dashboard
+- Grid-snapping with 12-column layout
+- Visual drag handle at top center (blue gradient)
+- Real-time preview during drag
+
+### ✅ Panel Resize
+- **Resize panels** from the bottom-right corner
+- Grid-snapping with dimension constraints
+- Visual resize handle (purple gradient)
+- Prevents invalid panel sizes
+
+### ✅ PWA Support
+- **Install as desktop/mobile app**
+- Service worker for offline caching
+- Installable from browser (look for install button in address bar)
+- App icons and manifest configured
+
+### ✅ Frontend Testing
+- **56 tests passing** (API client, stores, utilities)
+- Comprehensive test coverage for core functionality
+- Vitest with happy-dom environment
+
 ## Known Issues (Demo Limitations)
 
-1. **Crypto API Rate Limits:** CoinGecko free tier has strict rate limits. You may see 500 errors in logs. This is normal and demonstrates error handling. System metrics will work fine.
+1. **Crypto API Rate Limits:** CoinGecko free tier has strict rate limits. You may see 429 errors in logs. This is normal and demonstrates error handling. System metrics will work fine.
 
-2. **Feed Management UI:** Currently need to use API directly to create/edit feeds. UI for this is planned in Phase 4.
-
-3. **Panel Editing:** No drag-and-drop layout yet. Panel configuration is via API.
+2. **Panel Add/Delete UI:** No UI for adding new panels to dashboard or deleting panels from dashboard view yet. Use API directly for these operations.
 
 ## Stop the Demo
 
@@ -109,11 +138,13 @@ curl http://localhost:8000/api/feeds
 
 ## Next Development Steps
 
-According to STATUS.md, the next priorities are:
-1. Add frontend tests (Vitest configured but no tests written)
-2. Feed management UI (create/edit feeds from browser)
-3. Panel management UI (add/edit/delete panels)
-4. PWA support for offline capability
+According to STATUS.md, the application is now production-ready for internal use. Future enhancements include:
+1. Panel add/delete UI from dashboard view
+2. Component tests for Vue components
+3. E2E tests with Playwright
+4. Additional feed types (RepoScope, Taskdeck)
+5. Desktop wrapper (Electron/Tauri)
+6. Authentication for public deployment
 
 ## Dashboard ID for Reference
 
