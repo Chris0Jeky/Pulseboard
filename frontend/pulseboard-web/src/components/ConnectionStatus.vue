@@ -164,6 +164,7 @@ function handleReconnect() {
 .status-badge {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
