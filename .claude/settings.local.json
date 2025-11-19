@@ -8,7 +8,8 @@
       "Bash(python:*)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(../venv/Scripts/python.exe:*)"
+      "Bash(../venv/Scripts/python.exe:*)",
+      "Bash(npx vite --host)"
     ],
     "deny": [],
     "ask": []
