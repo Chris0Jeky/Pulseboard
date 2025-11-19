@@ -584,3 +584,27 @@ watch(dashboardId, async () => {
   }
 })
 </script>
+
+<style scoped>
+.panel-container {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.panel-container:not(.opacity-50) {
+  transition: grid-column 0.3s ease, grid-row 0.3s ease;
+}
+
+/* Smooth drag handle appearance */
+.cursor-move {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+}
+
+/* Resize handle styling */
+.cursor-nwse-resize {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+}
+</style>
