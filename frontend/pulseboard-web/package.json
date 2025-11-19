@@ -7,7 +7,11 @@
     "dev": "vite",
     "build:css": "node scripts/build-tailwind-css.js",
     "build": "npm run build:css && vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "echarts": "^6.0.0",
