@@ -143,3 +143,60 @@ def delete_feed(feed_id: UUID, session: SessionDep) -> None:
     session.commit()
 
     logger.info(f"Deleted feed {feed_id}")
+
+
+class FeedTestResult(BaseModel):
+    """Response schema for feed test results."""
+
+    success: bool
+    data: dict | None = None
+    error: str | None = None
+    timestamp: str
+
+
+@router.post("/{feed_id}/test", response_model=FeedTestResult)
+async def test_feed(feed_id: UUID, session: SessionDep) -> FeedTestResult:
+    """Test a feed by fetching data once."""
+    import asyncio
+    from datetime import datetime, timezone
+
+    feed = session.get(FeedDefinition, feed_id)
+    if not feed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
+
+    # Get feed class
+    feed_class = get_feed_class(feed.type)
+    if not feed_class:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown feed type: {feed.type}",
+        )
+
+    # Parse config
+    try:
+        config = json.loads(feed.config_json)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON in config_json",
+        )
+
+    # Instantiate and test feed
+    try:
+        feed_instance = feed_class(feed_id=feed.id, config=config, hub=None)
+        data = await feed_instance.fetch_data()
+
+        return FeedTestResult(
+            success=True,
+            data=data,
+            error=None,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+    except Exception as e:
+        logger.error(f"Feed test failed for {feed_id}: {e}")
+        return FeedTestResult(
+            success=False,
+            data=None,
+            error=str(e),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
