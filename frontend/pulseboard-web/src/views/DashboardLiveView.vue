@@ -26,19 +26,10 @@
 
           <div class="flex items-center gap-4">
             <!-- WebSocket status indicator -->
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
-              <div
-                class="w-2.5 h-2.5 rounded-full animate-pulse"
-                :class="{
-                  'bg-green-500': wsStatus === 'connected',
-                  'bg-yellow-500': wsStatus === 'connecting',
-                  'bg-red-500': wsStatus === 'disconnected' || wsStatus === 'error',
-                }"
-              />
-              <span class="text-sm font-medium text-gray-300">
-                {{ wsStatusText }}
-              </span>
-            </div>
+            <ConnectionStatus
+              :on-reconnect="manualReconnect"
+              :reconnect-attempts="reconnectAttempts"
+            />
 
             <!-- Add Panel Button -->
             <button @click="showPanelDialog = true" class="btn-primary-modern">
@@ -223,6 +214,7 @@ import { useRoute } from 'vue-router'
 import { useDashboardsStore } from '../stores/dashboards'
 import { useUiStore } from '../stores/ui'
 import { useDashboardWebSocket } from '../composables/useDashboardWebSocket'
+import ConnectionStatus from '../components/ConnectionStatus.vue'
 import PanelStat from '../components/panels/PanelStat.vue'
 import PanelTimeseries from '../components/panels/PanelTimeseries.vue'
 import PanelBar from '../components/panels/PanelBar.vue'
@@ -240,22 +232,7 @@ const loading = computed(() => dashboardsStore.loading)
 const error = computed(() => dashboardsStore.error)
 const wsStatus = computed(() => uiStore.wsStatus)
 
-const { connect, disconnect } = useDashboardWebSocket(dashboardId.value)
-
-const wsStatusText = computed(() => {
-  switch (wsStatus.value) {
-    case 'connected':
-      return 'Live'
-    case 'connecting':
-      return 'Connecting...'
-    case 'disconnected':
-      return 'Disconnected'
-    case 'error':
-      return 'Error'
-    default:
-      return 'Unknown'
-  }
-})
+const { connect, disconnect, manualReconnect, reconnectAttempts } = useDashboardWebSocket(dashboardId.value)
 
 // Panel management state
 const showPanelDialog = ref(false)
