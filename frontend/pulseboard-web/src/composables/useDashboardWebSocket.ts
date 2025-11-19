@@ -121,9 +121,19 @@ export function useDashboardWebSocket(dashboardId: string) {
     disconnect()
   })
 
+  function manualReconnect() {
+    reconnectAttempts.value = 0 // Reset reconnect attempts
+    disconnect()
+    setTimeout(() => {
+      connect()
+    }, 100)
+  }
+
   return {
     connect,
     disconnect,
+    manualReconnect,
+    reconnectAttempts,
     ws,
   }
 }
