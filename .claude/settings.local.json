@@ -19,7 +19,8 @@
       "Bash(taskkill /F /PID 38040)",
       "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_-Force }\")",
       "Bash(cmd.exe /c \"taskkill /F /PID 38040 & taskkill /F /PID 20276 & taskkill /F /PID 32912\")",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npx pwa-assets-generator:*)"
     ],
     "deny": [],
     "ask": []
