@@ -1,0 +1,62 @@
+version: '3.8'
+
+# Development environment with hot-reload and debug features
+# Usage: docker-compose -f docker-compose.dev.yml up
+
+services:
+  # Backend API service (development)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: builder  # Use builder stage for development
+    container_name: pulseboard-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    working_dir: /app
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=debug
+      - DATABASE_PATH=/app/data/pulseboard.db
+      - CORS_ORIGINS=*
+      - RELOAD=true
+    volumes:
+      # Mount source code for hot reload
+      - ./backend/app:/app/app
+      - ./backend/tests:/app/tests
+      # Persist database
+      - backend-data-dev:/app/data
+    networks:
+      - pulseboard-network-dev
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Frontend web service (development)
+  frontend:
+    image: node:20-alpine
+    container_name: pulseboard-frontend-dev
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      # Mount source code for hot reload
+      - ./frontend/pulseboard-web:/app
+      - /app/node_modules  # Prevent overwriting node_modules
+    networks:
+      - pulseboard-network-dev
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend
+
+networks:
+  pulseboard-network-dev:
+    driver: bridge
+    name: pulseboard-network-dev
+
+volumes:
+  backend-data-dev:
+    name: pulseboard-backend-data-dev
