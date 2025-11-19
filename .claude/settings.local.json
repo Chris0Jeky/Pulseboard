@@ -11,7 +11,10 @@
       "Bash(../venv/Scripts/python.exe:*)",
       "Bash(npx vite --host)",
       "Bash(curl:*)",
-      "Bash(npx tailwindcss:*)"
+      "Bash(npx tailwindcss:*)",
+      "Bash(for pid in 32912 38040 28096 20276)",
+      "Bash(do taskkill //F //PID $pid)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
