@@ -8,6 +8,7 @@ import type {
   DashboardUpdate,
   FeedDefinition,
   FeedCreate,
+  FeedTestResult,
   FeedType,
   Panel,
   PanelCreate,
@@ -112,6 +113,12 @@ class ApiClient {
   async deleteFeed(id: string): Promise<void> {
     return this.request<void>(`/api/feeds/${id}`, {
       method: 'DELETE',
+    })
+  }
+
+  async testFeed(id: string): Promise<FeedTestResult> {
+    return this.request<FeedTestResult>(`/api/feeds/${id}/test`, {
+      method: 'POST',
     })
   }
 
