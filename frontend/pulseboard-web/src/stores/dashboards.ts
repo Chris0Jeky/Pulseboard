@@ -90,6 +90,47 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     }
   }
 
+  async function cloneDashboard(id: string) {
+    loading.value = true
+    error.value = null
+
+    try {
+      // Get the source dashboard with all panels
+      const source = await apiClient.getDashboard(id)
+
+      // Create new dashboard with "(Copy)" suffix
+      const clonedDashboard = await apiClient.createDashboard({
+        name: `${source.name} (Copy)`,
+        description: source.description || undefined,
+      })
+
+      // Clone all panels
+      for (const panel of source.panels || []) {
+        await apiClient.createPanel(clonedDashboard.id, {
+          title: panel.title,
+          type: panel.type,
+          config_json: panel.config_json,
+          position: panel.position,
+        })
+      }
+
+      // Fetch the cloned dashboard with panels
+      const clonedWithPanels = await apiClient.getDashboard(clonedDashboard.id)
+
+      // Add to dashboards list
+      dashboards.value.push(clonedWithPanels)
+
+      notifications.success(`Dashboard "${source.name}" cloned successfully`)
+      return clonedWithPanels
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to clone dashboard'
+      notifications.error(error.value)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearCurrentDashboard() {
     currentDashboard.value = null
   }
@@ -106,6 +147,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     fetchDashboard,
     createDashboard,
     deleteDashboard,
+    cloneDashboard,
     clearCurrentDashboard,
   }
 })
