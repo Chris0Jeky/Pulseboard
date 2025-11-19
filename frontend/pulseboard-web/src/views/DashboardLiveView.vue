@@ -68,11 +68,22 @@
       </div>
 
       <!-- Empty dashboard -->
-      <div v-else-if="!dashboard || !dashboard.panels || dashboard.panels.length === 0" class="text-center py-12">
-        <div class="text-gray-400 mb-4">This dashboard has no panels yet</div>
-        <button @click="showPanelDialog = true" class="btn-primary">
-          Add your first panel
-        </button>
+      <div v-else-if="!dashboard || !dashboard.panels || dashboard.panels.length === 0" class="text-center py-20">
+        <div class="max-w-md mx-auto">
+          <div class="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-2xl flex items-center justify-center border border-blue-500/30 mx-auto mb-4">
+            <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-2">No panels yet</h3>
+          <p class="text-gray-400 mb-6">Add your first panel to start visualizing data</p>
+          <button @click="showPanelDialog = true" class="btn-primary-modern">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Add your first panel
+          </button>
+        </div>
       </div>
 
       <!-- Panel grid -->
@@ -128,25 +139,32 @@
     <!-- Delete Confirmation Dialog -->
     <div
       v-if="showDeleteConfirm"
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
       @click.self="showDeleteConfirm = false"
     >
-      <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-        <h2 class="text-xl font-bold text-white mb-4">Delete Panel</h2>
+      <div class="bg-gradient-to-br from-gray-800/90 to-gray-900/90 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center border border-red-500/20">
+            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 class="text-xl font-bold text-white">Delete Panel</h2>
+        </div>
         <p class="text-gray-300 mb-6">
-          Are you sure you want to delete "{{ deletingPanel?.title }}"? This action cannot be undone.
+          Are you sure you want to delete "<span class="font-semibold text-white">{{ deletingPanel?.title }}</span>"? This action cannot be undone.
         </p>
         <div class="flex gap-3">
           <button
             @click="handleDeletePanel"
-            class="btn-primary flex-1 bg-red-600 hover:bg-red-700"
+            class="flex-1 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium px-4 py-2.5 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30"
             :disabled="deleting"
           >
             {{ deleting ? 'Deleting...' : 'Delete' }}
           </button>
           <button
             @click="showDeleteConfirm = false"
-            class="btn-secondary flex-1"
+            class="btn-secondary-modern flex-1"
           >
             Cancel
           </button>
