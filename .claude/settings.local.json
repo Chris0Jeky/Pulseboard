@@ -23,7 +23,8 @@
       "Bash(npx pwa-assets-generator:*)",
       "Bash(npm run build:*)",
       "Bash(npx vue-tsc:*)",
-      "Bash(npx vite build)"
+      "Bash(npx vite build)",
+      "Bash(npm test:*)"
     ],
     "deny": [],
     "ask": []
