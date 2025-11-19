@@ -87,13 +87,33 @@
       </div>
 
       <!-- Panel grid -->
-      <div v-else class="grid grid-cols-12 gap-4 auto-rows-[150px]">
+      <div v-else class="grid grid-cols-12 gap-4 auto-rows-[150px] relative">
         <div
           v-for="panel in dashboard.panels"
           :key="panel.id"
           :style="getPanelStyle(panel)"
-          class="min-h-0 relative group"
+          :class="[
+            'min-h-0 relative group panel-container',
+            draggingPanelId === panel.id && 'opacity-50 scale-95',
+            resizingPanelId === panel.id && 'ring-2 ring-blue-500'
+          ]"
+          @mousedown.stop
         >
+          <!-- Drag Handle -->
+          <div
+            class="absolute top-0 left-0 right-0 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-move z-20"
+            :class="draggingPanelId === panel.id ? 'opacity-100' : ''"
+            @mousedown="startDrag($event, panel)"
+            title="Drag to move"
+          >
+            <div class="px-3 py-1 bg-gray-800/90 rounded-b-lg border border-gray-700 flex items-center gap-2">
+              <svg class="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+              </svg>
+              <span class="text-xs text-gray-400">Move</span>
+            </div>
+          </div>
+
           <!-- Panel Component -->
           <component
             :is="getPanelComponent(panel.type)"
@@ -103,7 +123,7 @@
           />
 
           <!-- Panel Controls (visible on hover) -->
-          <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+          <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 z-20">
             <button
               @click="editPanel(panel)"
               class="p-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-300 hover:text-white"
@@ -123,7 +143,25 @@
               </svg>
             </button>
           </div>
+
+          <!-- Resize Handles -->
+          <div
+            class="absolute bottom-0 right-0 w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize z-20"
+            @mousedown="startResize($event, panel, 'se')"
+            title="Resize"
+          >
+            <svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M14 14V5.5L5.5 14H14z"/>
+            </svg>
+          </div>
         </div>
+
+        <!-- Drop preview overlay -->
+        <div
+          v-if="draggingPanelId && dropPreview"
+          :style="getDropPreviewStyle()"
+          class="pointer-events-none border-2 border-dashed border-blue-500 bg-blue-500/10 rounded-lg absolute z-10"
+        />
       </div>
     </div>
 
@@ -221,6 +259,19 @@ const showDeleteConfirm = ref(false)
 const deletingPanel = ref<Panel | null>(null)
 const deleting = ref(false)
 const availableFeeds = ref<FeedDefinition[]>([])
+
+// Drag and resize state
+const draggingPanelId = ref<string | null>(null)
+const draggingPanel = ref<Panel | null>(null)
+const dragStartX = ref(0)
+const dragStartY = ref(0)
+const resizingPanelId = ref<string | null>(null)
+const resizingPanel = ref<Panel | null>(null)
+const resizeStartX = ref(0)
+const resizeStartY = ref(0)
+const resizeStartWidth = ref(0)
+const resizeStartHeight = ref(0)
+const dropPreview = ref<{ x: number; y: number; width: number; height: number } | null>(null)
 
 async function loadDashboard() {
   await dashboardsStore.fetchDashboard(dashboardId.value)
