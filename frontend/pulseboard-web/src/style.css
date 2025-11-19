@@ -100,15 +100,22 @@ body {
   border-radius: 0.75rem;
   transition: all 0.2s ease;
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
+  border: none;
+  cursor: pointer;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
 }
 
-.btn-primary:active {
+.btn-primary:active:not(:disabled) {
   transform: translateY(0);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-secondary {
@@ -119,11 +126,17 @@ body {
   border-radius: 0.75rem;
   border: 1px solid rgba(148, 163, 184, 0.2);
   transition: all 0.2s ease;
+  cursor: pointer;
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background-color: rgba(75, 85, 99, 0.9);
   border-color: rgba(148, 163, 184, 0.3);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Modern Button Variants with Icons */
@@ -137,12 +150,24 @@ body {
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
+  border: none;
+  cursor: pointer;
 }
 
-.btn-primary-modern:hover {
+.btn-primary-modern:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+}
+
+.btn-primary-modern:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-primary-modern:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-secondary-modern {
@@ -155,10 +180,76 @@ body {
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
+  cursor: pointer;
 }
 
-.btn-secondary-modern:hover {
+.btn-secondary-modern:hover:not(:disabled) {
   background-color: rgba(51, 65, 85, 0.9);
   border-color: rgba(148, 163, 184, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-secondary-modern:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Input fields */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+textarea,
+select {
+  background-color: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #f3f4f6;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  background-color: rgba(30, 41, 59, 0.8);
+}
+
+/* Loading states */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(30, 41, 59, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
 }
