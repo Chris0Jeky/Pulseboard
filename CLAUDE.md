@@ -8,6 +8,28 @@ Pulseboard is a real-time data dashboard platform built with FastAPI (backend) a
 
 ## Development Commands
 
+### Docker Deployment (Recommended)
+
+The project now includes comprehensive Docker support. See DOCKER.md for full documentation.
+
+```bash
+# Quick start with Docker Compose
+docker-compose up -d                    # Start all services
+docker-compose logs -f                  # View logs
+docker-compose ps                       # Check status
+docker-compose down                     # Stop services
+
+# Development mode with hot reload
+docker-compose -f docker-compose.dev.yml up
+
+# Helper scripts
+./scripts/start.sh                      # Start with auto-seeding
+./scripts/stop.sh                       # Graceful shutdown
+./scripts/status.sh                     # Check service health
+./scripts/backup.sh                     # Backup database
+./scripts/restore.sh backup.db          # Restore database
+```
+
 ### Backend
 
 ```bash
