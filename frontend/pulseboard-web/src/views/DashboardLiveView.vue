@@ -213,6 +213,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDashboardsStore } from '../stores/dashboards'
 import { useUiStore } from '../stores/ui'
+import { useNotificationsStore } from '../stores/notifications'
 import { useDashboardWebSocket } from '../composables/useDashboardWebSocket'
 import ConnectionStatus from '../components/ConnectionStatus.vue'
 import PanelStat from '../components/panels/PanelStat.vue'
@@ -225,6 +226,7 @@ import type { Panel, PanelOptions, PanelCreate, FeedDefinition } from '../types'
 const route = useRoute()
 const dashboardsStore = useDashboardsStore()
 const uiStore = useUiStore()
+const notifications = useNotificationsStore()
 
 const dashboardId = computed(() => route.params.id as string)
 const dashboard = computed(() => dashboardsStore.currentDashboard)
@@ -287,9 +289,11 @@ async function handlePanelSubmit(data: PanelCreate) {
     if (editingPanel.value) {
       // Update existing panel
       await apiClient.updatePanel(dashboardId.value, editingPanel.value.id, data)
+      notifications.success(`Panel "${data.title}" updated successfully`)
     } else {
       // Create new panel
       await apiClient.createPanel(dashboardId.value, data)
+      notifications.success(`Panel "${data.title}" created successfully`)
     }
 
     // Reload dashboard to show changes
@@ -297,22 +301,24 @@ async function handlePanelSubmit(data: PanelCreate) {
     closePanelDialog()
   } catch (e) {
     console.error('Failed to save panel:', e)
-    alert('Failed to save panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
+    notifications.error('Failed to save panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
   }
 }
 
 async function handleDeletePanel() {
   if (!deletingPanel.value) return
 
+  const panelTitle = deletingPanel.value.title
   deleting.value = true
   try {
     await apiClient.deletePanel(dashboardId.value, deletingPanel.value.id)
     await loadDashboard()
+    notifications.success(`Panel "${panelTitle}" deleted successfully`)
     showDeleteConfirm.value = false
     deletingPanel.value = null
   } catch (e) {
     console.error('Failed to delete panel:', e)
-    alert('Failed to delete panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
+    notifications.error('Failed to delete panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
   } finally {
     deleting.value = false
   }
@@ -425,7 +431,7 @@ async function handleDragEnd() {
       await loadDashboard()
     } catch (e) {
       console.error('Failed to update panel position:', e)
-      alert('Failed to move panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
+      notifications.error('Failed to move panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
     }
   }
 
@@ -508,7 +514,7 @@ async function handleResizeEnd() {
       await loadDashboard()
     } catch (e) {
       console.error('Failed to update panel size:', e)
-      alert('Failed to resize panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
+      notifications.error('Failed to resize panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
       // Reload to revert optimistic update
       await loadDashboard()
     }
