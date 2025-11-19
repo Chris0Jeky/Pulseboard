@@ -9,7 +9,9 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(../venv/Scripts/python.exe:*)",
-      "Bash(npx vite --host)"
+      "Bash(npx vite --host)",
+      "Bash(curl:*)",
+      "Bash(npx tailwindcss:*)"
     ],
     "deny": [],
     "ask": []
