@@ -14,6 +14,7 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    working_dir: /app
     environment:
       - APP_ENV=development
       - LOG_LEVEL=debug
@@ -22,8 +23,8 @@ services:
       - RELOAD=true
     volumes:
       # Mount source code for hot reload
-      - ./backend/app:/app/app:ro
-      - ./backend/tests:/app/tests:ro
+      - ./backend/app:/app/app
+      - ./backend/tests:/app/tests
       # Persist database
       - backend-data-dev:/app/data
     networks:
