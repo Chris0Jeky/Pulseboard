@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="110" fill="url(#bgGradient)"/>
+
+  <!-- Pulse waves -->
+  <g fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    <!-- First wave -->
+    <polyline points="80,256 140,256 170,180 200,320 230,220 260,280 290,256 370,256"/>
+    <!-- Second wave (offset) -->
+    <polyline points="80,340 140,340 170,280 200,400 230,310 260,360 290,340 370,340" opacity="0.6"/>
+    <!-- Third wave (offset) -->
+    <polyline points="80,170 140,170 170,110 200,240 230,150 260,200 290,170 370,170" opacity="0.6"/>
+  </g>
+
+  <!-- Icon embellishment - dashboard squares -->
+  <g fill="#ffffff" opacity="0.3">
+    <rect x="390" y="120" width="45" height="45" rx="8"/>
+    <rect x="390" y="185" width="45" height="45" rx="8"/>
+    <rect x="390" y="250" width="45" height="45" rx="8"/>
+  </g>
+</svg>
