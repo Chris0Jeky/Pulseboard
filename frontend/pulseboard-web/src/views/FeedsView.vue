@@ -1,23 +1,43 @@
 <template>
-  <div class="min-h-screen bg-gray-900">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div class="flex items-center justify-between mb-8">
-        <div class="flex items-center gap-4">
-          <router-link
-            :to="{ name: 'dashboards' }"
-            class="text-gray-400 hover:text-white transition-colors"
-          >
-            ← Back
-          </router-link>
-          <div>
-            <h1 class="text-3xl font-bold text-white">Feeds</h1>
-            <p class="text-gray-400 mt-1">Manage data sources for your dashboards</p>
+  <div class="min-h-screen">
+    <!-- Header -->
+    <div class="header-gradient border-b border-white/10 backdrop-blur-sm">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <router-link
+              :to="{ name: 'dashboards' }"
+              class="flex items-center gap-2 text-gray-300 hover:text-white transition-colors group"
+            >
+              <svg class="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
+            </router-link>
+            <div>
+              <div class="flex items-center gap-3 mb-1">
+                <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
+                  <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                  </svg>
+                </div>
+                <h1 class="text-4xl font-bold text-white tracking-tight">Feeds</h1>
+              </div>
+              <p class="text-gray-400 ml-13">Manage data sources for your dashboards</p>
+            </div>
           </div>
+          <button @click="showCreateDialog = true" class="btn-primary-modern">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Create Feed
+          </button>
         </div>
-        <button @click="showCreateDialog = true" class="btn-primary">
-          + Create Feed
-        </button>
       </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
       <!-- Loading state -->
       <div v-if="loading" class="text-center py-12">
