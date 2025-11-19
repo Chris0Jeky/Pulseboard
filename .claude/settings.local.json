@@ -4,7 +4,10 @@
       "Bash(cd:*)",
       "Bash(npm install:*)",
       "Bash(./venv/Scripts/python.exe:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(python:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []
