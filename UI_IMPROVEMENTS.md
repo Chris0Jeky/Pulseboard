@@ -139,6 +139,32 @@ Significantly improved the web interface design with modern aesthetics, better v
 - No animations that could cause motion sickness
 - Screen reader compatible structure
 
+## Recent UX Feature Additions
+
+### Panel Drag and Drop (Phase 4)
+- Drag handle at top center of panels (blue gradient)
+- Grid-snapping repositioning with 12-column layout
+- Visual drop preview during drag
+- Mouse-based interaction with proper event handling
+
+### Panel Resize (Phase 4)
+- Resize handle at bottom-right corner (purple gradient)
+- Grid-snapping resize with dimension constraints (1-12 cols, 1-6 rows)
+- Visual feedback during resize
+- Prevents invalid panel sizes
+
+### Feed Management UI (Phase 4)
+- Complete CRUD interface for feeds in FeedsView
+- Feed testing functionality with live results dialog
+- Visual status indicators for enabled/disabled feeds
+- Modern gradient button styles for actions
+
+### Interactive Handles Design
+- Prominent gradient handles (blue for drag, purple for resize)
+- Opacity transitions on hover (0 → 100%)
+- Z-index layering (z-50) for proper stacking
+- Positioned outside panel bounds for better UX
+
 ## Future Enhancements
 
 Potential improvements for future iterations:
@@ -163,12 +189,21 @@ Potential improvements for future iterations:
    - Touch gesture support
    - Adaptive layouts for tablets
 
+5. **Panel Management UI**
+   - Add panel button on dashboard view
+   - Delete panel from dashboard view
+   - Panel type selector dialog
+
 ## Files Modified
 
 1. `frontend/pulseboard-web/src/App.vue` - Added gradient background container
 2. `frontend/pulseboard-web/src/views/DashboardListView.vue` - Complete redesign of dashboard list
-3. `frontend/pulseboard-web/src/style.css` - New modern design system with gradients and animations
-4. `CLAUDE.md` - Updated with Docker deployment information
+3. `frontend/pulseboard-web/src/views/DashboardLiveView.vue` - Added drag and drop, resize functionality
+4. `frontend/pulseboard-web/src/views/FeedsView.vue` - Added feed testing UI
+5. `frontend/pulseboard-web/src/style.css` - New modern design system with gradients and animations
+6. `frontend/pulseboard-web/src/api/client.ts` - Added testFeed method
+7. `frontend/pulseboard-web/vite.config.ts` - Added PWA plugin configuration
+8. `backend/app/api/routes/feeds.py` - Added feed testing endpoint
 
 ## Testing
 
@@ -183,13 +218,20 @@ Responsive breakpoints:
 - ✅ Tablet (768x1024)
 - ✅ Mobile (375x667)
 
+Frontend test coverage:
+- ✅ 56 tests passing (API client, stores, utilities)
+- ✅ Vitest with happy-dom environment
+- ✅ Comprehensive test helpers and mocking
+
 ## Impact
 
 **Visual Quality**: ⭐⭐⭐⭐⭐ (Significant improvement)
 **User Experience**: ⭐⭐⭐⭐⭐ (More engaging and professional)
 **Performance**: ⭐⭐⭐⭐⭐ (No negative impact, CSS-only)
 **Accessibility**: ⭐⭐⭐⭐☆ (Maintained standards, room for enhancement)
+**Interactivity**: ⭐⭐⭐⭐⭐ (Drag/drop and resize enhance usability)
 
 ---
 
-*UI improvements completed: November 19, 2025*
+*UI improvements completed: 2024-11-19*
+*Phase 4 features (drag/drop, resize, feed testing) completed: 2024-11-19*
