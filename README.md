@@ -304,10 +304,12 @@ For detailed Docker documentation, see [DOCKER.md](DOCKER.md).
 ### Feeds
 
 - `GET /api/feeds` - List all feed definitions
+- `GET /api/feeds/types` - List available feed types with metadata
 - `POST /api/feeds` - Create feed definition
 - `GET /api/feeds/{id}` - Get feed definition
 - `PATCH /api/feeds/{id}` - Update feed definition
 - `DELETE /api/feeds/{id}` - Delete feed definition
+- `POST /api/feeds/{id}/test` - Test feed and return sample data
 
 ### Panels
 
@@ -393,20 +395,43 @@ Fetches cryptocurrency prices from CoinGecko.
 
 ### Running Tests
 
+**Backend Tests:**
 ```bash
 # Activate virtual environment
 source venv/bin/activate
 
-# Run tests with coverage
+# Run all backend tests with coverage
 cd backend
 pytest
 
 # Run specific test file
 pytest tests/unit/test_feeds.py
 
-# Run with verbose output
-pytest -v
+# Run with verbose output and coverage
+pytest -v --cov
 ```
+
+**Frontend Tests:**
+```bash
+# Navigate to frontend directory
+cd frontend/pulseboard-web
+
+# Run tests once
+npm run test:run
+
+# Run tests in watch mode
+npm test
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
+```
+
+**Test Coverage:**
+- Backend: ~85% (30+ unit & integration tests)
+- Frontend: 56 tests covering API client, stores, and utilities
 
 ### Code Quality
 
@@ -454,22 +479,27 @@ pulseboard/
 - [x] Feed system (BaseFeed, SystemMetrics, HTTP JSON, Crypto)
 - [x] DataHub for event management
 - [x] REST API endpoints
-- [x] WebSocket streaming
+- [x] WebSocket streaming with auto-reconnect
 - [x] Seed demo data
 - [x] Vue 3 frontend with TypeScript
 - [x] Dashboard and panel components
 - [x] ECharts integration
 - [x] Real-time WebSocket updates
-- [x] Dark mode UI with TailwindCSS
+- [x] Dark mode UI with modern gradients and animations
 - [x] Panel editing and dashboard management UI
-- [x] Feed management UI
+- [x] Feed management UI with create/edit/delete
+- [x] Feed testing endpoint and UI
+- [x] Panel drag and drop repositioning
+- [x] Panel resize with grid snapping
 - [x] Docker deployment setup
-- [x] Comprehensive test coverage (30+ unit tests)
-- [ ] PWA support (manifest, service worker)
+- [x] Comprehensive backend test coverage (85%)
+- [x] Frontend testing infrastructure (56 tests)
+- [x] PWA support (manifest, service worker, icons)
 - [ ] E2E testing with Playwright
 - [ ] Additional feed types (Git metrics, Taskdeck)
 - [ ] Desktop wrapper (Electron/Tauri)
 - [ ] User authentication and multi-tenancy
+- [ ] Alerting and notifications
 
 ## License
 
