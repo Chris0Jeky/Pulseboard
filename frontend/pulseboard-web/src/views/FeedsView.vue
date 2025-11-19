@@ -147,13 +147,20 @@
       <!-- Create/Edit Dialog -->
       <div
         v-if="showCreateDialog || editingFeed"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto"
+        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto"
         @click.self="closeDialog"
       >
-        <div class="bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4 my-8">
-          <h2 class="text-xl font-bold text-white mb-4">
-            {{ editingFeed ? 'Edit Feed' : 'Create Feed' }}
-          </h2>
+        <div class="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-2xl w-full mx-4 my-8 shadow-2xl">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-12 h-12 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-lg flex items-center justify-center border border-purple-500/30">
+              <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="editingFeed ? 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' : 'M12 4v16m8-8H4'" />
+              </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-white">
+              {{ editingFeed ? 'Edit Feed' : 'Create Feed' }}
+            </h2>
+          </div>
 
           <form @submit.prevent="handleSubmit">
             <div class="space-y-4">
@@ -227,15 +234,18 @@
             <div class="flex gap-3 mt-6">
               <button
                 type="submit"
-                class="btn-primary flex-1"
+                class="btn-primary-modern flex-1"
                 :disabled="submitting"
               >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
                 {{ submitting ? 'Saving...' : editingFeed ? 'Update' : 'Create' }}
               </button>
               <button
                 type="button"
                 @click="closeDialog"
-                class="btn-secondary flex-1"
+                class="btn-secondary-modern flex-1"
               >
                 Cancel
               </button>
