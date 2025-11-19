@@ -66,17 +66,41 @@
           v-for="dashboard in dashboards"
           :key="dashboard.id"
           :to="{ name: 'dashboard-live', params: { id: dashboard.id } }"
-          class="panel hover:border-primary-500 transition-colors cursor-pointer group"
+          class="dashboard-card group"
         >
-          <h2 class="text-xl font-semibold text-white group-hover:text-primary-400 transition-colors">
-            {{ dashboard.name }}
-          </h2>
-          <p v-if="dashboard.description" class="text-gray-400 mt-2">
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-lg flex items-center justify-center border border-blue-500/30">
+                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                </svg>
+              </div>
+              <div>
+                <h2 class="text-lg font-semibold text-white group-hover:text-blue-400 transition-colors">
+                  {{ dashboard.name }}
+                </h2>
+              </div>
+            </div>
+            <svg class="w-5 h-5 text-gray-600 group-hover:text-blue-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+          <p v-if="dashboard.description" class="text-gray-400 text-sm mb-4 line-clamp-2">
             {{ dashboard.description }}
           </p>
-          <div class="mt-4 flex items-center justify-between text-sm text-gray-500">
-            <span>{{ dashboard.panels?.length || 0 }} panels</span>
-            <span>{{ formatDate(dashboard.updated_at) }}</span>
+          <div class="flex items-center gap-4 text-xs text-gray-500">
+            <div class="flex items-center gap-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+              </svg>
+              <span>{{ dashboard.panels?.length || 0 }} panels</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{{ formatDate(dashboard.updated_at) }}</span>
+            </div>
           </div>
         </router-link>
       </div>
