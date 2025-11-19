@@ -93,6 +93,16 @@
 
             <div class="flex flex-col gap-2 shrink-0">
               <button
+                @click="testFeedClick(feed)"
+                class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-green-500/30 inline-flex items-center justify-center gap-2"
+                :disabled="testing === feed.id"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {{ testing === feed.id ? 'Testing...' : 'Test' }}
+              </button>
+              <button
                 @click="toggleFeed(feed)"
                 class="btn-secondary-modern text-sm"
                 :disabled="toggling === feed.id"
