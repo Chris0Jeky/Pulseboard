@@ -1,47 +1,54 @@
 <template>
-  <div class="min-h-screen bg-gray-900">
+  <div class="min-h-screen">
     <!-- Header -->
-    <div class="bg-gray-800 border-b border-gray-700">
-      <div class="max-w-full px-4 sm:px-6 lg:px-8 py-4">
+    <div class="header-gradient border-b border-white/10 backdrop-blur-sm sticky top-0 z-40">
+      <div class="max-w-full px-4 sm:px-6 lg:px-8 py-6">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4">
             <router-link
               :to="{ name: 'dashboards' }"
-              class="text-gray-400 hover:text-white transition-colors"
+              class="flex items-center gap-2 text-gray-300 hover:text-white transition-colors group"
             >
-              ← Back
+              <svg class="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
             </router-link>
-            <h1 class="text-2xl font-bold text-white">
-              {{ dashboard?.name || 'Loading...' }}
-            </h1>
+            <div>
+              <h1 class="text-3xl font-bold text-white tracking-tight">
+                {{ dashboard?.name || 'Loading...' }}
+              </h1>
+              <p v-if="dashboard?.description" class="text-gray-400 mt-1">
+                {{ dashboard.description }}
+              </p>
+            </div>
           </div>
 
           <div class="flex items-center gap-4">
             <!-- WebSocket status indicator -->
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10">
               <div
-                class="w-2 h-2 rounded-full"
+                class="w-2.5 h-2.5 rounded-full animate-pulse"
                 :class="{
                   'bg-green-500': wsStatus === 'connected',
                   'bg-yellow-500': wsStatus === 'connecting',
                   'bg-red-500': wsStatus === 'disconnected' || wsStatus === 'error',
                 }"
               />
-              <span class="text-sm text-gray-400">
+              <span class="text-sm font-medium text-gray-300">
                 {{ wsStatusText }}
               </span>
             </div>
 
             <!-- Add Panel Button -->
-            <button @click="showPanelDialog = true" class="btn-primary">
-              + Add Panel
+            <button @click="showPanelDialog = true" class="btn-primary-modern">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Add Panel
             </button>
           </div>
         </div>
-
-        <p v-if="dashboard?.description" class="text-gray-400 mt-2">
-          {{ dashboard.description }}
-        </p>
       </div>
     </div>
 
