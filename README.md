@@ -6,10 +6,14 @@ Pulseboard is a web-first, real-time dashboard platform that lets users monitor 
 
 ## Features
 
-- **Real-time streaming** via WebSockets
+- **Real-time streaming** via WebSockets with auto-reconnection
 - **Pluggable feed system** - easily add new data sources
 - **Multiple panel types** - time-series charts, stat tiles, bar charts
+- **Interactive dashboard** - drag and drop panels, resize with grid snapping
+- **Feed testing UI** - validate feeds before deploying
+- **PWA support** - install as desktop/mobile app, offline-capable
 - **Modern tech stack** - FastAPI, Vue 3, TypeScript, ECharts, TailwindCSS
+- **Comprehensive testing** - Backend 85% coverage, Frontend 56 tests
 - **Three built-in feeds**:
   - System Metrics (CPU, RAM, disk usage via psutil)
   - HTTP JSON (poll any JSON API)
