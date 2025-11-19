@@ -350,9 +350,195 @@ function getPanelComponent(type: string) {
 }
 
 function getPanelStyle(panel: Panel) {
+  // Use explicit grid positioning based on position_x and position_y
   return {
-    gridColumn: `span ${panel.width}`,
-    gridRow: `span ${panel.height}`,
+    gridColumn: `${panel.position_x + 1} / span ${panel.width}`,
+    gridRow: `${panel.position_y + 1} / span ${panel.height}`,
+  }
+}
+
+function getDropPreviewStyle() {
+  if (!dropPreview.value) return {}
+  return {
+    gridColumn: `${dropPreview.value.x + 1} / span ${dropPreview.value.width}`,
+    gridRow: `${dropPreview.value.y + 1} / span ${dropPreview.value.height}`,
+  }
+}
+
+// Drag and drop functions
+function startDrag(event: MouseEvent, panel: Panel) {
+  event.preventDefault()
+  draggingPanelId.value = panel.id
+  draggingPanel.value = panel
+  dragStartX.value = event.clientX
+  dragStartY.value = event.clientY
+
+  // Set initial drop preview to current position
+  dropPreview.value = {
+    x: panel.position_x,
+    y: panel.position_y,
+    width: panel.width,
+    height: panel.height
+  }
+
+  document.addEventListener('mousemove', handleDragMove)
+  document.addEventListener('mouseup', handleDragEnd)
+}
+
+function handleDragMove(event: MouseEvent) {
+  if (!draggingPanel.value) return
+
+  // Calculate grid cell size (approximate based on viewport)
+  const gridElement = event.target instanceof Element
+    ? event.target.closest('.grid')
+    : null
+  if (!gridElement) return
+
+  const rect = gridElement.getBoundingClientRect()
+  const cellWidth = rect.width / 12 // 12 columns
+  const cellHeight = 150 + 16 // 150px + 16px gap
+
+  // Calculate movement in grid cells
+  const deltaX = event.clientX - dragStartX.value
+  const deltaY = event.clientY - dragStartY.value
+  const gridDeltaX = Math.round(deltaX / cellWidth)
+  const gridDeltaY = Math.round(deltaY / cellHeight)
+
+  // Calculate new position (constrained to grid)
+  let newX = draggingPanel.value.position_x + gridDeltaX
+  let newY = draggingPanel.value.position_y + gridDeltaY
+
+  // Constrain to grid bounds
+  newX = Math.max(0, Math.min(newX, 12 - draggingPanel.value.width))
+  newY = Math.max(0, newY)
+
+  // Update drop preview
+  dropPreview.value = {
+    x: newX,
+    y: newY,
+    width: draggingPanel.value.width,
+    height: draggingPanel.value.height
+  }
+}
+
+async function handleDragEnd() {
+  if (!draggingPanel.value || !dropPreview.value) {
+    cleanup()
+    return
+  }
+
+  // Check if position actually changed
+  if (
+    dropPreview.value.x !== draggingPanel.value.position_x ||
+    dropPreview.value.y !== draggingPanel.value.position_y
+  ) {
+    // Update panel position
+    try {
+      await apiClient.updatePanel(dashboardId.value, draggingPanel.value.id, {
+        position_x: dropPreview.value.x,
+        position_y: dropPreview.value.y
+      })
+
+      // Reload dashboard to reflect changes
+      await loadDashboard()
+    } catch (e) {
+      console.error('Failed to update panel position:', e)
+      alert('Failed to move panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
+    }
+  }
+
+  cleanup()
+
+  function cleanup() {
+    draggingPanelId.value = null
+    draggingPanel.value = null
+    dropPreview.value = null
+    document.removeEventListener('mousemove', handleDragMove)
+    document.removeEventListener('mouseup', handleDragEnd)
+  }
+}
+
+// Resize functions
+function startResize(event: MouseEvent, panel: Panel, direction: string) {
+  event.preventDefault()
+  event.stopPropagation()
+
+  resizingPanelId.value = panel.id
+  resizingPanel.value = panel
+  resizeStartX.value = event.clientX
+  resizeStartY.value = event.clientY
+  resizeStartWidth.value = panel.width
+  resizeStartHeight.value = panel.height
+
+  document.addEventListener('mousemove', handleResizeMove)
+  document.addEventListener('mouseup', handleResizeEnd)
+}
+
+function handleResizeMove(event: MouseEvent) {
+  if (!resizingPanel.value) return
+
+  // Calculate grid cell size
+  const gridElement = document.querySelector('.grid')
+  if (!gridElement) return
+
+  const rect = gridElement.getBoundingClientRect()
+  const cellWidth = rect.width / 12
+  const cellHeight = 150 + 16
+
+  // Calculate delta in grid cells
+  const deltaX = event.clientX - resizeStartX.value
+  const deltaY = event.clientY - resizeStartY.value
+  const gridDeltaX = Math.round(deltaX / cellWidth)
+  const gridDeltaY = Math.round(deltaY / cellHeight)
+
+  // Calculate new dimensions
+  let newWidth = resizeStartWidth.value + gridDeltaX
+  let newHeight = resizeStartHeight.value + gridDeltaY
+
+  // Constrain dimensions
+  newWidth = Math.max(1, Math.min(newWidth, 12 - resizingPanel.value.position_x))
+  newHeight = Math.max(1, Math.min(newHeight, 6))
+
+  // Update panel dimensions optimistically
+  resizingPanel.value.width = newWidth
+  resizingPanel.value.height = newHeight
+}
+
+async function handleResizeEnd() {
+  if (!resizingPanel.value) {
+    cleanupResize()
+    return
+  }
+
+  // Check if size actually changed
+  if (
+    resizingPanel.value.width !== resizeStartWidth.value ||
+    resizingPanel.value.height !== resizeStartHeight.value
+  ) {
+    // Update panel size
+    try {
+      await apiClient.updatePanel(dashboardId.value, resizingPanel.value.id, {
+        width: resizingPanel.value.width,
+        height: resizingPanel.value.height
+      })
+
+      // Reload dashboard to reflect changes
+      await loadDashboard()
+    } catch (e) {
+      console.error('Failed to update panel size:', e)
+      alert('Failed to resize panel: ' + (e instanceof Error ? e.message : 'Unknown error'))
+      // Reload to revert optimistic update
+      await loadDashboard()
+    }
+  }
+
+  cleanupResize()
+
+  function cleanupResize() {
+    resizingPanelId.value = null
+    resizingPanel.value = null
+    document.removeEventListener('mousemove', handleResizeMove)
+    document.removeEventListener('mouseup', handleResizeEnd)
   }
 }
 
