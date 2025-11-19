@@ -97,36 +97,38 @@
             draggingPanelId === panel.id && 'opacity-50 scale-95',
             resizingPanelId === panel.id && 'ring-2 ring-blue-500'
           ]"
-          @mousedown.stop
         >
-          <!-- Drag Handle -->
+          <!-- Drag Handle - More Prominent -->
           <div
-            class="absolute top-0 left-0 right-0 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-move z-20"
+            class="absolute -top-2 left-1/2 -translate-x-1/2 z-50 opacity-0 group-hover:opacity-100 transition-opacity cursor-move"
             :class="draggingPanelId === panel.id ? 'opacity-100' : ''"
-            @mousedown="startDrag($event, panel)"
-            title="Drag to move"
+            @mousedown.stop="startDrag($event, panel)"
+            title="Drag to move panel"
           >
-            <div class="px-3 py-1 bg-gray-800/90 rounded-b-lg border border-gray-700 flex items-center gap-2">
-              <svg class="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 16 16">
+            <div class="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg border border-blue-500 shadow-lg flex items-center gap-2 hover:from-blue-700 hover:to-blue-800 transition-all">
+              <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 16 16">
                 <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
               </svg>
-              <span class="text-xs text-gray-400">Move</span>
+              <span class="text-xs font-medium text-white">Drag</span>
             </div>
           </div>
 
-          <!-- Panel Component -->
-          <component
-            :is="getPanelComponent(panel.type)"
-            :title="panel.title"
-            :feed-ids="parseFeedIds(panel.feed_ids_json)"
-            :options="parseOptions(panel.options_json)"
-          />
+          <!-- Panel Component Wrapper -->
+          <div class="h-full w-full relative pointer-events-none">
+            <component
+              :is="getPanelComponent(panel.type)"
+              :title="panel.title"
+              :feed-ids="parseFeedIds(panel.feed_ids_json)"
+              :options="parseOptions(panel.options_json)"
+              class="pointer-events-auto"
+            />
+          </div>
 
           <!-- Panel Controls (visible on hover) -->
-          <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 z-20">
+          <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 z-50">
             <button
-              @click="editPanel(panel)"
-              class="p-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-300 hover:text-white"
+              @click.stop="editPanel(panel)"
+              class="p-2 bg-gray-800/90 hover:bg-gray-700 rounded-lg text-gray-300 hover:text-white border border-gray-700 shadow-lg transition-all"
               title="Edit panel"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -134,8 +136,8 @@
               </svg>
             </button>
             <button
-              @click="confirmDeletePanel(panel)"
-              class="p-1 bg-gray-800 hover:bg-red-600 rounded text-gray-300 hover:text-white"
+              @click.stop="confirmDeletePanel(panel)"
+              class="p-2 bg-gray-800/90 hover:bg-red-600 rounded-lg text-gray-300 hover:text-white border border-gray-700 shadow-lg transition-all"
               title="Delete panel"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -144,15 +146,18 @@
             </button>
           </div>
 
-          <!-- Resize Handles -->
+          <!-- Resize Handle - More Prominent -->
           <div
-            class="absolute bottom-0 right-0 w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize z-20"
-            @mousedown="startResize($event, panel, 'se')"
-            title="Resize"
+            class="absolute -bottom-1 -right-1 w-8 h-8 opacity-0 group-hover:opacity-100 transition-opacity cursor-nwse-resize z-50 flex items-center justify-center"
+            :class="resizingPanelId === panel.id ? 'opacity-100' : ''"
+            @mousedown.stop="startResize($event, panel, 'se')"
+            title="Drag to resize panel"
           >
-            <svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M14 14V5.5L5.5 14H14z"/>
-            </svg>
+            <div class="w-7 h-7 bg-gradient-to-br from-purple-600 to-purple-700 rounded-lg border border-purple-500 shadow-lg flex items-center justify-center hover:from-purple-700 hover:to-purple-800 transition-all">
+              <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M14 14V5.5L5.5 14H14z"/>
+              </svg>
+            </div>
           </div>
         </div>
 
