@@ -464,7 +464,7 @@ async function handleDragEnd() {
 }
 
 // Resize functions
-function startResize(event: MouseEvent, panel: Panel, direction: string) {
+function startResize(event: MouseEvent, panel: Panel, _direction: string) {
   event.preventDefault()
   event.stopPropagation()
 
