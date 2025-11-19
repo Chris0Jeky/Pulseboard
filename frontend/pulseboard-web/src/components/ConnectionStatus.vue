@@ -208,7 +208,7 @@ function handleReconnect() {
 .status-indicator {
   display: flex;
   align-items: center;
-  justify-center;
+  justify-content: center;
 }
 
 .status-dot {
