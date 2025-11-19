@@ -119,3 +119,10 @@ export interface WSStatus {
   status: 'connecting' | 'connected' | 'disconnected' | 'error'
   error?: string
 }
+
+export interface FeedTestResult {
+  success: boolean
+  data: Record<string, any> | null
+  error: string | null
+  timestamp: string
+}
