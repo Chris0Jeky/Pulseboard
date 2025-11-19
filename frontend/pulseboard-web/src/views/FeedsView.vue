@@ -57,59 +57,90 @@
         <div
           v-for="feed in feeds"
           :key="feed.id"
-          class="panel flex items-center justify-between"
+          class="dashboard-card group"
         >
-          <div class="flex-1">
-            <div class="flex items-center gap-3">
-              <h3 class="text-lg font-semibold text-white">{{ feed.name }}</h3>
-              <span
-                class="px-2 py-1 text-xs rounded"
-                :class="
-                  feed.enabled
-                    ? 'bg-green-900 text-green-300'
-                    : 'bg-gray-700 text-gray-400'
-                "
-              >
-                {{ feed.enabled ? 'Enabled' : 'Disabled' }}
-              </span>
-              <span class="px-2 py-1 text-xs rounded bg-blue-900 text-blue-300">
-                {{ feed.type }}
-              </span>
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-lg flex items-center justify-center border border-purple-500/30">
+                  <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <h3 class="text-lg font-semibold text-white group-hover:text-blue-400 transition-colors truncate">{{ feed.name }}</h3>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span
+                      class="px-2.5 py-0.5 text-xs font-medium rounded-full"
+                      :class="
+                        feed.enabled
+                          ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+                          : 'bg-gray-500/10 text-gray-400 border border-gray-500/30'
+                      "
+                    >
+                      {{ feed.enabled ? 'Enabled' : 'Disabled' }}
+                    </span>
+                    <span class="px-2.5 py-0.5 text-xs font-medium rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                      {{ feed.type }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 text-sm text-gray-400 bg-black/20 rounded-lg p-3 border border-white/5">
+                <pre class="text-xs font-mono overflow-x-auto">{{ formatConfig(feed.config_json) }}</pre>
+              </div>
             </div>
-            <div class="mt-2 text-sm text-gray-400">
-              <pre class="inline">{{ formatConfig(feed.config_json) }}</pre>
-            </div>
-          </div>
 
-          <div class="flex items-center gap-2">
-            <button
-              @click="toggleFeed(feed)"
-              class="btn-secondary text-sm"
-              :disabled="toggling === feed.id"
-            >
-              {{ toggling === feed.id ? 'Updating...' : feed.enabled ? 'Disable' : 'Enable' }}
-            </button>
-            <button
-              @click="openEditDialog(feed)"
-              class="btn-secondary text-sm"
-            >
-              Edit
-            </button>
-            <button
-              @click="confirmDelete(feed)"
-              class="bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              :disabled="deleting === feed.id"
-            >
-              {{ deleting === feed.id ? 'Deleting...' : 'Delete' }}
-            </button>
+            <div class="flex flex-col gap-2 shrink-0">
+              <button
+                @click="toggleFeed(feed)"
+                class="btn-secondary-modern text-sm"
+                :disabled="toggling === feed.id"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="feed.enabled ? 'M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z' : 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z'" />
+                </svg>
+                {{ toggling === feed.id ? 'Updating...' : feed.enabled ? 'Disable' : 'Enable' }}
+              </button>
+              <button
+                @click="openEditDialog(feed)"
+                class="btn-secondary-modern text-sm"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit
+              </button>
+              <button
+                @click="confirmDelete(feed)"
+                class="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30 inline-flex items-center justify-center gap-2"
+                :disabled="deleting === feed.id"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                {{ deleting === feed.id ? 'Deleting...' : 'Delete' }}
+              </button>
+            </div>
           </div>
         </div>
 
-        <div v-if="feeds.length === 0" class="text-center py-12">
-          <div class="text-gray-400 mb-4">No feeds configured yet</div>
-          <button @click="showCreateDialog = true" class="btn-primary">
-            Create your first feed
-          </button>
+        <div v-if="feeds.length === 0" class="text-center py-20">
+          <div class="max-w-md mx-auto">
+            <div class="w-16 h-16 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-2xl flex items-center justify-center border border-purple-500/30 mx-auto mb-4">
+              <svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-white mb-2">No feeds yet</h3>
+            <p class="text-gray-400 mb-6">Create your first data source to get started</p>
+            <button @click="showCreateDialog = true" class="btn-primary-modern">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Create your first feed
+            </button>
+          </div>
         </div>
       </div>
 
