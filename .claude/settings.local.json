@@ -14,7 +14,9 @@
       "Bash(npx tailwindcss:*)",
       "Bash(for pid in 32912 38040 28096 20276)",
       "Bash(do taskkill //F //PID $pid)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(taskkill:*)",
+      "Bash(taskkill /F /PID 38040)"
     ],
     "deny": [],
     "ask": []
