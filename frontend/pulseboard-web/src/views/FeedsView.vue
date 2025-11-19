@@ -533,6 +533,19 @@ function closeDialog() {
   configError.value = null
 }
 
+async function testFeedClick(feed: FeedDefinition) {
+  testing.value = feed.id
+
+  try {
+    const result = await apiClient.testFeed(feed.id)
+    testResult.value = result
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'Failed to test feed'
+  } finally {
+    testing.value = null
+  }
+}
+
 onMounted(() => {
   loadData()
 })
