@@ -108,11 +108,18 @@
       <!-- Create dialog -->
       <div
         v-if="showCreateDialog"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
         @click.self="showCreateDialog = false"
       >
-        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
-          <h2 class="text-xl font-bold text-white mb-4">Create Dashboard</h2>
+        <div class="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-12 h-12 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-lg flex items-center justify-center border border-blue-500/30">
+              <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-white">Create Dashboard</h2>
+          </div>
 
           <form @submit.prevent="handleCreate">
             <div class="mb-4">
@@ -123,7 +130,7 @@
                 v-model="newDashboard.name"
                 type="text"
                 required
-                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                class="w-full px-3 py-2"
                 placeholder="My Dashboard"
               />
             </div>
@@ -135,19 +142,22 @@
               <textarea
                 v-model="newDashboard.description"
                 rows="3"
-                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                class="w-full px-3 py-2"
                 placeholder="Optional description..."
               />
             </div>
 
             <div class="flex gap-3">
-              <button type="submit" class="btn-primary flex-1" :disabled="creating">
+              <button type="submit" class="btn-primary-modern flex-1" :disabled="creating">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
                 {{ creating ? 'Creating...' : 'Create' }}
               </button>
               <button
                 type="button"
                 @click="showCreateDialog = false"
-                class="btn-secondary flex-1"
+                class="btn-secondary-modern flex-1"
               >
                 Cancel
               </button>
