@@ -359,6 +359,9 @@
 import { computed, onMounted, ref } from 'vue'
 import apiClient from '../api/client'
 import type { FeedDefinition, FeedTestResult, FeedType } from '../types'
+import { useNotificationsStore } from '../stores/notifications'
+
+const notifications = useNotificationsStore()
 
 const feeds = ref<FeedDefinition[]>([])
 const feedTypes = ref<FeedType[]>([])
@@ -430,6 +433,7 @@ async function loadData() {
     feeds.value = feedList
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load feeds'
+    notifications.error(error.value)
   } finally {
     loading.value = false
   }
@@ -452,6 +456,7 @@ async function handleSubmit() {
       if (index !== -1) {
         feeds.value[index] = updated
       }
+      notifications.success(`Feed "${feedForm.value.name}" updated successfully`)
     } else {
       // Create new feed
       const newFeed = await apiClient.createFeed({
@@ -462,11 +467,13 @@ async function handleSubmit() {
       })
 
       feeds.value.push(newFeed)
+      notifications.success(`Feed "${feedForm.value.name}" created successfully`)
     }
 
     closeDialog()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Operation failed'
+    notifications.error(error.value)
   } finally {
     submitting.value = false
   }
@@ -484,8 +491,10 @@ async function toggleFeed(feed: FeedDefinition) {
     if (index !== -1) {
       feeds.value[index] = updated
     }
+    notifications.success(`Feed "${feed.name}" ${updated.enabled ? 'enabled' : 'disabled'}`)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to toggle feed'
+    notifications.error(error.value)
   } finally {
     toggling.value = null
   }
@@ -509,13 +518,16 @@ async function deleteFeed() {
   if (!feedToDelete.value) return
 
   deleting.value = feedToDelete.value.id
+  const feedName = feedToDelete.value.name
 
   try {
     await apiClient.deleteFeed(feedToDelete.value.id)
     feeds.value = feeds.value.filter((f) => f.id !== feedToDelete.value!.id)
     feedToDelete.value = null
+    notifications.success(`Feed "${feedName}" deleted successfully`)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to delete feed'
+    notifications.error(error.value)
   } finally {
     deleting.value = null
   }
@@ -539,8 +551,14 @@ async function testFeedClick(feed: FeedDefinition) {
   try {
     const result = await apiClient.testFeed(feed.id)
     testResult.value = result
+    if (result.success) {
+      notifications.success(`Feed "${feed.name}" test successful`)
+    } else {
+      notifications.error(`Feed "${feed.name}" test failed`)
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to test feed'
+    notifications.error(error.value)
   } finally {
     testing.value = null
   }
