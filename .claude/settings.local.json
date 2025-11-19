@@ -7,7 +7,8 @@
       "Bash(npm run dev:*)",
       "Bash(python:*)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(../venv/Scripts/python.exe:*)"
     ],
     "deny": [],
     "ask": []
