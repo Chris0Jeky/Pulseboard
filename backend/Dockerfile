@@ -48,6 +48,8 @@ COPY --from=builder /opt/venv /opt/venv
 # Copy application code
 COPY app ./app
 COPY pytest.ini .
+COPY LICENSE RELICENSING.md THIRD_PARTY_NOTICES.md ./
+COPY LICENSES ./LICENSES
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data && chown -R appuser:appuser /app/data

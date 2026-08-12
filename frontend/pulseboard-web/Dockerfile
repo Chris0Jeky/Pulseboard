@@ -33,6 +33,8 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built application from builder
 COPY --from=builder /build/dist /usr/share/nginx/html
+COPY LICENSE RELICENSING.md THIRD_PARTY_NOTICES.md /usr/share/licenses/pulseboard/
+COPY LICENSES /usr/share/licenses/pulseboard/LICENSES
 
 # Create nginx user (already exists in nginx image)
 # Remove default nginx config

@@ -503,7 +503,10 @@ pulseboard/
 
 ## License
 
-MIT
+The owner-authored application is licensed under GNU GPL version 3 only
+(`GPL-3.0-only`). See `LICENSE`, `RELICENSING.md`, and
+`THIRD_PARTY_NOTICES.md`. Dependencies, generated Tailwind output, and framework
+assets retain their own licences.
 
 ## Contributing
 
