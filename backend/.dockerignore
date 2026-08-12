@@ -49,6 +49,8 @@ Thumbs.db
 
 # Documentation
 *.md
+!RELICENSING.md
+!THIRD_PARTY_NOTICES.md
 docs/
 
 # CI/CD
