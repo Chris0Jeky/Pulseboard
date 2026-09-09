@@ -6,7 +6,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 const FIELDS = ['v', 'id', 'session', 'seq', 'event', 'route', 'release', 'value'];
 export function validateEvent(e, project) {
   if (!e || Object.getPrototypeOf(e) !== Object.prototype || Object.keys(e).some(k => !FIELDS.includes(k))) return false;
-  return e.v === VERSION && UUID.test(e.id) && UUID.test(e.session)
+  return e.v === VERSION && typeof e.id === 'string' && typeof e.session === 'string' && UUID.test(e.id) && UUID.test(e.session)
     && Number.isSafeInteger(e.seq) && e.seq >= 1 && e.seq <= 1000000
     && project.events.includes(e.event) && project.routes.includes(e.route)
     && project.releases.includes(e.release)

@@ -10,12 +10,17 @@ export function buildEmbed(id, options = {}) {
   const project = projects[id];
   if (!project.origin) throw new Error('This project deliberately has no public collection origin');
   const config = { id, project, origin: project.origin, endpoint: '', scopePath: new URL(project.probe.url).pathname, release: 'unattributed', route: 'home', clicks: [], ...options };
+  if (id === 'alibi') config.publicFlag = { global: 'ALIBI_CONFIG', key: 'standalone', expected: false };
+  if (config.endpoint) {
+    const u = new URL(config.endpoint);
+    if (u.protocol !== 'https:' || u.pathname !== '/v1/collect/' + id || u.search || u.hash || u.username || u.password) throw new Error('Expected the exact HTTPS project collector endpoint');
+  }
   // JSON escapes prevent accidental HTML script termination when embedding in an offline artifact.
   const json = JSON.stringify(config).replaceAll('<', '\\u003c');
-  const contract = read('../src/contracts.mjs').replace(/^export /gm, '');
+  const contract = read('../src/contracts.mjs').split('export function validateBatch')[0].replace(/^export /gm, '');
   const browser = read('../src/browser.mjs').replace(/^import .*;\n/, '').replace(/^export /gm, '');
   const embed = read('./embed.mjs').replace(/^export /gm, '');
-  return `/* SPDX-License-Identifier: GPL-3.0-only\n * Pulseboard Observatory 0.1.0. Generated; see observatory.lock.json.\n * Disabled until endpoint is configured. No dynamic/CDN dependency. */\n(function () {\n'use strict';\n${contract}\n${browser}\n${embed}\nconst config = ${json};\nfunction start() { globalThis.PulseboardUsage = mountObserver(config, createObserver); }\nif (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();\n})();\n`;
+  return `/* SPDX-License-Identifier: GPL-3.0-only\n * Pulseboard Observatory 0.1.0. Generated; see observatory.lock.json.\n * Disabled until endpoint is configured. No dynamic/CDN dependency. */\n(function () {\n'use strict';\n${contract}\n${browser}\n${embed}\nconst config = ${json};\nfunction start() { globalThis.PulseboardUsage?.dispose(); globalThis.PulseboardUsage = mountObserver(config, createObserver); }\nif (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();\nglobalThis.addEventListener?.('pageshow', event => { if (event.persisted) start(); });\n})();\n`;
 }
 export function install(id, root, target, endpoint = '') {
   const base = realpathSync(root), full = path.resolve(base, target);
@@ -26,6 +31,7 @@ export function install(id, root, target, endpoint = '') {
   if (realpathSync(parent) !== base && !realpathSync(parent).startsWith(base + path.sep)) throw new Error('Symlink leaves repository');
   if (existsSync(full) && realpathSync(full) !== full) throw new Error('Refusing a symlink target');
   const lockPath = path.join(base, 'observatory.lock.json');
+  if (full === lockPath || (existsSync(lockPath) && realpathSync(lockPath) !== lockPath)) throw new Error('Refusing reserved or symlinked lock path');
   const old = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, 'utf8')) : null;
   if (existsSync(full) && (!old || old.target !== target || old.sha256 !== digest(readFileSync(full)))) throw new Error('Existing file has local edits or is unowned; refusing overwrite');
   const content = buildEmbed(id, { endpoint });

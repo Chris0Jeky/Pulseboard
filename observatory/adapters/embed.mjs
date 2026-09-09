@@ -5,6 +5,7 @@ export function mountObserver(config, create, runtime = globalThis) {
   if (!location.pathname.startsWith(config.scopePath || '/')) return null;
   if (navigator?.globalPrivacyControl || navigator?.doNotTrack === '1' || navigator?.webdriver) return null;
   try { const u = new URL(config.endpoint); if (u.protocol !== 'https:' || u.search || u.hash || u.username || u.password) return null; } catch { return null; }
+  if (config.publicFlag && runtime[config.publicFlag.global]?.[config.publicFlag.key] !== config.publicFlag.expected) return null;
   const observer = create(config, runtime);
   const key = 'pulseboard:consent:v1:' + config.id + ':' + config.endpoint;
   let granted = false;
