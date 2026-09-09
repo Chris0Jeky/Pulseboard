@@ -1,0 +1,26 @@
+name: Observatory kit
+on:
+  pull_request:
+    paths: ['observatory/**', '.github/workflows/observatory.yml']
+  push:
+    branches: [main]
+    paths: ['observatory/**', '.github/workflows/observatory.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: observatory-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: npm test
+        working-directory: observatory
