@@ -12,7 +12,7 @@ The local runner creates Watch tables, performs retention at startup and every 1
 
 ## Gate 2: hosted parity, coordinated with #19
 
-On a disposable D1 deployment, apply `watch/schema.sql` separately from the original Observatory schema, configure `WATCH_READ_TOKEN` and `WATCH_SOURCES_JSON` as secrets, and keep `WATCH_ENABLED=false`. Do not apply the source JSON as a public variable. The Wrangler entrypoint becomes `src/watch-worker.mjs`; ordinary routes still delegate to the original Worker.
+On a disposable D1 deployment, apply `watch/schema.sql` separately from the original Observatory schema, configure `WATCH_READ_TOKEN` and `WATCH_SOURCES_JSON` as secrets, and keep `WATCH_ENABLED=false`. Do not apply the source JSON as a public variable. Keep Wrangler's default-only `src/entry.mjs` entrypoint; it delegates to `src/watch-worker.mjs`, which preserves the original Worker's routes and schedule. The production probe schedule and same-account service bindings stay intact; the disposable preview has its own database and no cron.
 
 Verify protected Watch readiness, all scopes, malformed/oversized/slow bodies, concurrent reservations, idempotent retries, clock skew, a failed scheduler and seven-day deletion. Measure rows read/written, latency, response size, database/WAL growth and deployment limits at realistic source volume. Test deployed CSP/no-store headers, not just local handlers. Test a read-token rotation and a single-source rotation. The implementation has no overlap key ring, so coordinate rotation with the producer and expect a visible gap rather than hiding it.
 
@@ -44,7 +44,7 @@ Stop an affected producer or set its enabled flag false. Set `WATCH_ENABLED=fals
 
 Retention continues while ingestion is disabled. `retentionOverdue` is a diagnostic requiring investigation, not a cleanup confirmation. Logical row deletion does not wipe database pages, WAL files or backups. Establish backup encryption, access, expiry and restore procedures separately. During restore, keep ingestion disabled, check the schema and source identity mapping, and verify restored timestamps remain visibly old.
 
-Rollback the entrypoint to `src/worker.mjs` only as a deliberate release action. Watch tables can remain for controlled recovery/deletion; do not drop them automatically. If the Watch wrapper is removed, its hosted retention also stops and must be replaced or the dataset explicitly retired. Preserve the original Observatory's schema and behaviour.
+Rollback by restoring the previously verified Worker version through the existing release procedure. For a source rollback, keep Wrangler on `src/entry.mjs` and change that file's default re-export back to `./worker.mjs`; do not expose the helper module's named exports as the workerd entrypoint. Watch tables can remain for controlled recovery/deletion; do not drop them automatically. If the Watch wrapper is removed, its hosted retention also stops and must be replaced or the dataset explicitly retired. Preserve the original Observatory's schema and behaviour.
 
 ## Required production decisions still open
 

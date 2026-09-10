@@ -165,3 +165,15 @@ test('security responses are private and do not opt into CORS', async t => {
   const r = await handleWatch(get(), setup(t), NOW);
   assert.equal(r.headers.get('cache-control'), 'no-store'); assert.equal(r.headers.get('access-control-allow-origin'), null);
 });
+
+test('Watch staging preserves the authorized probe schedule and same-account service bindings', () => {
+  const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8')
+    .replace(/^\s*\/\/.*$/gm, ''));
+  assert.equal(config.vars.COLLECT_ENABLED, 'false');
+  assert.equal(config.vars.WATCH_ENABLED, 'false');
+  assert.deepEqual(config.triggers.crons, ['*/15 * * * *']);
+  assert.deepEqual(config.services.map(s => s.binding).sort(), ['ALIBI', 'COMMITATLAS']);
+  assert.equal(config.main, 'src/entry.mjs');
+  assert.deepEqual(config.env.preview.triggers.crons, []);
+  assert.notEqual(config.d1_databases[0].database_id, config.env.preview.d1_databases[0].database_id);
+});
