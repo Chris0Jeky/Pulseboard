@@ -1,0 +1,43 @@
+name: Desk browser
+on:
+  pull_request:
+    paths: ['observatory/**', '.github/workflows/desk-browser.yml']
+  push:
+    branches: [main]
+    paths: ['observatory/**', '.github/workflows/desk-browser.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desk-browser-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      READ_TOKEN: pulseboard-browser-ci-only-do-not-use-in-production
+      COLLECT_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install isolated browser test tools
+        run: |
+          python3 -m venv .browser-venv
+          .browser-venv/bin/pip install playwright==1.57.0
+          .browser-venv/bin/playwright install --with-deps chromium
+      - name: Exercise the real local server and deterministic failure scenarios
+        working-directory: observatory
+        run: |
+          node src/local.mjs > "$RUNNER_TEMP/pulseboard-desk.log" 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8788/readyz > /dev/null; then break; fi
+            sleep 1
+          done
+          ../.browser-venv/bin/python tests/desk-browser.py --origin http://127.0.0.1:8788

@@ -84,10 +84,12 @@ export function reviewState(signal, reviews, now = Date.now()) {
   if (!review || review.until <= now) return 'open';
   return review.state === 'acknowledged' ? 'acknowledged' : review.state === 'snoozed' ? 'snoozed' : 'open';
 }
-export function makeBrief(snapshot, signals) {
+/** `stale` means the last refresh failed: the snapshot below is last-good history, not a current reading. */
+export function makeBrief(snapshot, signals, stale = false) {
   const projects = snapshot.projects;
   const mode = snapshot.mode === 'demo' ? 'SYNTHETIC DEMO' : 'PRIVATE AGGREGATE SNAPSHOT';
   return [`# Pulseboard field note`, '', `${mode}. Generated ${new Date(snapshot.generatedAt).toISOString()}.`,
+    ...(stale === true ? ['REFRESH FAILED. Last-good snapshot; current health unknown.'] : []),
     `Window: ${new Date(snapshot.window.start).toISOString()} to ${new Date(snapshot.window.end).toISOString()} (end exclusive).`,
     '', `${projects.length} projects. ${sum(projects, p => p.totals.sessions)} reported sessions, not verified people.`,
     `Collection: ${snapshot.collectionEnabled ? 'enabled' : 'disabled'}. ${signals.length} rule observations.`, '',
@@ -95,8 +97,8 @@ export function makeBrief(snapshot, signals) {
     '## Reading limits', ...snapshot.limitations.map(x => `- ${x}`), '',
     'This is an operator note, not an instruction to merge, deploy, page anyone, or publish private data.', ''].join('\n');
 }
-export function makeHandoff(snapshot, signal) {
-  return { schema: 'pulseboard.handoff/1', mode: snapshot.mode, generatedAt: snapshot.generatedAt,
+export function makeHandoff(snapshot, signal, stale = false) {
+  return { schema: 'pulseboard.handoff/1', mode: snapshot.mode, generatedAt: snapshot.generatedAt, stale: stale === true,
     destination: 'review-before-import', title: signal.title, project: signal.project,
     observation: signal.detail, evidence: signal.evidence, nextCheck: signal.next,
     rule: { id: signal.rule, version: signal.version }, window: snapshot.window,

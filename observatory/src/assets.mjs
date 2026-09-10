@@ -6,5 +6,6 @@ export const assets = new Map([
   ['/dashboard.css', ['dashboard.css', 'text/css; charset=utf-8']],
   ['/desk-model.mjs', ['desk-model.mjs', 'text/javascript; charset=utf-8']],
   ['/desk-demo.mjs', ['desk-demo.mjs', 'text/javascript; charset=utf-8']],
+  ['/desk-bridge.mjs', ['desk-bridge.mjs', 'text/javascript; charset=utf-8']],
   ['/mark.svg', ['mark.svg', 'image/svg+xml']],
 ]);

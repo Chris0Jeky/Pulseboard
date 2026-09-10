@@ -135,6 +135,19 @@ test('brief and handoff retain synthetic markings and review-only boundaries', (
   const packet = makeHandoff(s, signals[0]); assert.equal(packet.mode, 'demo');
   assert.ok(packet.boundaries.includes('No automatic task creation or execution.'));
 });
+test('an export taken after a failed refresh is marked as last-good, not current health', () => {
+  const s = makeDemo('release', { now }), signals = buildSignals(s, now);
+  const brief = makeBrief(s, signals, true), lines = brief.split('\n');
+  assert.equal(lines[lines.indexOf(`SYNTHETIC DEMO. Generated ${new Date(s.generatedAt).toISOString()}.`) + 1],
+    'REFRESH FAILED. Last-good snapshot; current health unknown.');
+  assert.equal(makeHandoff(s, signals[0], true).stale, true);
+});
+test('a fresh export carries no failed-refresh marker but still states the flag', () => {
+  const s = makeDemo('release', { now }), signals = buildSignals(s, now);
+  assert.doesNotMatch(makeBrief(s, signals), /REFRESH FAILED/);
+  assert.doesNotMatch(makeBrief(s, signals, false), /REFRESH FAILED/);
+  assert.equal(makeHandoff(s, signals[0]).stale, false);
+});
 test('portfolio endpoint authenticates before querying', async () => {
   const r = await handle(new Request('https://desk.test/v1/portfolio'), { READ_TOKEN: 'x'.repeat(32) });
   assert.equal(r.status, 401); assert.equal(r.headers.get('cache-control'), 'no-store');
