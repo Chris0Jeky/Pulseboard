@@ -171,6 +171,15 @@ test('a probe with a service binding goes through the binding, the others throug
   assert.ok(direct.includes(projects.alibi.probe.url) && !direct.includes(projects.commitatlas.probe.url)); // ALIBI binding absent here: falls back
   assert.equal((await DB.prepare('SELECT successes FROM probes WHERE project=?').bind('commitatlas').first()).successes, 1);
 }));
+test('the read model says which probes observe the application rather than its public edge', async () => {
+  const { limitations } = await import('../src/portfolio.mjs');
+  const bound = limitations();
+  assert.ok(bound.at(-1).includes('CommitAtlas and Alibi') && bound.at(-1).includes('not that its public address'));
+  const unbound = limitations({ x: { label: 'X', probe: { url: 'https://x.test/', marker: 'X' } } });
+  assert.equal(unbound.length, bound.length - 1); assert.ok(!unbound.some(t => t.includes('service binding')));
+  const summaryProvenance = (await summary({ prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }), all: async () => ({ results: [] }) }) })).provenance;
+  assert.ok(summaryProvenance.includes('service-bound probes observe the application'));
+});
 test('stale monitoring is not presented as up', withDB(async DB => {
   await DB.prepare('INSERT INTO probes VALUES(?,?,?,?,?,?,?,?)').bind('mdviewer', 'up', 0, 2, null, Date.now() - 3600000, 200, 30).run();
   assert.equal((await summary(DB)).projects[0].monitor.state, 'stale');

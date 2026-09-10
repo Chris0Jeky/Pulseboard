@@ -72,7 +72,7 @@ Set-Clipboard -Value ''
   `redirect: 'error'` before sending anything. With `redirect: 'manual'` all seven targets returned
   200 with their markers (80–680 ms), reached `up` on the second tick, and the seeded event, budget
   and probe-history rows older than their windows were deleted while the tick's own rows survived.
-  A unit test now pins the redirect mode; `npm test` is 126 passing.
+  A unit test now pins the redirect mode; `npm test` is 128 passing with the service-binding and limitations tests below.
 - Preview Worker `pulseboard-observatory-preview` (versions `c16b877b…` then `f7d1fd4c…` with every
   `dailyLimit` set to 1 for that deploy only) against scratch D1 `pulseboard-observatory-scratch`
   (`75c78861-b347-4b03-8a02-7cd9a9e13bb0`), collection on, no cron. `tests/hosted-admission.mjs`

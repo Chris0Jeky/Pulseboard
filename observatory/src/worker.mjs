@@ -44,7 +44,7 @@ export async function summary(db, now = Date.now()) {
       WHERE received>=? AND event='action.requested' GROUP BY project, session) a GROUP BY a.project`).bind(since, since).all()).results;
   const probes = (await db.prepare('SELECT * FROM probes').all()).results;
   const budgets = (await db.prepare('SELECT project, used FROM budget WHERE day=?').bind(new Date(now).toISOString().slice(0, 10)).all()).results;
-  return { generated: now, windowDays: 7, provenance: 'client-reported, opt-in; not verified people',
+  return { generated: now, windowDays: 7, provenance: 'client-reported, opt-in; not verified people' + (Object.values(projects).some(p => p.probe?.binding) ? '; service-bound probes observe the application, not its public edge' : ''),
     projects: Object.entries(projects).map(([id, p]) => {
       const probe = probes.find(x => x.project === id), funnel = funnels.find(x => x.project === id);
       return { id, label: p.label, configuredOrigin: p.origin, probeExpected: !!p.probe,

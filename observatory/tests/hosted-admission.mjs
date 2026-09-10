@@ -2,14 +2,24 @@
 // status the operator expects. Dependency-free; run it from observatory/ with Node 22+.
 //   node tests/hosted-admission.mjs --origin https://<preview>.workers.dev --project mdviewer --events 1 --expect 202
 //   node tests/hosted-admission.mjs --origin ... --project mdviewer --events 1 --expect 202 --repeat   # identical batch twice
-//   node tests/hosted-admission.mjs --origin ... --project commitatlas --events 2 --expect 429         # limit 1 on the preview
+//   node tests/hosted-admission.mjs --origin ... --project commitatlas --events 2 --expect 429         # only after the preview was deployed with dailyLimit 1 (ROLLOUT.md step 4)
 // It never prints response bodies beyond the collector's fixed error keys, and it sends no token: admission needs none.
 import { projects } from '../src/projects.mjs';
 
-const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => a.startsWith('--') ? [a.slice(2), all[i + 1]?.startsWith('--') || all[i + 1] === undefined ? 'true' : all[i + 1]] : []).filter(Boolean));
+const KNOWN = ['origin', 'project', 'events', 'expect', 'repeat', 'allow-production'];
+const args = {}; const argv = process.argv.slice(2);
+for (let i = 0; i < argv.length; i++) {
+  if (!argv[i].startsWith('--') || !KNOWN.includes(argv[i].slice(2))) { console.error('Unknown argument: ' + argv[i]); process.exit(2); }
+  const next = argv[i + 1]; args[argv[i].slice(2)] = next === undefined || next.startsWith('--') ? 'true' : (i++, next);
+}
 const origin = args.origin, id = args.project, count = Number(args.events ?? 1), expect = Number(args.expect ?? 202);
 if (!origin || !Object.hasOwn(projects, id) || !projects[id].origin || !(count >= 1 && count <= 20) || !expect) {
-  console.error('Usage: --origin <collector origin> --project <registered id> [--events 1..20] [--expect 202] [--repeat]');
+  console.error('Usage: --origin <collector origin> --project <registered id> [--events 1..20] [--expect 202] [--repeat] [--allow-production]');
+  process.exit(2);
+}
+// Synthetic events must never reach the production collector: refuse its hostname unless the operator says so explicitly.
+if (/^pulseboard-observatory\./.test(new URL(origin).hostname) && args['allow-production'] !== 'true') {
+  console.error('Refusing the production collector; this script writes synthetic events. Use a preview origin, or pass --allow-production deliberately.');
   process.exit(2);
 }
 const project = projects[id], session = crypto.randomUUID();

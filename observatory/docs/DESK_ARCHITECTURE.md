@@ -59,7 +59,11 @@ combine the two flow measures as if they shared a denominator.
 - **Duration:** exact nearest-rank p95 from the selected samples, separately for
   each release. Percentiles are never averaged. `n`, mean and method travel with it.
 - **Probes:** successes / scheduled samples. Missing samples stay missing. This
-  is not time-weighted uptime, an SLO, or proof of an entire product journey.
+  is not time-weighted uptime, an SLO, or proof of an entire product journey. A
+  target that is another Worker on the same Cloudflare account is reached through
+  a service binding (`probe.binding` in `src/projects.mjs`), so its reading proves
+  the application answers, not that its public address does; the read model adds
+  that sentence to `limitations`, and the GitHub canary checks the public path.
 - **Release comparison:** reported failure fractions with descriptive 95% Wilson
   intervals. A 20-outcome floor in both cohorts gates the percentage-point
   difference. The floor is a display guard, not statistical power or significance.
