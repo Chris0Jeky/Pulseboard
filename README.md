@@ -1,515 +1,104 @@
 # Pulseboard
 
-Real-time, pluggable data dashboard for developers and tinkerers.
+<img src="observatory/public/mark.svg" width="54" height="54" alt="Pulseboard mark">
 
-Pulseboard is a web-first, real-time dashboard platform that lets users monitor arbitrary data feeds (system metrics, repo stats, financial prices, IoT sensors, etc.) via a modern browser UI. It is designed to run both locally (offline-first, via `localhost`) and as a deployed web application.
+**A small operations desk for everything you ship.**
 
-## Features
+Pulseboard brings product usage, synthetic checks, release cohorts and development
+context into a compact workspace. See what needs a look, inspect the evidence,
+and leave with a useful next step. Missing data stays missing. Nothing deploys,
+pages someone or starts collecting because a chart changed colour.
 
-- **Real-time streaming** via WebSockets with auto-reconnection
-- **Pluggable feed system** - easily add new data sources
-- **Multiple panel types** - time-series charts, stat tiles, bar charts
-- **Interactive dashboard** - drag and drop panels, resize with grid snapping
-- **Feed testing UI** - validate feeds before deploying
-- **PWA support** - install as desktop/mobile app, offline-capable
-- **Modern tech stack** - FastAPI, Vue 3, TypeScript, ECharts, TailwindCSS
-- **Comprehensive testing** - Backend 85% coverage, Frontend 56 tests
-- **Three built-in feeds**:
-  - System Metrics (CPU, RAM, disk usage via psutil)
-  - HTTP JSON (poll any JSON API)
-  - Crypto Prices (real-time cryptocurrency prices via CoinGecko)
+The Desk is the new primary direction. It builds on the Observatory kit from #15.
+The original FastAPI / Vue feed workbench is retained as a separate runtime, not
+silently rewritten or presented as migrated.
 
-## Tech Stack
+## Open the desk
 
-### Backend
-- Python 3.11+
-- FastAPI (REST API + WebSockets)
-- SQLModel (ORM with Pydantic)
-- SQLite (database)
-- psutil (system metrics)
-- httpx (HTTP client)
-
-### Frontend
-- Vue 3 + Vite
-- TypeScript
-- Pinia (state management)
-- TailwindCSS (styling)
-- Apache ECharts (charts)
-
-## Quick Start
-
-### Prerequisites
-
-- Python 3.11 or higher
-- Node.js 18+ (for frontend, coming soon)
-
-### Backend Setup
-
-1. **Clone the repository**
+Node.js 22.16 or newer is required. The Desk has no external runtime dependencies
+and no build step.
 
 ```bash
-git clone <repository-url>
-cd Pulseboard
-```
-
-2. **Use the development startup script**
-
-```bash
-./scripts/dev_start.sh
-```
-
-This script will:
-- Create a virtual environment
-- Install all dependencies
-- Start the backend server on `http://localhost:8000`
-
-3. **Seed demo data** (optional, in a new terminal)
-
-```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Run seed script
-python scripts/seed_demo_data.py
-```
-
-This creates:
-- A demo dashboard with system metrics and crypto prices
-- System metrics feed (CPU, RAM, disk)
-- Bitcoin and Ethereum price feeds
-- 6 panels showing live data
-
-4. **Access the API**
-
-- API docs: `http://localhost:8000/docs`
-- Health check: `http://localhost:8000/health`
-- Interactive API documentation: `http://localhost:8000/redoc`
-
-### Manual Backend Setup
-
-If you prefer manual setup:
-
-```bash
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r backend/requirements.txt
-
-# Run the server
-cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Frontend Setup
-
-1. **Use the development startup script**
-
-```bash
-./scripts/dev_start_frontend.sh
-```
-
-This script will:
-- Install dependencies if needed
-- Start the frontend development server on `http://localhost:5173`
-
-2. **Access the application**
-
-Open your browser and navigate to `http://localhost:5173`
-
-The frontend will automatically proxy API requests to the backend.
-
-### Manual Frontend Setup
-
-If you prefer manual setup:
-
-```bash
-# Navigate to frontend directory
-cd frontend/pulseboard-web
-
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-
-# Build for production
-npm run build
-```
-
-## Docker Deployment (Production)
-
-The easiest way to deploy Pulseboard is using Docker. All necessary configuration files are included.
-
-### Prerequisites
-
-- Docker 20.10 or later
-- Docker Compose 2.0 or later
-
-### Quick Start with Docker
-
-1. **Clone the repository**
-
-```bash
-git clone <repository-url>
-cd Pulseboard
-```
-
-2. **Configure environment** (optional)
-
-```bash
-cp .env.example .env
-# Edit .env if needed
-```
-
-3. **Start with one command**
-
-```bash
-# Using the helper script
-./scripts/start.sh --build --detach
-
-# Or directly with docker-compose
-docker-compose up -d
-```
-
-4. **Access the application**
-
-- Frontend: http://localhost
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-
-### Docker Management
-
-```bash
-# View logs
-docker-compose logs -f
-
-# Check status
-docker-compose ps
-./scripts/status.sh
-
-# Stop services
-docker-compose stop
-./scripts/stop.sh
-
-# Restart services
-docker-compose restart
-
-# Backup database
-./scripts/backup.sh
-
-# Restore from backup
-./scripts/restore.sh ./backups/pulseboard_backup_YYYYMMDD_HHMMSS.db
-```
-
-### Development Mode with Docker
-
-For local development with hot-reload:
-
-```bash
-# Using the helper script
-./scripts/start.sh --dev
-
-# Or directly with docker-compose
-docker-compose -f docker-compose.dev.yml up
-```
-
-Features:
-- Live code reload for backend and frontend
-- Source code mounted as volumes
-- Debug logging enabled
-
-### Docker Architecture
-
-**Backend Container**
-- Multi-stage build (Python 3.11 slim)
-- Non-root user for security
-- SQLite database persisted in volume
-- Health checks enabled
-- Port 8000 exposed
-
-**Frontend Container**
-- Built with Node 20, served with Nginx
-- Optimized static files
-- Gzip compression
-- SPA routing configured
-- Port 80 exposed
-
-**Volumes**
-- `pulseboard-backend-data`: Persistent SQLite database
-- `pulseboard-backend-logs`: Application logs
-
-For detailed Docker documentation, see [DOCKER.md](DOCKER.md).
-
-## Architecture
-
-### Data Flow
-
-1. **Feed Manager** loads enabled feed definitions from database
-2. **Feeds** run as background asyncio tasks, fetching data periodically
-3. **DataHub** receives feed events and maintains latest values + history
-4. **WebSocket connections** subscribe to dashboards
-5. **DataHub** broadcasts feed updates to relevant dashboard connections
-6. **Frontend** receives updates via WebSocket and updates charts in real-time
-
-### Key Components
-
-#### Backend
-
-- **`app/core/`** - Configuration and logging
-- **`app/db/`** - Database engine and session management
-- **`app/models/`** - SQLModel definitions for Dashboard, Feed, Panel
-- **`app/feeds/`** - Feed implementations and registry
-  - `base.py` - Abstract BaseFeed class
-  - `system_metrics.py` - System metrics via psutil
-  - `http_json.py` - Generic HTTP JSON polling
-  - `crypto_price.py` - Cryptocurrency prices
-  - `manager.py` - Feed lifecycle management
-- **`app/hub/`** - DataHub for event management and broadcasting
-- **`app/api/routes/`** - REST API endpoints
-- **`app/ws/`** - WebSocket router and connection manager
-- **`app/main.py`** - FastAPI application and lifespan management
-
-#### Frontend
-
-- **`src/types/`** - TypeScript interfaces matching backend models
-- **`src/api/`** - API client for backend communication
-- **`src/stores/`** - Pinia stores for state management
-  - `dashboards.ts` - Dashboard CRUD operations
-  - `liveData.ts` - Feed event storage and history
-  - `ui.ts` - UI state (WebSocket status, dark mode)
-- **`src/composables/`** - Reusable composition functions
-  - `useDashboardWebSocket.ts` - WebSocket management with auto-reconnect
-- **`src/components/panels/`** - Panel components
-  - `PanelStat.vue` - Single value with trend
-  - `PanelTimeseries.vue` - Line chart with ECharts
-  - `PanelBar.vue` - Bar chart with ECharts
-- **`src/views/`** - Page components
-  - `DashboardListView.vue` - Dashboard grid and creation
-  - `DashboardLiveView.vue` - Live dashboard with panels
-- **`src/router/`** - Vue Router configuration
-
-## API Endpoints
-
-### Dashboards
-
-- `GET /api/dashboards` - List all dashboards
-- `POST /api/dashboards` - Create dashboard
-- `GET /api/dashboards/{id}` - Get dashboard with panels
-- `PATCH /api/dashboards/{id}` - Update dashboard
-- `DELETE /api/dashboards/{id}` - Delete dashboard
-- `GET /api/dashboards/{id}/feed-ids` - Get feed IDs used by dashboard
-
-### Feeds
-
-- `GET /api/feeds` - List all feed definitions
-- `GET /api/feeds/types` - List available feed types with metadata
-- `POST /api/feeds` - Create feed definition
-- `GET /api/feeds/{id}` - Get feed definition
-- `PATCH /api/feeds/{id}` - Update feed definition
-- `DELETE /api/feeds/{id}` - Delete feed definition
-- `POST /api/feeds/{id}/test` - Test feed and return sample data
-
-### Panels
-
-- `POST /api/dashboards/{dashboard_id}/panels` - Create panel
-- `PATCH /api/dashboards/{dashboard_id}/panels/{panel_id}` - Update panel
-- `DELETE /api/dashboards/{dashboard_id}/panels/{panel_id}` - Delete panel
-- `GET /api/panels/{id}` - Get panel by ID
-
-### WebSocket
-
-- `WS /ws/dashboards/{dashboard_id}` - Real-time dashboard updates
-
-## Feed Types
-
-### System Metrics
-
-Monitors system CPU, RAM, and optionally disk/network.
-
-**Config:**
-```json
-{
-  "interval_sec": 5,
-  "include_disk": true,
-  "include_network": false
-}
-```
-
-**Output:**
-```json
-{
-  "cpu_percent": 45.2,
-  "memory_percent": 68.1,
-  "memory_used_gb": 10.9,
-  "memory_total_gb": 16.0,
-  "disk_percent": 72.3,
-  "disk_used_gb": 361.5,
-  "disk_total_gb": 500.0
-}
-```
-
-### HTTP JSON
-
-Polls any JSON HTTP endpoint.
-
-**Config:**
-```json
-{
-  "url": "https://api.example.com/data",
-  "interval_sec": 60,
-  "method": "GET",
-  "headers": {},
-  "path": "data.metrics"
-}
-```
-
-### Crypto Price
-
-Fetches cryptocurrency prices from CoinGecko.
-
-**Config:**
-```json
-{
-  "coin_id": "bitcoin",
-  "vs_currency": "usd",
-  "interval_sec": 30,
-  "include_market_data": true
-}
-```
-
-**Output:**
-```json
-{
-  "coin_id": "bitcoin",
-  "vs_currency": "usd",
-  "price": 69420.50,
-  "market_cap": 1360000000000,
-  "24h_volume": 28500000000,
-  "24h_change": 2.45
-}
-```
-
-## Development
-
-### Running Tests
-
-**Backend Tests:**
-```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Run all backend tests with coverage
-cd backend
-pytest
-
-# Run specific test file
-pytest tests/unit/test_feeds.py
-
-# Run with verbose output and coverage
-pytest -v --cov
-```
-
-**Frontend Tests:**
-```bash
-# Navigate to frontend directory
-cd frontend/pulseboard-web
-
-# Run tests once
-npm run test:run
-
-# Run tests in watch mode
+git clone https://github.com/Chris0Jeky/Pulseboard.git
+cd Pulseboard/observatory
 npm test
-
-# Run tests with UI
-npm run test:ui
-
-# Run tests with coverage
-npm run test:coverage
+npm start
 ```
 
-**Test Coverage:**
-- Backend: ~85% (30+ unit & integration tests)
-- Frontend: 56 tests covering API client, stores, and utilities
+Open `http://127.0.0.1:8788`. Choose **Try a scenario** for an invented, interactive
+portfolio, or paste the read token printed in your terminal to inspect the local
+collector. A clean database has no production evidence. Collection stays disabled.
 
-### Code Quality
+During review, check out `feat/pulseboard-desk-ui` rather than expecting this new
+surface on main. Review and merge the stacked changes in order: #15, #16, then
+the Desk UI PR. Retarget each dependent PR to main after its base is merged and
+rerun its checks. Do not merge a child into its unmerged feature-branch base.
 
-```bash
-# Format code with black
-black backend/app backend/tests
+## What is here
 
-# Lint with ruff
-ruff check backend/app
+| Surface | What it does |
+| --- | --- |
+| The desk | Searchable project register, route and release details, UTC receipt charts, local/external boundaries and explicit missingness |
+| Signal inbox | Transparent rules with evidence, local acknowledgement, snooze and reviewed task proposals |
+| Release lab | Side-by-side failure proportions, sample floors, descriptive Wilson intervals and release-specific p95 duration in the evidence drawer |
+| Scenario replay | Four invented situations with before / incident / recovery controls; no collector writes |
+| Connections | Protected Observatory reads, native CommitAtlas v2 catalogue import, reviewed Lens-projection reader and selected public probe exports |
+| Field notes | Previewed Markdown observations and JSON handoffs, downloaded only after review |
 
-# Type checking with mypy
-mypy backend/app
-```
+The interface has keyboard navigation, a command palette, density controls,
+reduced-motion support and narrow-screen layouts. Aggregate snapshots and tokens
+stay in tab memory. Local review state and density preferences can persist in the
+browser. Imported context stays separate from operational readings and is cleared
+on disconnect.
 
-## Project Structure
+## The useful split
 
-```
-pulseboard/
-├── README.md
-├── pyproject.toml
-├── .env.example
-├── backend/
-│   ├── app/
-│   │   ├── core/         # Config and logging
-│   │   ├── db/           # Database setup
-│   │   ├── models/       # SQLModel definitions
-│   │   ├── feeds/        # Feed implementations
-│   │   ├── hub/          # DataHub and events
-│   │   ├── api/          # REST API routes
-│   │   ├── ws/           # WebSocket router
-│   │   └── main.py       # FastAPI app
-│   ├── tests/
-│   │   ├── unit/         # Unit tests
-│   │   └── integration/  # Integration tests
-│   └── requirements.txt
-├── frontend/             # Vue 3 app (coming soon)
-└── scripts/
-    ├── seed_demo_data.py
-    └── dev_start.sh
-```
+**Observatory** collects a closed, content-free event vocabulary and synthetic
+checks. **Pulseboard** helps interpret those observations and choose the next
+check. **Developer Lens** remains the authority for development analysis.
+**CommitAtlas** remains the public presentation layer.
 
-## Roadmap
+The current CommitAtlas bridge reads its existing `projects.json` v2 files.
+The Lens reader implements a new explicit projection contract; a native Lens
+producer is still a follow-up. Public pulse files are generated here, but an
+upstream CommitAtlas consumer is not installed by this PR. Task handoffs are
+reviewable files, not automatic task creation.
 
-- [x] Backend core (FastAPI, SQLModel, database)
-- [x] Feed system (BaseFeed, SystemMetrics, HTTP JSON, Crypto)
-- [x] DataHub for event management
-- [x] REST API endpoints
-- [x] WebSocket streaming with auto-reconnect
-- [x] Seed demo data
-- [x] Vue 3 frontend with TypeScript
-- [x] Dashboard and panel components
-- [x] ECharts integration
-- [x] Real-time WebSocket updates
-- [x] Dark mode UI with modern gradients and animations
-- [x] Panel editing and dashboard management UI
-- [x] Feed management UI with create/edit/delete
-- [x] Feed testing endpoint and UI
-- [x] Panel drag and drop repositioning
-- [x] Panel resize with grid snapping
-- [x] Docker deployment setup
-- [x] Comprehensive backend test coverage (85%)
-- [x] Frontend testing infrastructure (56 tests)
-- [x] PWA support (manifest, service worker, icons)
-- [ ] E2E testing with Playwright
-- [ ] Additional feed types (Git metrics, Taskdeck)
-- [ ] Desktop wrapper (Electron/Tauri)
-- [ ] User authentication and multi-tenancy
-- [ ] Alerting and notifications
+There is no production tracing backend, automatic GitHub sync, billing dashboard,
+longitudinal user identity, incident paging or automatic remediation in this slice.
+Those directions have explicit expansion seams rather than pretend integrations.
 
-## License
+## Engineering boundaries
 
-The owner-authored application is licensed under GNU GPL version 3 only
-(`GPL-3.0-only`). See `LICENSE`, `RELICENSING.md`, and
-`THIRD_PARTY_NOTICES.md`. Dependencies, generated Tailwind output, and framework
-assets retain their own licences.
+`GET /v1/portfolio?days=1|7|14` uses the existing read token and a transactional
+SQLite/D1 aggregate projection. It exports no event or session identifiers.
+API snapshots and imported files are bounded and validated before they reach the
+views. An unavailable collector cannot silently turn into a successful demo.
 
-## Contributing
+A failed refresh retains a visibly stale last-good snapshot; an authentication
+failure clears private state. Requests have timeouts, cancellation and generation
+guards. Hidden tabs pause polling. Assets have a self-only content security policy
+and no third-party fonts or scripts. The asset budget is tested at 128 KiB raw /
+40 KiB gzip; those are guardrails, not measured network latency claims.
 
-Contributions welcome! This is primarily a personal project, but pull requests are encouraged.
+## Documentation
 
-For questions or issues, please open a GitHub issue.
+- [Architecture, API and measurement semantics](observatory/docs/DESK_ARCHITECTURE.md)
+- [Desk guide and browser test commands](observatory/docs/DESK_GUIDE.md)
+- [Ecosystem contracts and integration status](observatory/docs/DESK_BRIDGES.md)
+- [Direction, expansion paths and delivery order](observatory/docs/DESK_DIRECTION.md)
+- [Original collection activation gates](observatory/README.md)
+- [Asset provenance](observatory/docs/DESK_ASSETS.md)
+
+## Existing feed workbench
+
+The previous README is preserved in [WORKBENCH.md](WORKBENCH.md), including its
+FastAPI / Vue setup, Docker commands and custom-feed documentation. Those commands
+still refer to the legacy workbench, not the new Desk. Historical test counts and
+readiness claims in that document are not current verification; its outstanding
+quality-gate and packaging debt remains in #13 and #14.
+
+## Licence
+
+GPL-3.0-only. See [LICENSE](LICENSE). The new source, interface and original vector
+assets use the repository's existing licence.

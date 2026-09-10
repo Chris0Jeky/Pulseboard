@@ -1,0 +1,26 @@
+{
+  "schema": "pulseboard.lens-projection/1",
+  "mode": "synthetic",
+  "reviewed": true,
+  "generatedAt": "2026-09-10T12:00:00Z",
+  "window": { "start": "2026-09-01T00:00:00Z", "end": "2026-09-10T12:00:00Z" },
+  "coverage": { "eligible": 100, "observed": 70, "censored": 20 },
+  "findings": [
+    {
+      "id": "review.interval",
+      "kind": "hypothesis",
+      "title": "Review delay may need a closer look",
+      "detail": "The invented cohort has longer review intervals. Check reviewer availability and batch size before choosing an explanation.",
+      "n": 50,
+      "limitations": ["Synthetic observations. No real repository inference.", "Twenty eligible observations are censored and ten are missing."]
+    },
+    {
+      "id": "delivery.coverage",
+      "kind": "abstention",
+      "title": "No estimate for unobserved work",
+      "detail": "This projection does not infer the effort or value of work outside its observed window.",
+      "n": 70,
+      "limitations": ["Observed counts are not developer productivity."]
+    }
+  ]
+}

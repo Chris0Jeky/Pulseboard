@@ -1,17 +1,39 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pulseboard Observatory</title><link rel="stylesheet" href="dashboard.css"></head>
-<body><header><div><p class="eyebrow">PULSEBOARD / OBSERVATORY</p><h1>What happened after shipping?</h1>
-<p>Reachability, product signals and the limits of what you know.</p></div><span id="mode" class="badge">NOT CONNECTED</span></header>
-<main><section class="controls" aria-label="Data connection"><form id="connect"><label for="token">Dashboard read token</label>
-<input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Kept in memory for this tab only">
-<button type="submit">Connect</button></form><button id="demo" type="button">Explore synthetic demo</button>
-<button id="refresh" type="button">Refresh</button><button id="export" type="button" disabled>Export aggregates</button>
-<button id="disconnect" type="button">Disconnect</button></section>
-<p id="message" role="status">No data loaded. An empty dashboard does not mean your products are healthy.</p>
-<section id="totals" class="totals" aria-label="Portfolio summary"></section>
-<section class="context"><h2>Read these numbers correctly</h2><p>Page sessions are ephemeral, opted-in browser sessions, not unique people. Browser events are client-reported and forgeable. Probes are separate synthetic requests. This view covers seven days; no cross-project identity or long-term retention tracking is collected.</p></section>
-<section id="projects" class="projects" aria-label="Project signals"></section>
-<section class="context"><h2>Decisions worth investigating</h2><div id="insights"><p>Connect a collector or explore the demo to see evidence-based prompts.</p></div></section>
-<footer>Observatory 0.1.0 · Raw events retained for 14 days · No document contents, messages, filenames, URLs or IP addresses stored by this collector. Hosting providers may maintain separate access logs.</footer>
-</main><script type="module" src="dashboard.mjs"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark"><meta name="description" content="A small operations desk for everything you ship. Local-first, evidence-led, deliberately quiet.">
+  <title>Pulseboard · The desk</title><link rel="icon" href="/mark.svg" type="image/svg+xml"><link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+<a class="skip" href="#view">Skip to workspace</a>
+<aside class="rail" aria-label="Main navigation">
+  <a class="brand" href="#overview"><img src="/mark.svg" width="34" height="34" alt=""><span>pulseboard<small>THE OPERATIONS DESK</small></span></a>
+  <div class="rail-label">WORKSPACE <span>01</span></div>
+  <nav><a href="#overview" data-view="overview"><span class="nav-icon" aria-hidden="true">▦</span>The desk<kbd>1</kbd></a>
+    <a href="#signals" data-view="signals"><span class="nav-icon" aria-hidden="true">◉</span>Signal inbox<span id="signal-count" class="nav-count">0</span></a>
+    <a href="#releases" data-view="releases"><span class="nav-icon" aria-hidden="true">⇄</span>Release lab<kbd>3</kbd></a>
+    <a href="#connections" data-view="connections"><span class="nav-icon" aria-hidden="true">⌘</span>Connections<kbd>4</kbd></a></nav>
+  <section class="rail-note"><span class="mini-label">OPERATING PRINCIPLE</span><p>Check the evidence.<br>Then make the call.</p><div class="tiny muted">No mystery scores.<br>No surprise automations.</div></section>
+  <div class="rail-bottom"><button id="density" class="quiet-button" type="button">Compact view</button><p><span class="status-dot up"></span> Local-first by design</p><span class="tiny muted">DESK / 01 &nbsp; · &nbsp; GPL-3.0-only</span></div>
+</aside>
+<main class="workspace">
+  <header class="topbar"><div class="breadcrumb">PULSEBOARD <span>/</span> <span id="breadcrumb">OVERVIEW</span></div>
+    <div class="top-tools"><label class="searchbox"><span aria-hidden="true">⌕</span><input id="search" type="search" aria-label="Filter projects and signals" placeholder="Find a project…" autocomplete="off"><kbd>/</kbd></label><button id="commands" class="command-button" aria-label="Open command palette" type="button">⌘ <kbd>K</kbd></button></div></header>
+  <div class="page-heading"><div><p class="eyebrow">YOUR PORTFOLIO, WITH RECEIPTS</p><h1 id="page-title" tabindex="-1">The desk<span class="accent">.</span></h1><p id="page-subtitle" class="subtitle">A clear place to see what needs you.</p></div>
+    <div class="heading-tools"><label class="window-label"><span class="sr-only">Rolling time window</span><select id="window"><option value="1">24 hours</option><option value="7" selected>7 days</option><option value="14">14 days</option></select></label><button id="refresh" type="button">↻ <span>Refresh</span></button><button id="brief" type="button">Field note ↗</button><button id="open-connect" class="primary" type="button">Connect data</button></div></div>
+  <div class="source-bar"><span id="mode" class="badge">NOT CONNECTED</span><p id="message" role="status">Your desk is empty. No health claims until there is evidence.</p><button id="demo" class="text-button" type="button">Try a scenario →</button><button id="disconnect" class="text-button" type="button" hidden>Disconnect</button></div>
+  <section id="demo-controls" class="scenario-bar" aria-label="Synthetic scenario controls" hidden><span class="mini-label">SANDBOX</span><label><span class="sr-only">Scenario</span><select id="scenario"><option value="release">Release wobble</option><option value="quiet">Quiet portfolio</option><option value="blind">Missing readings</option><option value="pressure">Event pressure</option></select></label><label class="replay-label" for="replay">Replay</label><input id="replay" type="range" min="0" max="2" step="1" value="1"><output id="replay-label" for="replay">Incident</output><span class="tiny muted">Invented data. Nothing leaves this tab.</span></section>
+  <div id="view" tabindex="-1"></div>
+  <footer class="page-footer"><span>Quiet by default. Useful on purpose.</span><span id="stamp">No snapshot loaded</span></footer>
+</main>
+<dialog id="connect-dialog" aria-labelledby="connect-title"><div class="dialog-top"><span class="mini-label">DATA CONNECTION</span><button class="close-dialog" type="button" aria-label="Close connection dialog">×</button></div><h2 id="connect-title">Bring your own evidence.</h2><p>The desk reads this origin’s protected Observatory API. It does not enable collection or contact your other projects.</p><form id="connect"><label for="token">Dashboard read token</label><input id="token" type="password" autocomplete="off" spellcheck="false" required minlength="32" maxlength="256" placeholder="Kept in memory in this tab only"><p class="tiny muted">Start locally with <code>cd observatory &amp;&amp; npm start</code>. Copy the token printed in your terminal.</p><button class="primary" type="submit">Connect to collector</button></form><p class="tiny muted">Disconnect clears the token, snapshot and pending request. No credentials go into local storage, URLs or exports.</p></dialog>
+<dialog id="detail-dialog" class="detail-dialog" aria-labelledby="detail-title"><div class="dialog-top"><span class="mini-label">EVIDENCE DRAWER</span><button class="close-dialog" type="button" aria-label="Close evidence drawer">×</button></div><div id="detail"></div></dialog>
+<dialog id="export-dialog" class="export-dialog" aria-labelledby="export-title"><div class="dialog-top"><span class="mini-label">REVIEW BEFORE EXPORT</span><button class="close-dialog" type="button" aria-label="Close export preview">×</button></div><h2 id="export-title">A field note, not a data dump.</h2><p id="export-warning">This file contains aggregate observations. Review the exact contents before downloading or sharing.</p><pre id="export-preview" tabindex="0"></pre><label class="review-check"><input id="export-confirm" type="checkbox"> I reviewed this exact file and its sharing boundary.</label><button id="download-export" disabled class="primary" type="button">Download reviewed file</button></dialog>
+<dialog id="import-dialog" class="export-dialog" aria-labelledby="import-title"><div class="dialog-top"><span class="mini-label">LOCAL FILE REVIEW</span><button class="close-dialog" type="button" aria-label="Close import preview">×</button></div><h2 id="import-title">Keep the context. Leave the baggage.</h2><p>Only the projected fields below will remain in this tab. Imported claims stay separate from live readings. Nothing is uploaded or persisted.</p><pre id="import-preview" tabindex="0"></pre><button id="accept-import" class="primary" type="button">Keep this reviewed context</button></dialog>
+<dialog id="palette" aria-labelledby="palette-title"><div class="dialog-top"><h2 id="palette-title">Jump to</h2><button class="close-dialog" type="button" aria-label="Close command palette">×</button></div><div id="command-list" class="command-list"></div><p class="tiny muted">1–4 switch views. / finds projects. Escape closes a dialog.</p></dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+<noscript><p class="noscript">The desk needs JavaScript. The authenticated JSON API remains available at /v1/portfolio.</p></noscript>
+<script type="module" src="/dashboard.mjs"></script>
+</body>
+</html>
