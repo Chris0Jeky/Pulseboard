@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulseboard Observatory</title><link rel="stylesheet" href="dashboard.css"></head>
+<body><header><div><p class="eyebrow">PULSEBOARD / OBSERVATORY</p><h1>What happened after shipping?</h1>
+<p>Reachability, product signals and the limits of what you know.</p></div><span id="mode" class="badge">NOT CONNECTED</span></header>
+<main><section class="controls" aria-label="Data connection"><form id="connect"><label for="token">Dashboard read token</label>
+<input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Kept in memory for this tab only">
+<button type="submit">Connect</button></form><button id="demo" type="button">Explore synthetic demo</button>
+<button id="refresh" type="button">Refresh</button><button id="export" type="button" disabled>Export aggregates</button>
+<button id="disconnect" type="button">Disconnect</button></section>
+<p id="message" role="status">No data loaded. An empty dashboard does not mean your products are healthy.</p>
+<section id="totals" class="totals" aria-label="Portfolio summary"></section>
+<section class="context"><h2>Read these numbers correctly</h2><p>Page sessions are ephemeral, opted-in browser sessions, not unique people. Browser events are client-reported and forgeable. Probes are separate synthetic requests. This view covers seven days; no cross-project identity or long-term retention tracking is collected.</p></section>
+<section id="projects" class="projects" aria-label="Project signals"></section>
+<section class="context"><h2>Decisions worth investigating</h2><div id="insights"><p>Connect a collector or explore the demo to see evidence-based prompts.</p></div></section>
+<footer>Observatory 0.1.0 · Raw events retained for 14 days · No document contents, messages, filenames, URLs or IP addresses stored by this collector. Hosting providers may maintain separate access logs.</footer>
+</main><script type="module" src="dashboard.mjs"></script></body></html>
