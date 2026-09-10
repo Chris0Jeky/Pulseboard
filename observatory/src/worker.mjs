@@ -55,6 +55,8 @@ export async function summary(db, now = Date.now()) {
 }
 export async function handle(request, env) {
   const url = new URL(request.url);
+  // Held outside the try so an unexpected failure after the origin match is still readable by the calling page.
+  let cors = {};
   try {
     if (request.method === 'GET' && ['/', '/index.html', '/dashboard.mjs', '/dashboard.css'].includes(url.pathname) && env.ASSETS) {
       const response = await env.ASSETS.fetch(request);
@@ -63,8 +65,11 @@ export async function handle(request, env) {
       h.set('Cache-Control', 'no-store'); h.set('Referrer-Policy', 'no-referrer'); h.set('X-Content-Type-Options', 'nosniff');
       return new Response(response.body, { status: response.status, headers: h });
     }
-    if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
-    if (url.pathname === '/readyz') return json({ ready: true, schema: await ready(env.DB) });
+    if (url.pathname === '/healthz' || url.pathname === '/readyz') {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'method' }, 405, { Allow: 'GET, HEAD' });
+      if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
+      return json({ ready: true, schema: await ready(env.DB) });
+    }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
       return json(await summary(env.DB));
@@ -73,7 +78,7 @@ export async function handle(request, env) {
     if (!match) return json({ error: 'not_found' }, 404);
     const id = match[1], project = Object.hasOwn(projects, id) ? projects[id] : null;
     if (!project || !project.origin || request.headers.get('origin') !== project.origin) return json({ error: 'origin' }, 403);
-    const cors = { 'Access-Control-Allow-Origin': project.origin, 'Vary': 'Origin' };
+    cors = { 'Access-Control-Allow-Origin': project.origin, 'Vary': 'Origin' };
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, ...cors,
       'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
     if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
@@ -96,7 +101,7 @@ export async function handle(request, env) {
     const result = await env.DB.batch([reserve, ...inserts]);
     if (!result[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
     return json({ accepted: true, meaning: 'batch admitted; duplicate event IDs ignored' }, 202, cors);
-  } catch { return json({ error: 'unavailable' }, 503); }
+  } catch { return json({ error: 'unavailable' }, 503, cors); }
 }
 export async function probeAll(env, transport = fetch, now = Date.now()) {
   for (const [id, project] of Object.entries(projects)) {
@@ -135,4 +140,5 @@ export async function maintain(env, now = Date.now()) {
     env.DB.prepare('DELETE FROM probe_history WHERE checked<?').bind(now - 30 * 86400000),
   ]);
 }
-export default { fetch: handle, async scheduled(_controller, env) { await probeAll(env); await maintain(env); } };
+// Cloudflare calls scheduled(controller, env, ctx); the fourth parameter exists so tests can inject a transport.
+export default { fetch: handle, async scheduled(_controller, env, _ctx, transport = fetch) { await probeAll(env, transport); await maintain(env); } };

@@ -41,6 +41,8 @@ npx wrangler@4.129.1 deploy
 npx wrangler@4.129.1 secret put READ_TOKEN
 ```
 
+The deployed Worker carries a 15-minute cron trigger, so **synthetic probing of every registered project origin begins on the first deploy**, before any browser integration exists. `COLLECT_ENABLED` gates browser event admission only; it does not gate probing. Review `src/projects.mjs` before deploying, or remove the `triggers` block in `wrangler.jsonc` until you have.
+
 Generate a unique, high-entropy read token of at least 32 characters. Keep it in a password manager. It grants portfolio-wide aggregate access; this version is for a single operator, not a multi-tenant service. Set it as a Worker secret, never a public build variable. Rotate by replacing the secret. Dashboard assets contain no private data; `/v1/summary` requires the token. `/healthz` is liveness only; `/readyz` checks the migrated database.
 
 Before collection: review `src/projects.mjs`, current privacy notices and the actual deployed origins. Replace or remove anything not owned by you. Keep Taskdeck's origin null. Test a preview deployment, inspect a received payload, and confirm refusal after revocation. Then change `COLLECT_ENABLED` to `"true"` and redeploy. Its default is `"false"`.

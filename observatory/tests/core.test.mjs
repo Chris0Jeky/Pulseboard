@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { openDatabase } from '../src/sqlite.mjs';
 import { projects } from '../src/projects.mjs';
 import { validateEvent, validateBatch, readBounded, interval, monitorTransition, monitorState, STALE_AFTER } from '../src/contracts.mjs';
-import { handle, summary, maintain, probeAll } from '../src/worker.mjs';
+import worker, { handle, summary, maintain, probeAll } from '../src/worker.mjs';
 const event = (extra = {}) => ({ v: 1, id: crypto.randomUUID(), session: crypto.randomUUID(), seq: 1,
   event: 'page.view', route: 'home', release: 'unattributed', ...extra });
 function db() { const value = openDatabase(); value.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8')); return value; }
@@ -99,6 +99,47 @@ test('retention removes old rows and keeps current records', withDB(async DB => 
   await DB.prepare('UPDATE events SET received=?').bind(now - 15 * 86400000).run();
   await handle(request([event()]), env(DB)); await maintain(env(DB), now);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
+}));
+test('retention also expires budget days and probe history, not just events', withDB(async DB => {
+  const now = Date.now(), day = ms => new Date(ms).toISOString().slice(0, 10);
+  const budget = (d, used) => DB.prepare('INSERT INTO budget VALUES(?,?,?,?)').bind('mdviewer', d, used, 'r' + used).run();
+  const history = (checked) => DB.prepare('INSERT INTO probe_history VALUES(?,?,?,?)').bind('mdviewer', checked, 1, 5).run();
+  await budget(day(now - 15 * 86400000), 1); await budget(day(now - 13 * 86400000), 2); await budget(day(now), 3);
+  await history(now - 31 * 86400000); await history(now - 29 * 86400000); await history(now);
+  await maintain(env(DB), now);
+  assert.deepEqual((await DB.prepare('SELECT used FROM budget ORDER BY used').all()).results.map(r => r.used), [2, 3]);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM probe_history').first()).n, 2);
+}));
+test('the scheduled handler probes with the injected transport and then runs maintenance', withDB(async DB => {
+  const now = Date.now(), seen = [];
+  const transport = async url => { seen.push(url); return new Response(Object.values(projects).find(p => p.probe?.url === url).probe.marker); };
+  await DB.prepare('INSERT INTO probe_history VALUES(?,?,?,?)').bind('mdviewer', now - 31 * 86400000, 1, 5).run();
+  await worker.scheduled(null, env(DB), null, transport);
+  assert.equal(seen.length, Object.values(projects).filter(p => p.probe).length);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM probes').first()).n, seen.length);
+  // maintain() ran after probeAll: the old history row is gone, the row this run wrote is not.
+  const rows = (await DB.prepare('SELECT checked FROM probe_history').all()).results;
+  assert.equal(rows.length, seen.length); assert.ok(rows.every(r => r.checked > now - 30 * 86400000));
+}));
+test('refusals a browser must be able to read carry CORS and a retry hint', withDB(async DB => {
+  const disabled = await handle(request([event()]), { DB, COLLECT_ENABLED: 'false' });
+  assert.equal(disabled.status, 503); assert.equal(disabled.headers.get('Access-Control-Allow-Origin'), projects.mdviewer.origin);
+  assert.equal(disabled.headers.get('Vary'), 'Origin');
+  await DB.prepare('INSERT INTO budget VALUES(?,?,?,?)').bind('mdviewer', new Date().toISOString().slice(0, 10), projects.mdviewer.dailyLimit, 'full').run();
+  const overBudget = await handle(request([event()]), env(DB));
+  assert.equal(overBudget.status, 429); assert.equal(overBudget.headers.get('Retry-After'), '3600');
+  assert.equal(overBudget.headers.get('Access-Control-Allow-Origin'), projects.mdviewer.origin);
+  // An unexpected server fault after the origin matched is readable too, instead of failing opaquely in the page.
+  const broken = await handle(request([event()]), { DB: { prepare() { throw new Error('database'); } }, COLLECT_ENABLED: 'true' });
+  assert.equal(broken.status, 503); assert.equal(broken.headers.get('Access-Control-Allow-Origin'), projects.mdviewer.origin);
+}));
+test('liveness and readiness answer only GET and HEAD', withDB(async DB => {
+  for (const path of ['/healthz', '/readyz']) {
+    assert.equal((await handle(new Request('https://x.test' + path), env(DB))).status, 200);
+    assert.equal((await handle(new Request('https://x.test' + path, { method: 'HEAD' }), env(DB))).status, 200);
+    const refused = await handle(new Request('https://x.test' + path, { method: 'POST' }), env(DB));
+    assert.equal(refused.status, 405); assert.equal(refused.headers.get('Allow'), 'GET, HEAD');
+  }
 }));
 test('monitor debounces failures and recovery', () => {
   let s; s = monitorTransition(s, false, 1); assert.equal(s.state, 'unknown');

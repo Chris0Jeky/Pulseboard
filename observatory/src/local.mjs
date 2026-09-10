@@ -8,7 +8,8 @@ import { handle } from './worker.mjs';
 mkdirSync(new URL('../.data/', import.meta.url), { recursive: true });
 const DB = openDatabase(fileURLToPath(new URL('../.data/observatory.sqlite', import.meta.url)));
 DB.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
-const READ_TOKEN = process.env.READ_TOKEN || randomBytes(32).toString('hex');
+const supplied = typeof process.env.READ_TOKEN === 'string' && process.env.READ_TOKEN.length > 0;
+const READ_TOKEN = supplied ? process.env.READ_TOKEN : randomBytes(32).toString('hex');
 const env = { DB, READ_TOKEN, COLLECT_ENABLED: process.env.COLLECT_ENABLED || 'false',
   ASSETS: { async fetch(request) {
     const path = new URL(request.url).pathname;
@@ -28,7 +29,9 @@ const server = createServer({ maxHeaderSize: 8192, requestTimeout: 10000, header
 });
 server.listen(8788, '127.0.0.1', () => {
   console.log('Local dashboard: http://127.0.0.1:8788');
-  console.log('Read token (paste into dashboard; not persisted): ' + READ_TOKEN);
-  console.log('Local runner does not schedule external probes. Cloudflare cron or the explicit probe command does.');
+  // Only a token this process generated is safe to print; one supplied by the operator stays where they put it.
+  console.log(supplied ? 'Read token: using READ_TOKEN from the environment; it is not printed here.'
+    : 'Read token (generated for this run; paste into dashboard; not persisted): ' + READ_TOKEN);
+  console.log('Local runner never probes the public sites: there is no local probe command, and egress stays off. Cloudflare cron does the probing in a deployment.');
 });
 process.on('SIGINT', () => server.close(() => { DB.close(); process.exit(0); }));
