@@ -4,12 +4,12 @@
   "target":"Reuse existing Observatory Worker and D1; no duplicate provisioning",
   "source_paths":["observatory/docs/HOSTING.md","observatory/wrangler.jsonc"],
   "persistent_state":["Existing Observatory D1; preserve schema and records"],
-  "invariants":["Collection and scheduled probes remain disabled","Legacy FastAPI/Vue workbench remains separate","Private aggregate reads require existing authentication","Never publish private origins or operational credentials"],
+  "invariants":["Collection remains disabled; preserve the owner-authorized 15-minute schedule over seven registered probe origins","Legacy FastAPI/Vue workbench remains separate","Private aggregate reads require existing authentication","Never publish private origins or operational credentials"],
   "gates":["Reconcile current deployed version and bindings","Scratch-D1 admission/deduplication/429 acceptance","Separate collection and probe approval","Owned operator hostname and access review"],
   "tasks":[
-    {"id":"PB1","goal":"Reconcile the existing hosted receipt","acceptance":"Current Worker, database and empty cron are recorded without secrets; no new database"},
+    {"id":"PB1","goal":"Reconcile the existing hosted receipt","acceptance":"Current Worker, database and authorized probe schedule are recorded without secrets; distinguish edge-triggered evidence from an unattended tick; no new database"},
     {"id":"PB2","goal":"Add bounded hosting metadata via the existing contracts","acceptance":"Stable service IDs and explicit unknown/deployed/verified states; no automatic provider writes"},
-    {"id":"PB3","goal":"Stage collection and probes separately","acceptance":"Tests demonstrate disabled paths and private reads; activation is an explicit later change"}
+    {"id":"PB3","goal":"Stage collection separately from existing authorized probes","acceptance":"Tests demonstrate disabled collection and private reads while preserving the probe schedule; new collection or probe scope requires its own explicit later decision"}
   ],
   "activation_authorized":false
 }
