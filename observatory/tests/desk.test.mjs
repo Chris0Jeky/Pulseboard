@@ -161,3 +161,14 @@ test('new static assets carry CSP; traversal is not routed to the asset binding'
   assert.equal((await handle(new Request('https://desk.test/secret.env'), env)).status, 404); assert.equal(calls, 1);
   assert.equal(await (await handle(new Request('https://desk.test/', { method: 'HEAD' }), env)).text(), '');
 });
+test('a future-dated probe row is published as stale, not as current health', async t => {
+  const db = database(t), env = { DB: db, READ_TOKEN: 'x'.repeat(32), COLLECT_ENABLED: 'false' };
+  const request = new Request('https://desk.test/v1/portfolio?days=7', { headers: { authorization: `Bearer ${env.READ_TOKEN}` } });
+  const monitor = async () => (await (await handle(request, env)).json()).projects.find(p => p.id === 'mdviewer').monitor;
+  const write = checked => db.prepare(`INSERT INTO probes VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(project)
+    DO UPDATE SET checked=excluded.checked`).bind('mdviewer', 'up', 0, 2, null, checked, 200, 12).run();
+  await write(Date.now() + 60000);
+  assert.equal((await monitor()).state, 'stale');
+  await write(Date.now());
+  assert.equal((await monitor()).state, 'up');
+});

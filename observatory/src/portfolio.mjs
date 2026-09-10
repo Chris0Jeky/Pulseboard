@@ -1,6 +1,9 @@
 /** Transactional aggregate read model. No event IDs, session IDs or event rows leave this module. */
 import { projects as registry } from './projects.mjs';
-import { DAY, fraction, STALE_AFTER } from '../public/desk-model.mjs';
+import { DAY, fraction } from '../public/desk-model.mjs';
+// One freshness rule for both server read models. public/desk-model.mjs keeps its own copy for the
+// browser, which must not import from src/; the two must stay in step.
+import { monitorState } from './contracts.mjs';
 export const WINDOWS = [1, 7, 14];
 const LIMITATIONS = [
   'Browser events are opt-in, client-reported and spoofable. Sessions are not people.',
@@ -62,7 +65,7 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
           last: Math.max(...selected.map(row => row.last)), duration: timing ? { n: timing.n, mean: timing.mean, p95: timing.p95, unit: 'ms', method: 'nearest-rank' } : null };
       }).sort((a, b) => b.last - a.last || a.release.localeCompare(b.release));
       return { id, label: config.label, origin: config.origin, probeExpected: Boolean(config.probe),
-        monitor: probe ? { state: now - probe.checked > STALE_AFTER ? 'stale' : probe.state,
+        monitor: probe ? { state: monitorState(probe, now),
           checked: probe.checked, opened: probe.opened, status: probe.status, duration: probe.duration,
           failures: probe.failures, successes: probe.successes } : { state: 'unknown', checked: null },
         probeSamples: fraction(samples?.good || 0, samples?.n || 0),
