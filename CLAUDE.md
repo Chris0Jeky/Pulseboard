@@ -80,7 +80,9 @@ T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-har
 binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO.md`; read it before
 merging anything. Hosted Cloudflare/D1 activation (q-2) and the Desk stack merge (q-3) were both
 authorised on 2026-09-10; q-3 carries the owner's condition that #15–#17 get a deep check and test
-pass first. Cloudflare access is verified (q-4). The Desk is hosted with scheduled probes on (every
-15 minutes over the seven registered origins) and collection off; the scratch-D1 admission gate from
-`observatory/docs/ROLLOUT.md` passed on 2026-09-10 (`HOSTING.md`). Turning collection on waits for the
-owner's pilot and privacy-notice decision (q-7). Global laws are auto-loaded; nothing here restates them.
+pass first. Cloudflare access is verified (q-4). The Desk is hosted with collection off and a 15-minute
+probe cron registered over the seven origins; the handler is proven on the edge but no unattended tick
+had been observed by 2026-09-10 16:00Z because of Cloudflare incident sjs8s0q2x4hw (#43 confirms the
+first tick once it resolves; `observatory/docs/HOSTING.md`). The scratch-D1 admission
+gate passed the same day. Turning collection on waits for the owner's pilot and privacy-notice decision
+(q-7). Global laws are auto-loaded; nothing here restates them.

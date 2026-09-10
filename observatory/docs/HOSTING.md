@@ -3,10 +3,11 @@
 Live URL: https://pulseboard-observatory.commit-atlas.workers.dev
 
 The hosted Desk serves its UI and authenticated aggregate API from one Worker with D1.
-Collection is disabled: publishing does not activate host integrations. Since 2026-09-10 the
-`*/15 * * * *` cron probes the seven registered public origins (status, timing and a content marker;
-never page content) and runs retention. Synthetic demo data stays in the browser. Follow ROLLOUT.md
-before turning collection on.
+Collection is disabled: publishing does not activate host integrations. Since 2026-09-10 a
+`*/15 * * * *` cron is registered to probe the seven registered public origins (status, timing and a
+content marker; never page content) and run retention; the handler is proven on the edge, but see the
+receipts below for whether Cloudflare has actually invoked it. Synthetic demo data stays in the
+browser. Follow ROLLOUT.md before turning collection on.
 
 From `observatory/` (use `npm.cmd` / `npx.cmd` in Windows PowerShell):
 
@@ -84,8 +85,26 @@ Set-Clipboard -Value ''
 - Deployed routes `/`, `/dashboard.mjs` carry the CSP, `Cache-Control: no-store`,
   `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` and
   `Cross-Origin-Resource-Policy: same-origin`; `/healthz` carries the JSON subset.
-- Production Worker version `a400ed3d-e7a2-4980-b75e-c8ecd78dd9c6` deployed with the cron trigger
-  and the redirect fix. The first hosted tick is recorded in the paragraph below.
+- Production Worker version `a400ed3d…` deployed with the cron trigger and the redirect fix. Triggering
+  the handler on the edge (`wrangler dev --remote --test-scheduled`) then showed a second hosted-only
+  fault: `commit-atlas` and `alibi-after-hours-preview` answered 404 `error code: 1042`, because a
+  Worker cannot fetch another Worker on the same account through its public hostname. Those two
+  probes now go through service bindings (`wrangler.jsonc` `services`, `probe.binding` in the
+  registry); version `36240a08-5e20-4aa9-9add-02c55b149ba6` carries that, and an edge-triggered run
+  returned 200 with markers for all seven targets (16–380 ms). The two bound readings prove the
+  application answers, not its public edge; the canary below owns that path.
+- **No unattended cron tick was observed.** Between the first cron deploy (14:43Z) and 16:00Z the
+  `*/15` schedule should have fired five times; `probe_history` gained rows only from the two
+  edge-triggered runs, and a `wrangler tail` connected across 15:45Z saw no invocation. A throwaway
+  Worker with a `* * * * *` schedule writing to the scratch database (`pulseboard-cron-debug`,
+  deleted afterwards) wrote nothing in fifteen minutes either, so the fault is not this Worker's shape.
+  Cloudflare's status page explains it: incident
+  [sjs8s0q2x4hw](https://www.cloudflarestatus.com/incidents/sjs8s0q2x4hw), "Workers Cron Triggers
+  degraded", open since 2026-09-09 19:17Z: "Cron Triggers may not execute or may be delayed …
+  updates to Cron Triggers may take some time to take effect." The cron stays registered and needs
+  no change; confirming the first unattended tick once the incident resolves is tracked as an agent
+  follow-up. Until then the Desk shows every probe as `unknown` or `stale` and the GitHub canary is the
+  only unattended monitor.
 - `.github/workflows/collector-canary.yml` checks `/healthz`, `/readyz` and the closed
   `/v1/portfolio` from GitHub's runners at :07 and :37 each hour; a red run is the only
   out-of-band signal today.

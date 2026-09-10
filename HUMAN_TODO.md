@@ -26,6 +26,8 @@ verified. Items that need the owner's judgement stay open until the owner answer
 
 The encrypted operator read token is stored at `%LOCALAPPDATA%/Pulseboard/read-token.dpapi` for this Windows user. `observatory/docs/HOSTING.md` explains how to copy it without printing it. The public demo needs no token.
 
-Tracked debt that needs no owner input: #13 (legacy quality gates), #14 (setuptools floor), #19 (the
+Tracked debt that needs no owner input: #43 (the first unattended probe cron tick, pending behind Cloudflare
+incident sjs8s0q2x4hw, "Workers Cron Triggers degraded", open since 2026-09-09; until it lands every probe
+reads `unknown` or `stale` in the Desk), #13 (legacy quality gates), #14 (setuptools floor), #19 (the
 remaining query-budget and rollback evidence), #32/#33 (low findings) and the post-merge issues on the
 Desk delivery order (#18, #20–#24, #35).
