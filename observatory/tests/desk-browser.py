@@ -95,7 +95,7 @@ async def run(args):
             await page.locator('#download-export').click()
         download = await download_info.value
         assert 'demo-field-note' in download.suggested_filename
-        assert await page.locator('#export-preview').text_content() == ''
+        await expect(page.locator('#export-preview')).to_have_text('')
         results.append('local review and exact-preview download gate')
         await page.keyboard.press('Control+k')
         await expect(page.locator('#palette')).to_be_visible()
