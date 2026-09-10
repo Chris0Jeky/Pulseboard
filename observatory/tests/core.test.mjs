@@ -113,3 +113,17 @@ test('readiness fails on an unmigrated database', async () => {
   const DB = openDatabase();
   try { assert.equal((await handle(new Request('https://x.test/readyz'), env(DB))).status, 503); } finally { DB.close(); }
 });
+test('readiness reports the schema version and fails on a partially migrated database', withDB(async DB => {
+  const response = await handle(new Request('https://x.test/readyz'), env(DB));
+  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ready: true, schema: 1 });
+  DB.exec('DROP TABLE probe_history');
+  assert.equal((await handle(new Request('https://x.test/readyz'), env(DB))).status, 503);
+}));
+test('readiness fails when a column is missing or the recorded schema version is older', withDB(async DB => {
+  DB.exec('ALTER TABLE probes DROP COLUMN duration');
+  assert.equal((await handle(new Request('https://x.test/readyz'), env(DB))).status, 503);
+  DB.exec('ALTER TABLE probes ADD COLUMN duration REAL NOT NULL DEFAULT 0');
+  assert.equal((await handle(new Request('https://x.test/readyz'), env(DB))).status, 200);
+  DB.exec('UPDATE schema_version SET version=0');
+  assert.equal((await handle(new Request('https://x.test/readyz'), env(DB))).status, 503);
+}));

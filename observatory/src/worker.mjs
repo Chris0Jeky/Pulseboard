@@ -3,6 +3,20 @@ import { validateBatch, readBounded, monitorTransition, interval } from './contr
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
+export const SCHEMA_VERSION = 1;
+// Naming every column means a database missing a later-added column fails readiness instead of failing a request.
+const READINESS = [
+  'SELECT project,day,used,receipt FROM budget LIMIT 0',
+  'SELECT project,id,received,session,seq,event,route,release,value FROM events LIMIT 0',
+  'SELECT project,state,failures,successes,opened,checked,status,duration FROM probes LIMIT 0',
+  'SELECT project,checked,ok,duration FROM probe_history LIMIT 0',
+];
+async function ready(db) {
+  for (const query of READINESS) await db.prepare(query).all();
+  const row = await db.prepare('SELECT version FROM schema_version WHERE id=1').first();
+  if (row?.version !== SCHEMA_VERSION) throw new Error('schema version');
+  return SCHEMA_VERSION;
+}
 async function authorized(request, secret) {
   if (typeof secret !== 'string' || secret.length < 32) return false;
   const supplied = request.headers.get('authorization') || '';
@@ -50,7 +64,7 @@ export async function handle(request, env) {
       return new Response(response.body, { status: response.status, headers: h });
     }
     if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
-    if (url.pathname === '/readyz') { await env.DB.prepare('SELECT e.project FROM events e JOIN budget b ON b.project=e.project JOIN probes p ON p.project=e.project LIMIT 0').all(); return json({ ready: true }); }
+    if (url.pathname === '/readyz') return json({ ready: true, schema: await ready(env.DB) });
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
       return json(await summary(env.DB));
