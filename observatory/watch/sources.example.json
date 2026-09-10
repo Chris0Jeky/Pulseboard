@@ -1,0 +1,14 @@
+[
+  {
+    "id": "alibi-preview-app",
+    "project": "alibi",
+    "environment": "preview",
+    "kind": "app",
+    "token": "REPLACE_WITH_A_UNIQUE_RANDOM_SERVER_SECRET",
+    "assets": ["puzzle", "login", "unknown"],
+    "allowedKinds": ["http.request", "http.error", "auth.failure", "access.denied", "rate_limited"],
+    "heartbeatSeconds": 60,
+    "dailyLimit": 10000,
+    "enabled": false
+  }
+]
