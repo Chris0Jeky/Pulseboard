@@ -16,6 +16,18 @@ No PR in this rollout enables collection, changes the native apps' no-telemetry 
 
 Future-ready candidates: NavSentinel, developer-lens-lab, collaborative-hill-lab, extract-api, SwarmingLilMen, agent-harness, llm-release-gate, DevFoundry and RepoScope. Publication must be verified before adding a live probe or collecting anything. A public source repository is not evidence of a deployed product. Archived coursework, forks and private employment/client repositories are excluded.
 
+## Hosted smoke test before activation
+
+Run this against a preview deployment, before any public pilot, and record the actual results.
+
+1. Deploy a preview Worker against a scratch D1 database and set `COLLECT_ENABLED` to `"true"` for that preview only.
+2. Post one valid batch of one event to `/v1/collect/<test project>` with the project's exact `Origin` header.
+3. Assert the response is **202**, and that `SELECT COUNT(*) FROM events` on the preview database is exactly **1**.
+4. Post the identical batch again: expect 202 with the row count still 1 (deduplication), then a batch that exceeds the project's `dailyLimit`: expect **429** with `Retry-After`.
+5. Check `/readyz` returns 200 with the expected `schema` number against that same database.
+
+This step is not redundant with `npm test`. The 202-versus-429 decision reads `result[0].results.length` from an `INSERT … RETURNING` executed inside a D1 `batch()`. Local tests prove that behavior against `node:sqlite` only; whether D1 returns rows for a `RETURNING` statement in a batch, and whether a guarded upsert that admits nothing returns an empty result rather than no result set, is a hosted property that has not been measured. If step 3 fails, do not activate: a wrong reading here silently admits or refuses every batch.
+
 ## Activation order
 
 First deploy the isolated collector with collection disabled. Verify authentication, migrations and probe behavior. Review target origins and the monitoring cadence. Configure an independent check of the collector from another provider. Then activate one public pilot, preferably CommitAtlas, with an updated notice and the generated consent control. Inspect a real accepted payload and exercise withdrawal, GPC and failed transport before expanding.

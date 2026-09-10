@@ -25,7 +25,7 @@ An empty live dashboard is the expected first result. Unknown, stale, down and c
 - Transactional daily admission budgets, server receipt times, event-ID deduplication, an authenticated seven-day aggregate API and 14-day raw retention.
 - Fixed-target HTTPS synthetic probes with content checks, no redirects, bounded response reads, three-failure/two-success state transitions, stale-signal detection and 30-day probe history.
 - A real dashboard with protected collector reads, a separate synthetic demo, aggregate export, per-project evidence and deterministic investigation prompts.
-- An overwrite-safe SDK installer that records the generated file's SHA-256. Existing user edits and symlink escapes are refused.
+- An overwrite-safe SDK installer that records each generated file's SHA-256 in a lock keyed by target, so several installs can coexist in one repository. Existing user edits and symlinks are refused, including dangling ones at the target, the lock path or a parent.
 
 ## Deploy the collector
 
@@ -80,7 +80,7 @@ Source integrations, activation gates and follow-up work are in `docs/ROLLOUT.md
 
 **These are opted-in page sessions, not unique users.** Reloads create new sessions. There is no truthful DAU, cross-device count, returning-user retention or cross-product attribution without a separate identity design. Ad blockers, offline use, declined consent, automated-browser exclusions and dropped requests bias the sample.
 
-Delivery is intentionally at-most-once from the SDK. A failed batch is dropped, never replayed after later consent. The collector deduplicates event IDs submitted by other callers. A successful fetch acknowledgment can still be lost. SDK `status()` exposes its local sent/dropped/failure counters; these are not a population-wide loss estimate.
+Delivery is intentionally at-most-once from the SDK. When the page is hidden, whatever is still queued is handed to the browser with `fetch(..., { keepalive: true })`, so a tracked click that navigates away is not simply discarded; its outcome is unobservable and it is never retried. `navigator.sendBeacon` is deliberately not used, because it attaches cookies and cannot omit credentials. A failed batch is dropped, never replayed after later consent. The collector deduplicates event IDs submitted by other callers. A successful fetch acknowledgment can still be lost. SDK `status()` exposes its local sent/dropped/failure counters; these are not a population-wide loss estimate.
 
 CORS is not authentication. Anyone able to forge HTTP requests can forge browser events or exhaust a project's public event budget. These events are never used for billing, security decisions, rewards or proof of human adoption. Put rate limits/WAF controls in front of public ingestion before widening exposure.
 
