@@ -16,7 +16,7 @@ Rollout prepared on 10 September 2026. These are review branches, not merged dep
 
 ## Review status
 
-The shared kit passed 58 local tests using real SQLite. Its Observatory GitHub Actions run passed at commit `8d92fff11f581d600c357e402cd521426665f318`. MDviewer CI and Developer Lens PR gate also passed on the submitted branches.
+The shared kit passed 83 local tests using real SQLite. Its Observatory GitHub Actions run passed at commit `8d92fff11f581d600c357e402cd521426665f318`. MDviewer CI and Developer Lens PR gate also passed on the submitted branches.
 
 CI identified two integration issues that were corrected without removing the relevant checks: unused server-only constants in the CommitAtlas browser artifact, and Alibi's boot-script size budget. Alibi now includes the SDK in the application bundle, not the boot diagnostics. WealthLens formatting identified a generated, checksum-locked SDK; only that generated artifact was excluded from reformatting, matching the ownership check. Read each PR's current check results before approval. A completed local check does not prove a hosted deployment works.
 
