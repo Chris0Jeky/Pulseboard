@@ -125,8 +125,19 @@ ships with the endpoint and the collector origin in its CSP.
 The player-facing consent text is the adapter's own: "Usage sharing" / "Optional: share a small set
 of action counts with pulseboard-observatory.commit-atlas.workers.dev. No document text, filenames,
 form values or browsing history is sent. Raw events expire after 14 days. Your choice lasts 90 days on
-this browser." Receipts for the first consented payload and the withdrawal check follow below once
-the Alibi deployment is live.
+this browser." Receipts, 2026-09-10 18:00–18:11Z, Alibi 0.11.1 (Chris0Jeky/Alibi#83, Worker version `38a1ca89…`):
+
+- The hosted page carries the collector origin in its CSP `connect-src`; the adapter ships as a
+  separate online-only asset (`assets/observatory.cedd32490510.js`, byte-identical to the lock) loaded
+  after the page's `load` event, so Alibi's initial-JavaScript and offline-shell budgets are untouched.
+- Real browser: ticking **Usage sharing** produced the first admitted event, `page.view` / `home` /
+  `unattributed`, at 18:03:56Z; `budget.used` 1. The first POST took 5.4 s on a cold path and hit the
+  adapter's 5 s abort, so the client counted a failure while the collector had admitted the row
+  (#32 item 7). A reload sent a second `page.view` in about 1 s: collector total 2, two distinct
+  page sessions, `used` 2. Unticking stored `allow: false`; a further reload made no collect request
+  and the total stayed at 2. Every other registered project still answers 503.
+- The Desk therefore shows Alibi with two opted-in page sessions and every probe still `unknown`
+  or `stale` until Cloudflare's cron incident clears (#43).
 
 Check `/healthz` and `/readyz`, confirm unauthenticated `/v1/portfolio` returns 401, then use
 the Desk's Connect control with the read token. Run `tests/desk-browser.py --origin <url>` with
