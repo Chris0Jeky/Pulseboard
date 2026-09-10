@@ -3,7 +3,8 @@
 Live URL: https://pulseboard-observatory.commit-atlas.workers.dev
 
 The hosted Desk serves its UI and authenticated aggregate API from one Worker with D1.
-Collection is disabled: publishing does not activate host integrations. Since 2026-09-10 a
+Collection is admitted only for the projects listed in `COLLECT_PROJECTS` (Alibi since 2026-09-10,
+see the activation section); publishing never activates a host integration by itself. Since 2026-09-10 a
 `*/15 * * * *` cron is registered to probe the seven registered public origins (status, timing and a
 content marker; never page content) and run retention; the handler is proven on the edge, but see the
 receipts below for whether Cloudflare has actually invoked it. Synthetic demo data stays in the
@@ -113,10 +114,12 @@ Set-Clipboard -Value ''
 
 Owner decision (HUMAN_TODO q-7): "pilot Alibi, notice approved"; the account was confirmed on the
 free plan (q-6) and GitHub failure notifications are on (q-8). Version
-`1f8553ae-dc55-4227-8b8a-8307fa188d45` deploys the top-level `COLLECT_ENABLED: "true"`. With
-collection on, `/v1/collect/<id>` still answers 403 without the registered `Origin` and 204 to Alibi's
-preflight; every other project keeps an empty endpoint in its host artifact, so only Alibi can send
-once its PR (Chris0Jeky/Alibi#83) ships with the endpoint and the collector origin in its CSP.
+`1f8553ae…` deployed the top-level `COLLECT_ENABLED: "true"`; the review of Pulseboard#45 pointed out that
+the global switch alone would admit forged events for every registered origin, so the Worker now also
+requires the project id in `COLLECT_PROJECTS` (`"alibi"`), and every other project answers 503 as before.
+`/v1/collect/alibi` still answers 403 without the registered `Origin` and 204 to Alibi's preflight; every
+other host artifact keeps an empty endpoint, so only Alibi can send once its PR (Chris0Jeky/Alibi#83)
+ships with the endpoint and the collector origin in its CSP.
 The player-facing consent text is the adapter's own: "Usage sharing" / "Optional: share a small set
 of action counts with pulseboard-observatory.commit-atlas.workers.dev. No document text, filenames,
 form values or browsing history is sent. Raw events expire after 14 days. Your choice lasts 90 days on

@@ -15,7 +15,7 @@ if (supplied && READ_TOKEN.length < 32) console.error('READ_TOKEN is shorter tha
 const portText = process.env.PORT || '8788';
 if (!/^\d+$/.test(portText) || Number(portText) < 1 || Number(portText) > 65535) throw new Error('PORT must be 1..65535');
 const port = Number(portText);
-const env = { DB, READ_TOKEN, COLLECT_ENABLED: process.env.COLLECT_ENABLED || 'false',
+const env = { DB, READ_TOKEN, COLLECT_ENABLED: process.env.COLLECT_ENABLED || 'false', COLLECT_PROJECTS: process.env.COLLECT_PROJECTS || '',
   ASSETS: { async fetch(request) {
     const entry = assets.get(new URL(request.url).pathname);
     if (!entry) return new Response('', { status: 404 });
@@ -36,7 +36,7 @@ server.listen(port, '127.0.0.1', () => {
   // Only a token this process generated is safe to print; one supplied by the operator stays where they put it.
   console.log(supplied ? 'Read token: using READ_TOKEN from the environment; it is not printed here.'
     : 'Read token (generated for this run; paste into the desk; not persisted): ' + READ_TOKEN);
-  console.log('Collection is ' + (env.COLLECT_ENABLED === 'true' ? 'enabled.' : 'disabled.'));
+  console.log('Collection is ' + (env.COLLECT_ENABLED === 'true' ? 'enabled for: ' + (env.COLLECT_PROJECTS || '(no project listed in COLLECT_PROJECTS)') : 'disabled.'));
   console.log('Local runner never probes the public sites: there is no local probe command, and egress stays off. Cloudflare cron does the probing in a deployment.');
 });
 let closing = false;

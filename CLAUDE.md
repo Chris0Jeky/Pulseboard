@@ -83,6 +83,6 @@ pass first. Cloudflare access is verified (q-4). The Desk is hosted with collect
 probe cron registered over the seven origins; the handler is proven on the edge but no unattended tick
 had been observed by 2026-09-10 16:00Z because of Cloudflare incident sjs8s0q2x4hw (#43 confirms the
 first tick once it resolves; `observatory/docs/HOSTING.md`). The scratch-D1 admission
-gate passed the same day. Collection is on since the owner chose Alibi as the first pilot and approved
-its notice (q-7, 2026-09-10); every other host artifact still has an empty endpoint, and activating
-another host is a new owner decision, not cleanup. Global laws are auto-loaded; nothing here restates them.
+gate passed the same day. Collection is on for Alibi only since the owner chose it as the first pilot and approved
+its notice (q-7, 2026-09-10): `COLLECT_PROJECTS` in `wrangler.jsonc` lists the admitted ids and every other
+host artifact keeps an empty endpoint; adding a host there is a new owner decision, not cleanup. Global laws are auto-loaded; nothing here restates them.
