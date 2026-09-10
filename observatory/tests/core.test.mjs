@@ -154,6 +154,32 @@ test('real probe pipeline persists status and bounded content checks', withDB(as
   await probeAll(env(DB), async () => new Response('unexpected content'), Date.now() + 1);
   assert.ok((await DB.prepare('SELECT * FROM probes').all()).results.every(p => p.failures === 1));
 }));
+test('probes ask for a redirect mode workerd accepts and count a redirect as a failure', withDB(async DB => {
+  // redirect: 'error' throws inside workerd before any request leaves (measured 2026-09-10), which read as every target down.
+  const options = [];
+  const transport = async (url, init) => { options.push(init); return new Response(null, { status: 301, headers: { Location: url + '?moved' } }); };
+  await probeAll(env(DB), transport, Date.now());
+  assert.ok(options.length > 0 && options.every(o => o.redirect === 'manual'));
+  assert.ok((await DB.prepare('SELECT * FROM probes').all()).results.every(p => p.status === 301 && p.failures === 1));
+}));
+test('a probe with a service binding goes through the binding, the others through the transport', withDB(async DB => {
+  const bound = [], direct = [];
+  const service = { fetch: async (url, init) => { bound.push([url, init.redirect]); return new Response('CommitAtlas'); } };
+  const transport = async url => { direct.push(url); return new Response(Object.values(projects).find(p => p.probe?.url === url).probe.marker); };
+  await probeAll({ ...env(DB), COMMITATLAS: service }, transport, Date.now());
+  assert.deepEqual(bound, [[projects.commitatlas.probe.url, 'manual']]);
+  assert.ok(direct.includes(projects.alibi.probe.url) && !direct.includes(projects.commitatlas.probe.url)); // ALIBI binding absent here: falls back
+  assert.equal((await DB.prepare('SELECT successes FROM probes WHERE project=?').bind('commitatlas').first()).successes, 1);
+}));
+test('the read model says which probes observe the application rather than its public edge', async () => {
+  const { limitations } = await import('../src/portfolio.mjs');
+  const bound = limitations();
+  assert.ok(bound.at(-1).includes('CommitAtlas and Alibi') && bound.at(-1).includes('not that its public address'));
+  const unbound = limitations({ x: { label: 'X', probe: { url: 'https://x.test/', marker: 'X' } } });
+  assert.equal(unbound.length, bound.length - 1); assert.ok(!unbound.some(t => t.includes('service binding')));
+  const summaryProvenance = (await summary({ prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }), all: async () => ({ results: [] }) }) })).provenance;
+  assert.ok(summaryProvenance.includes('service-bound probes observe the application'));
+});
 test('stale monitoring is not presented as up', withDB(async DB => {
   await DB.prepare('INSERT INTO probes VALUES(?,?,?,?,?,?,?,?)').bind('mdviewer', 'up', 0, 2, null, Date.now() - 3600000, 200, 30).run();
   assert.equal((await summary(DB)).projects[0].monitor.state, 'stale');

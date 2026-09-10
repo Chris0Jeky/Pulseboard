@@ -13,6 +13,12 @@ const LIMITATIONS = [
   'Release cohorts are descriptive and may differ in users, routes and exposure.',
   'No acquisition attribution, retention cohorts, production tracing or automatic remediation is inferred.',
 ];
+/** A probe that reaches its target through a Cloudflare service binding proves the application answers, not that its
+ *  public edge does; the read model says so next to the readings instead of leaving it to a deployment note. */
+export function limitations(projects = registry) {
+  const bound = Object.values(projects).filter(p => p.probe?.binding).map(p => p.label);
+  return bound.length ? [...LIMITATIONS, `${bound.join(' and ')} are probed through a service binding inside Cloudflare: an up reading proves the application answers, not that its public address does.`] : LIMITATIONS;
+}
 export async function readPortfolio(db, { days = 7, now = Date.now(), collectionEnabled = false, projects = registry } = {}) {
   if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days) throw new RangeError('Unsupported window');
   const start = now - days * DAY;
@@ -50,7 +56,7 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
   ]);
   const [counts, sessions, daily, routes, probes, probeSamples, budgets, flows, timings] = rows.map(r => r.results);
   return { schema: 'pulseboard.portfolio/1', mode: 'live', generatedAt: now, collectionEnabled,
-    window: { start, end: now, days, timezone: 'UTC' }, limitations: LIMITATIONS,
+    window: { start, end: now, days, timezone: 'UTC' }, limitations: limitations(projects),
     projects: Object.entries(projects).map(([id, config]) => {
       const events = counts.filter(row => row.project === id);
       const total = event => events.filter(row => !event || row.event === event).reduce((n, row) => n + row.n, 0);

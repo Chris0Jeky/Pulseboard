@@ -1,6 +1,6 @@
 # Portfolio rollout
 
-No PR in this rollout enables collection, changes the native apps' no-telemetry promises, merges itself, or deploys a collector.
+No PR in this rollout enables collection or changes the native apps' no-telemetry promises. The collector itself is deployed with collection off and scheduled probes on since 2026-09-10 (`HOSTING.md`); the admission gate below has been run and passed on that date.
 
 | Repository / surface | Integration boundary | Valuable next signals |
 |---|---|---|
@@ -25,6 +25,13 @@ Run this against a preview deployment, before any public pilot, and record the a
 3. Assert the response is **202**, and that `SELECT COUNT(*) FROM events` on the preview database is exactly **1**.
 4. Post the identical batch again: expect 202 with the row count still 1 (deduplication). Then exercise the budget path the way the unit test does: every registered project has `dailyLimit` 1000 while a batch holds at most 20 events, so an oversized batch is refused with **400** by the contract, never 429. Temporarily set the test project's `dailyLimit` to 1 in `src/projects.mjs`, redeploy the preview, post a two-event batch and expect **429** with `Retry-After` and no new `events` or `budget` rows; restore the limit afterwards.
 5. Check `/readyz` returns 200 with the expected `schema` number against that same database.
+6. Prove retention runs through the deployed entrypoint: seed a row older than the retention window, trigger the
+   scheduled handler (`npx wrangler dev --test-scheduled` and `GET /__scheduled` locally, or wait for a cron tick on
+   the hosted Worker) and confirm the row is gone while the rows that tick wrote remain.
+
+The `preview` environment in `wrangler.jsonc` is that preview (collection on, no cron, the scratch database
+`pulseboard-observatory-scratch`), and `tests/hosted-admission.mjs` posts one contract-valid batch and asserts the
+status; `HOSTING.md` records the 2026-09-10 run. Delete the preview Worker afterwards (`npx wrangler delete --env preview`).
 
 This step is not redundant with `npm test`. The 202-versus-429 decision reads `result[0].results.length` from an `INSERT … RETURNING` executed inside a D1 `batch()`. Local tests prove that behavior against `node:sqlite` only; whether D1 returns rows for a `RETURNING` statement in a batch, and whether a guarded upsert that admits nothing returns an empty result rather than no result set, is a hosted property that has not been measured. If step 3 fails, do not activate: a wrong reading here silently admits or refuses every batch.
 
