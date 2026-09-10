@@ -10,6 +10,13 @@ test('generated browser script parses and remains inert while unconfigured', () 
   const context = { document: { readyState: 'complete' } }; vm.runInNewContext(code, context);
   assert.equal(context.PulseboardUsage, null);
 });
+test('generated artifact keeps no module statement or server-only constant, on any line ending', () => {
+  const code = buildEmbed('mdviewer');
+  assert.deepEqual(code.split('\n').filter(line => /^(?:import|export)\b/.test(line)), []);
+  assert.equal(/MAX_BYTES|MAX_BATCH/.test(code), false);
+  // The reader normalises CRLF, so a Windows checkout builds the same artifact a Linux one does.
+  assert.equal(code.includes('\r'), false);
+});
 test('installer is repeatable, refuses edited files, and confines paths', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'observatory-test-'));
   try {
