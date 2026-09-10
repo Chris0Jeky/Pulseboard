@@ -17,7 +17,7 @@ export function buildEmbed(id, options = {}) {
   }
   // JSON escapes prevent accidental HTML script termination when embedding in an offline artifact.
   const json = JSON.stringify(config).replaceAll('<', '\\u003c');
-  const contract = read('../src/contracts.mjs').split('export function validateBatch')[0].replace(/^export /gm, '');
+  const contract = read('../src/contracts.mjs').split('export function validateBatch')[0].replace(/^export const MAX_(?:BYTES|BATCH) =.*\n/gm, '').replace(/^export /gm, '');
   const browser = read('../src/browser.mjs').replace(/^import .*;\n/, '').replace(/^export /gm, '');
   const embed = read('./embed.mjs').replace(/^export /gm, '');
   return `/* SPDX-License-Identifier: GPL-3.0-only\n * Pulseboard Observatory 0.1.0. Generated; see observatory.lock.json.\n * Disabled until endpoint is configured. No dynamic/CDN dependency. */\n(function () {\n'use strict';\n${contract}\n${browser}\n${embed}\nconst config = ${json};\nfunction start() { globalThis.PulseboardUsage?.dispose(); globalThis.PulseboardUsage = mountObserver(config, createObserver); }\nif (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();\nglobalThis.addEventListener?.('pageshow', event => { if (event.persisted) start(); });\n})();\n`;
