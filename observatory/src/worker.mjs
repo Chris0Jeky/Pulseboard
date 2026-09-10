@@ -83,9 +83,11 @@ export async function handle(request, env) {
     try { body = await readBounded(request); } catch { return json({ error: 'invalid_body' }, 400, cors); }
     if (!validateBatch(body, project)) return json({ error: 'contract' }, 400, cors);
     const now = Date.now(), day = new Date(now).toISOString().slice(0, 10), receipt = crypto.randomUUID();
-    const reserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) VALUES(?,?,?,?)
+    // The SELECT..WHERE guards the first batch of a UTC day; the ON CONFLICT branch guards every later one.
+    const reserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) SELECT ?,?,?,? WHERE ?<=?
       ON CONFLICT(project,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt
-      WHERE used+excluded.used<=? RETURNING used`).bind(id, day, body.events.length, receipt, project.dailyLimit);
+      WHERE used+excluded.used<=? RETURNING used`)
+      .bind(id, day, body.events.length, receipt, body.events.length, project.dailyLimit, project.dailyLimit);
     // D1 batch is transactional. Receipt gating makes a rejected reservation admit zero events.
     const inserts = body.events.map(e => env.DB.prepare(`INSERT OR IGNORE INTO events
       (project,id,received,session,seq,event,route,release,value)

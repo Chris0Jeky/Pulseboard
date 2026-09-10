@@ -64,6 +64,19 @@ test('daily reservation and event insertion are atomic at the boundary', withDB(
   assert.equal((await handle(request([event()]), env(DB))).status, 202);
   assert.equal((await handle(request([event()]), env(DB))).status, 429);
 }));
+// The first batch of a UTC day takes the INSERT branch, which had no limit guard at all.
+test('the first batch of a day is refused when it alone exceeds the daily limit', withDB(async DB => {
+  const original = projects.mdviewer.dailyLimit; projects.mdviewer.dailyLimit = 1;
+  try {
+    const refused = await handle(request([event(), event()]), env(DB));
+    assert.equal(refused.status, 429); assert.equal(refused.headers.get('Retry-After'), '3600');
+    assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 0);
+    assert.equal((await DB.prepare('SELECT COUNT(*) n FROM budget').first()).n, 0);
+    assert.equal((await handle(request([event()]), env(DB))).status, 202);
+    assert.equal((await handle(request([event()]), env(DB))).status, 429);
+    assert.equal((await DB.prepare('SELECT used FROM budget').first()).used, 1);
+  } finally { projects.mdviewer.dailyLimit = original; }
+}));
 test('SQL batch rolls back partial work on failure', withDB(async DB => {
   await assert.rejects(DB.batch([DB.prepare('INSERT INTO budget VALUES(?,?,?,?)').bind('x', 'today', 1, 'y'), DB.prepare('SELECT * FROM nonexistent')]));
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM budget').first()).n, 0);
