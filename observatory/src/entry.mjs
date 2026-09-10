@@ -1,2 +1,2 @@
-// Keep testable helpers in worker.mjs; workerd treats named exports as entrypoints.
-export { default } from './worker.mjs';
+// Keep testable helpers out of the workerd entrypoint's named exports.
+export { default } from './watch-worker.mjs';

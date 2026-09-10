@@ -4,7 +4,7 @@
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
-  "vars": { "COLLECT_ENABLED": "false" },
+  "vars": { "COLLECT_ENABLED": "false", "WATCH_ENABLED": "false" },
   // Each tick runs probeAll() over the fixed targets in src/projects.mjs and then maintain() (14-day event
   // and budget retention, 30-day probe history). COLLECT_ENABLED gates browser admission only, never probing.
   "triggers": { "crons": ["*/15 * * * *"] },
