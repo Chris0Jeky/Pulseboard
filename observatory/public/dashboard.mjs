@@ -77,7 +77,7 @@ function signalDetail(signal) {
     e('section', { class: 'drawer-section' }, e('h3', {}, 'A sensible next check'), e('p', {}, signal.next),
       button('Prepare a task handoff ↗', () => {
         $('#detail-dialog').close();
-        preview(JSON.stringify(makeHandoff(evidenceSnapshot, signal), null, 2), `pulseboard-${state.snapshot.mode}-handoff.json`, 'application/json');
+        preview(JSON.stringify(makeHandoff(evidenceSnapshot, signal, state.stale), null, 2), `pulseboard-${state.snapshot.mode}-handoff.json`, 'application/json');
       }, 'primary')),
     e('p', { class: 'tiny muted' }, 'Rules are deterministic. A signal is an observation to inspect, not a diagnosis, productivity score, or instruction to deploy.'));
   showDialog('#detail-dialog');
@@ -297,7 +297,7 @@ async function refresh() {
   }
 }
 function preview(text, name, type = 'text/markdown') { state.export = { text, name, type }; $('#export-confirm').checked = false; $('#download-export').disabled = true; $('#export-preview').textContent = text; $('#export-warning').textContent = `${state.snapshot?.mode === 'demo' ? 'SYNTHETIC DEMO. ' : 'PRIVATE AGGREGATE EXPORT. '}Review the complete file below. Nothing is uploaded; sharing it later is your decision.`; showDialog('#export-dialog'); }
-function fieldNote() { if (state.snapshot) preview(makeBrief(state.snapshot, buildSignals(state.snapshot)), `pulseboard-${state.snapshot.mode}-field-note.md`); }
+function fieldNote() { if (state.snapshot) preview(makeBrief(state.snapshot, buildSignals(state.snapshot), state.stale), `pulseboard-${state.snapshot.mode}-field-note.md`); }
 function density() { document.body.dataset.density = document.body.dataset.density === 'compact' ? 'comfortable' : 'compact'; try { localStorage.setItem('pulseboard.desk.density', document.body.dataset.density); } catch { /* In-memory setting works. */ } render(); }
 readSettings();
 for (const close of document.querySelectorAll('.close-dialog')) close.addEventListener('click', () => close.closest('dialog').close());
