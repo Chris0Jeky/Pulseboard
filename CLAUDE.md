@@ -25,7 +25,7 @@ adapter of this file; `WORKBENCH.md` is the legacy runtime's user README.
 | backend lint/types | `cd backend && ../venv/Scripts/python -m ruff check app` and `-m mypy app` | 19 and 9 errors, pre-existing (#13) |
 | `frontend/**` | `cd frontend/pulseboard-web && npx vitest run --maxWorkers=2` | 56 passed, 2 failed, pre-existing (#13), 17 s |
 | frontend build | `cd frontend/pulseboard-web && npm run build` | fails: Tailwind `theme.css` missing (#13) |
-| `observatory/**` | `cd observatory && npm test` | 128 passed, under 1 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
+| `observatory/**` | `cd observatory && npm test` | 129 passed, under 1 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
 | Desk browser | once: `python -m venv .browser-venv && .browser-venv/Scripts/pip install playwright==1.57.0 && .browser-venv/Scripts/playwright install chromium`; then, with `READ_TOKEN` exported in the foreground shell, `cd observatory && node src/local.mjs` in one shell and `cd observatory && ../.browser-venv/Scripts/python tests/desk-browser.py --origin http://127.0.0.1:8788` in another | 13 checks passed; `kill` does not stop node.exe here, free port 8788 via PowerShell `Stop-Process` |
 | Desk hosted | `cd observatory && npx wrangler deploy --dry-run`; admission gate on a preview: `npx wrangler deploy --env preview` then `node tests/hosted-admission.mjs --origin <preview> --project mdviewer --events 1 --expect 202 --repeat` (delete the preview after) | 2026-09-10: 202/202, one event row; 429 on both budget branches |
 | docs and harness | `git diff --check` (working tree) and `git diff --check origin/main...HEAD` (review range; `--cached` for staged); `python <agent-harness>/harness.py audit .` | clean |
@@ -50,7 +50,7 @@ repo-side; merge with a merge commit.
 
 ## Desk boundaries
 
-Collection stays disabled: never enable it, deploy a Worker, broaden probe targets or publish a
+Collection is admitted only for the ids in `COLLECT_PROJECTS`: never add one, deploy a Worker, broaden probe targets or publish a
 private projection as incidental cleanup. Closed versioned contracts, bounded payloads, explicit
 missingness and source times; never average percentiles; demo fixtures never reach collector
 storage. Imported claims never become verified CI, user identity, public health or causality by
@@ -79,7 +79,7 @@ T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-har
 binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO.md`; read it before
 merging anything. Hosted Cloudflare/D1 activation (q-2) and the Desk stack merge (q-3) were both
 authorised on 2026-09-10; q-3 carries the owner's condition that #15–#17 get a deep check and test
-pass first. Cloudflare access is verified (q-4). The Desk is hosted with collection off and a 15-minute
+pass first. Cloudflare access is verified (q-4). The Desk is hosted with collection on for Alibi only (below) and a 15-minute
 probe cron registered over the seven origins; the handler is proven on the edge but no unattended tick
 had been observed by 2026-09-10 16:00Z because of Cloudflare incident sjs8s0q2x4hw (#43 confirms the
 first tick once it resolves; `observatory/docs/HOSTING.md`). The scratch-D1 admission

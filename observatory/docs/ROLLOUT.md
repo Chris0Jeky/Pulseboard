@@ -1,6 +1,6 @@
 # Portfolio rollout
 
-No PR in this rollout enables collection or changes the native apps' no-telemetry promises. The collector itself is deployed with collection off and scheduled probes on since 2026-09-10 (`HOSTING.md`); the admission gate below has been run and passed on that date.
+No host PR in this rollout changes the native apps' no-telemetry promises. The collector is deployed with scheduled probes on since 2026-09-10 and admits browser events for the projects listed in `COLLECT_PROJECTS` only (Alibi, the owner's first pilot, since the same day; `HOSTING.md`); the admission gate below has been run and passed on that date.
 
 | Repository / surface | Integration boundary | Valuable next signals |
 |---|---|---|
