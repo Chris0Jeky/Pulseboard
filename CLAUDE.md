@@ -1,260 +1,73 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Project Overview
-
-Pulseboard is a real-time data dashboard platform built with FastAPI (backend) and Vue 3 (frontend). It streams data from pluggable feeds (system metrics, HTTP JSON, crypto prices) via WebSockets to a browser UI with live-updating charts.
-
-## Development Commands
-
-### Docker Deployment (Recommended)
-
-The project now includes comprehensive Docker support. See DOCKER.md for full documentation.
-
-```bash
-# Quick start with Docker Compose
-docker-compose up -d                    # Start all services
-docker-compose logs -f                  # View logs
-docker-compose ps                       # Check status
-docker-compose down                     # Stop services
-
-# Development mode with hot reload
-docker-compose -f docker-compose.dev.yml up
-
-# Helper scripts
-./scripts/start.sh                      # Start with auto-seeding
-./scripts/stop.sh                       # Graceful shutdown
-./scripts/status.sh                     # Check service health
-./scripts/backup.sh                     # Backup database
-./scripts/restore.sh backup.db          # Restore database
-```
-
-### Backend
-
-```bash
-# Start development server (recommended - auto-setup)
-./scripts/dev_start.sh
-
-# Manual setup
-python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r backend/requirements.txt
-cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Seed demo data (creates dashboard with system metrics and crypto feeds)
-source venv/bin/activate
-python scripts/seed_demo_data.py
-
-# Testing
-cd backend
-pytest                           # Run all tests
-pytest tests/unit/test_feeds.py  # Run specific test file
-pytest -v                        # Verbose output
-pytest --cov                     # With coverage
-
-# Code quality
-black backend/app backend/tests  # Format code
-ruff check backend/app           # Lint
-mypy backend/app                 # Type checking
-```
-
-### Frontend
-
-```bash
-# Start development server (recommended - auto-setup)
-./scripts/dev_start_frontend.sh
-
-# Manual setup
-cd frontend/pulseboard-web
-npm install
-npm run dev         # Development server on http://localhost:5173
-npm run build       # Production build
-npm run preview     # Preview production build
-
-# Testing (56 tests passing)
-npm run test        # Run tests in watch mode
-npm run test:ui     # Test UI
-npm run test:run    # Run tests once
-npm run test:coverage  # Run with coverage report
-```
-
-## Core Architecture
-
-### Data Flow (Backend → Frontend)
-
-1. **FeedManager** (backend/app/feeds/manager.py) loads enabled `FeedDefinition`s from DB on startup
-2. **Feeds** (backend/app/feeds/*.py) run as background asyncio tasks, calling `fetch_data()` at configured intervals
-3. **DataHub** (backend/app/hub/hub.py) receives feed events via `publish_feed_event()`, stores latest + 10min history window
-4. **WebSocket connections** (backend/app/ws/router.py) established per dashboard at `/ws/dashboards/{id}`
-5. **DataHub** broadcasts feed updates only to dashboards using those feeds
-6. **Frontend composable** (src/composables/useDashboardWebSocket.ts) manages WS connection with exponential backoff reconnection
-7. **liveDataStore** (src/stores/liveData.ts) receives events and maintains latest + last 100 events per feed
-8. **Panel components** (src/components/panels/*.vue) reactively render charts from store data
-
-### Key Backend Components
-
-**Lifecycle (app/main.py:34-71):**
-- `lifespan()` context manager handles startup/shutdown
-- On startup: creates DB tables → initializes DataHub → loads/starts feeds via FeedManager
-- On shutdown: stops all feeds cleanly
-
-**Feed System:**
-- `BaseFeed` (app/feeds/base.py): Abstract class with `fetch_data()` method and `run()` loop
-- Feed implementations: `SystemMetricsFeed`, `HttpJsonFeed`, `CryptoPriceFeed`
-- Registry pattern: `get_feed_class(type)` in `app/feeds/__init__.py` maps feed types to classes
-- `FeedManager.start_feed()`: parses `config_json` from DB, instantiates feed class, starts asyncio task
-
-**DataHub (app/hub/hub.py):**
-- Maintains `latest: Dict[UUID, FeedEvent]` and `history: Dict[UUID, Deque[FeedEvent]]`
-- `dashboard_feeds: Dict[UUID, Set[UUID]]` tracks which feeds each dashboard uses
-- On event: updates latest, appends to history, trims old events, broadcasts to relevant dashboards
-- On WS connection: sends initial state (latest events for dashboard's feeds)
-
-**WebSocket (app/ws/router.py):**
-- Endpoint: `/ws/dashboards/{dashboard_id}`
-- On connect: queries DB for dashboard's panels → extracts feed IDs → registers with DataHub
-- DataHub sends initial state, then real-time updates
-- Ping/pong keepalive handled by frontend
-
-### Key Frontend Components
-
-**State Management (Pinia):**
-- `dashboardsStore` (src/stores/dashboards.ts): Dashboard CRUD operations
-- `liveDataStore` (src/stores/liveData.ts): Feed event storage (latest + history)
-- `uiStore` (src/stores/ui.ts): WS status, dark mode, error messages
-
-**WebSocket Composable (src/composables/useDashboardWebSocket.ts):**
-- Auto-reconnect with exponential backoff (max 5 attempts)
-- 30-second ping interval to keep connection alive
-- Parses `FeedEventMessage` and calls `liveDataStore.applyFeedUpdate()`
-- Cleans up on component unmount
-
-**Panel Types:**
-- `PanelStat.vue`: Single value with trend indicator
-- `PanelTimeseries.vue`: Line chart using ECharts
-- `PanelBar.vue`: Bar chart using ECharts
-- All panels use `panel.config.feed_key` to extract value from `payload`
-
-### Database Models (SQLModel)
-
-**Dashboard** (app/models/dashboard.py):
-- Fields: `id`, `name`, `description`, `created_at`, `updated_at`
-- Relationship: `panels` (one-to-many)
-
-**FeedDefinition** (app/models/feed.py):
-- Fields: `id`, `name`, `type`, `config_json`, `enabled`, `created_at`, `updated_at`
-- `config_json` contains feed-specific settings (e.g., `interval_sec`, `coin_id`, `url`)
-
-**Panel** (app/models/panel.py):
-- Fields: `id`, `dashboard_id`, `title`, `type`, `config_json`, `position`, `created_at`, `updated_at`
-- `config_json` contains `feed_id` and `feed_key` (JSONPath to extract value from payload)
-
-## Creating a New Feed Type
-
-1. **Create feed class** in `backend/app/feeds/your_feed.py`:
-   ```python
-   from app.feeds.base import BaseFeed
-
-   class YourFeed(BaseFeed):
-       async def fetch_data(self) -> Dict[str, Any]:
-           # Fetch data from source
-           return {"key": "value"}
-   ```
-
-2. **Register feed** in `backend/app/feeds/__init__.py`:
-   ```python
-   from .your_feed import YourFeed
-
-   _FEED_REGISTRY = {
-       "your_feed": YourFeed,
-       # ...
-   }
-   ```
-
-3. **Add feed via API**:
-   ```bash
-   curl -X POST http://localhost:8000/api/feeds \
-     -H "Content-Type: application/json" \
-     -d '{
-       "name": "Your Feed",
-       "type": "your_feed",
-       "config_json": "{\"interval_sec\": 30}",
-       "enabled": true
-     }'
-   ```
-
-4. **Restart backend** to load new feed (or call `FeedManager.restart_feed()`)
-
-## Testing Strategy
-
-**Backend (85% coverage):**
-- Unit tests: `tests/unit/test_config.py`, `test_models.py`, `test_feeds.py`, `test_hub.py`
-- Integration tests: `tests/integration/test_api.py` (REST endpoints), `test_websocket.py` (WS)
-- Uses in-memory SQLite for test isolation
-- Async tests via `pytest-asyncio`
-
-**Frontend (56 tests passing):**
-- API client tests: 9 tests covering all CRUD operations
-- Stores tests: 47 tests (dashboardsStore, liveDataStore, uiStore)
-- Test infrastructure: Vitest with happy-dom, comprehensive helpers
-- Missing: Component tests, composable tests, E2E tests (planned)
-
-## Configuration
-
-**Backend (.env):**
-- `DATABASE_URL`: SQLite path (default: `sqlite:///./pulseboard.db`)
-- `CORS_ORIGINS`: Comma-separated allowed origins (default: `http://localhost:5173`)
-- `HISTORY_WINDOW_MINUTES`: DataHub history window (default: `10`)
-- `LOG_LEVEL`: Logging level (default: `INFO`)
-
-**Frontend (frontend/pulseboard-web/.env):**
-- `VITE_API_BASE_URL`: Backend API URL (default: proxied via Vite in dev)
-
-## Common Pitfalls
-
-**Feed cancellation:** Feeds check `self._running` and `self._stop_requested` at multiple points in `run()` loop to ensure clean shutdown. Always check these flags after `await` calls.
-
-**WebSocket reconnection:** Frontend has max 5 reconnect attempts with exponential backoff. If connection fails permanently, user must refresh page.
-
-**Feed config JSON:** Must be valid JSON string stored in DB. Parse with `json.loads()` in `FeedManager.start_feed()`.
-
-**Panel feed_key:** Uses dot notation (e.g., `"cpu_percent"` or `"data.metrics.value"`) to extract values from feed payload. ECharts panels expect numeric values.
-
-**History window:** DataHub stores 10 minutes of history (configurable). Frontend stores last 100 events per feed. These are independent limits.
-
-## API Endpoints
-
-**Dashboards:** `GET|POST /api/dashboards`, `GET|PATCH|DELETE /api/dashboards/{id}`, `GET /api/dashboards/{id}/feed-ids`
-
-**Feeds:** `GET|POST /api/feeds`, `GET|PATCH|DELETE /api/feeds/{id}`
-
-**Panels:** `POST /api/dashboards/{dashboard_id}/panels`, `PATCH|DELETE /api/dashboards/{dashboard_id}/panels/{panel_id}`, `GET /api/panels/{id}`
-
-**WebSocket:** `WS /ws/dashboards/{dashboard_id}`
-
-**Health:** `GET /health`, `GET /`
-
-## Current Status (Phase 4 Complete - Production Ready)
-
-**Complete:**
-- Core functionality, 3 feed types, 3 panel types
-- Backend tests (85% coverage)
-- Frontend tests (56 tests passing)
-- Real-time streaming with WebSocket
-- Feed management UI with testing
-- Panel drag and drop repositioning
-- Panel resize with grid snapping
-- PWA support (installable app)
-
-**Planned:**
-- Panel add/delete UI from dashboard view
-- Component and E2E tests
-- Additional feeds (RepoScope, Taskdeck)
-- Desktop wrapper (Electron/Tauri)
-- Authentication and alerting
-
-**Status:** Ready for production deployment (internal use). Add authentication for public deployment.
-
-See STATUS.md for detailed implementation status.
+# Pulseboard — agent map
+
+Pulseboard is a public GPL-3.0-only repository carrying two runtimes side by side. The
+**workbench** on `main` is a FastAPI + Vue 3 real-time feed dashboard (pluggable feeds →
+WebSocket → ECharts panels). The **Desk** in `observatory/` is the new primary direction: a
+dependency-free Node collector, an aggregate read model and an operations desk, with collection
+disabled by default. As of 2026-09-10 the Desk exists only on the stacked PRs #15 → #16 → #17
+(`feat/portfolio-observatory-kit` → `feat/pulseboard-desk` → `feat/pulseboard-desk-ui`); issues
+#18–#24 are its delivery order and every one of them depends on that stack. Whether the stack
+merges at all is the owner's call (HUMAN_TODO q-3); once authorised, merge it oldest-first and
+retarget each child after its base lands (#27 tracks the post-merge doc sync).
+
+## Run it (Kraspyon, measured 2026-09-10: Python 3.13, Node 24.19, no Docker Desktop)
+
+- Workbench backend: `python -m venv venv && venv/Scripts/python -m pip install -r backend/requirements.txt`,
+  then `cd backend && ../venv/Scripts/python -m uvicorn app.main:app --reload --port 8000`.
+- Workbench frontend: `cd frontend/pulseboard-web && npm ci && npm run dev` → http://localhost:5173.
+- Desk (stack only): `cd observatory && npm start` → http://127.0.0.1:8788, read token printed to the terminal.
+
+## Prove it — narrowest check per seam
+
+| Seam | Command from the repo root | Measured 2026-09-10 |
+|---|---|---|
+| `backend/**` | `cd backend && ../venv/Scripts/python -m pytest -q -p no:cacheprovider` | 67 passed, 9 s |
+| backend lint/types | `cd backend && ../venv/Scripts/python -m ruff check app` and `-m mypy app` | 19 and 9 errors, pre-existing (#13) |
+| `frontend/**` | `cd frontend/pulseboard-web && npx vitest run --maxWorkers=2` | 56 passed, 2 failed, pre-existing (#13), 17 s |
+| frontend build | `cd frontend/pulseboard-web && npm run build` | fails: Tailwind `theme.css` missing (#13) |
+| `observatory/**` | `cd observatory && npm test` | 94/96 on Node 24 here (#25); 96/96 in CI on Node 22 |
+| Desk browser | `.github/workflows/desk-browser.yml`, Playwright against the real server | hosted-only; local runs need a Playwright venv |
+| docs and harness | `git diff --check origin/main...HEAD` (add `--cached` for staged work); `python <agent-harness>/harness.py audit .` | clean |
+
+The red gates above are tracked debt (#13 lint/types/tests/build, #14 setuptools floor). A change
+that touches a seam must not move its numbers the wrong way, and a green Desk run never closes
+#13 or #14. CI on the stack: `observatory.yml` (Node 22, `npm test`) and `desk-browser.yml` run
+only for `observatory/**` changes. `main` has no branch protection and no workflow (measured
+2026-09-10). Squash merge is disabled repo-side; merge with a merge commit.
+
+## Map
+
+- `backend/app/` — FastAPI: `feeds/` (BaseFeed + registry), `hub/` (DataHub latest + history,
+  per-dashboard broadcast), `ws/` (`/ws/dashboards/{id}`), `models/` (SQLModel), `api/`.
+- `frontend/pulseboard-web/src/` — Pinia stores (`dashboards`, `liveData`, `ui`), the
+  `useDashboardWebSocket` composable, `components/panels/*.vue` (ECharts).
+- `observatory/` (stack) — `src/` collector, worker, sqlite, portfolio, contracts; `public/` the Desk
+  UI (native ESM, no build step); `adapters/` embed installer; `docs/DESK_*.md` architecture,
+  bridges and direction; `tests/*.test.mjs` plus `tests/desk-browser.py`.
+- Workbench architecture detail loads by path from `.claude/rules/workbench.md`.
+
+## Desk boundaries
+
+Collection stays disabled: never enable it, deploy a Worker, broaden probe targets or publish a
+private projection as incidental cleanup. Closed versioned contracts, bounded payloads, explicit
+missingness and source times; never average percentiles; demo fixtures never reach collector
+storage. Imported claims never become verified CI, user identity, public health or causality by
+relabelling. Read `observatory/docs/DESK_ARCHITECTURE.md` and `DESK_BRIDGES.md` before changing a
+measurement or data boundary. Prefer a tested vertical slice to scaffolding.
+
+## Pitfalls
+
+- `git show <ref>:path/with/slashes` under the Bash tool needs `MSYS_NO_PATHCONV=1`, or the path is mangled.
+- `venv/`, `node_modules/` and `*.db` are gitignored and absent in a fresh worktree; install before proving.
+- `npm ci` in the frontend reports 27 audit findings (#13); triage individually, never `audit fix --force`.
+- `STATUS.md`, `DEMO_GUIDE.md`, `IMPROVEMENT_PROPOSALS.md` and `UI_IMPROVEMENTS.md` describe the
+  2025-11 workbench and are history, not verification.
+- `.vite/deps` is a tracked build cache on `main` (#26); do not read or "fix" it in passing.
+
+## Authority
+
+T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-harness/tier.json`
+binds and its ratification is open as q-1. Human-action file: `HUMAN_TODO.md`; read it before
+merging anything. Three gates are the owner's alone: ratifying the tier (q-1), any hosted
+Cloudflare/D1 resource, production read token or collection activation (q-2), and merging the Desk
+stack #15–#17 (q-3). Global laws are auto-loaded; nothing here restates them.

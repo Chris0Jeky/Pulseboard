@@ -1,0 +1,20 @@
+{
+  "tier": 2,
+  "name": "daily-driver",
+  "authority": {
+    "push": "free",
+    "merge": "free"
+  },
+  "flags": {
+    "sensitive_data": false,
+    "wave_mode": false,
+    "dormant_production": false,
+    "relaxed_work_loss_guards": false
+  },
+  "budgets": {
+    "standing_context_tokens": 3000
+  },
+  "human_todo": "HUMAN_TODO.md",
+  "last_reviewed": "2026-09-10",
+  "notes": "Public GPL-3.0-only repository, no deployment, no accounts or participant data; collection in observatory/ is disabled by default. T2 reflects durable multi-session use and an active PR stack (#15 -> #16 -> #17). Push and merge are agent-executable within the global gate: proving checks green for the touched seam, one review round, three-minute head aging, merge commit never squash. Hosted Cloudflare/D1 resource creation, production read tokens and collection activation need explicit owner approval (HUMAN_TODO q-2), and merging the Desk stack #15 -> #16 -> #17 is the owner's product decision (q-3), outside merge: free. Reassess the tier before hosted deployment or any real participant data. Proposed by the 2026-09-10 harness session; ratification is HUMAN_TODO q-1."
+}
