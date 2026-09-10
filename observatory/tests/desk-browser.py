@@ -133,6 +133,9 @@ async def run(args):
         assert await page.locator('#view img').count() == 0
         results.append('tab-local native catalogue projection renders injected markup as inert text')
         await page.locator('input[name=public-project][value=alibi]').check()
+        # A refresh re-renders this view exactly as the background poll does; the selection must survive it.
+        await page.locator('#refresh').click()
+        await expect(page.locator('input[name=public-project][value=alibi]')).to_be_checked()
         await page.get_by_role('button', name='Preview public pulse', exact=True).click()
         packet = json.loads(await page.locator('#export-preview').text_content())
         assert len(packet['projects']) == 1 and packet['sourceMode'] == 'demo'
