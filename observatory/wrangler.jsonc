@@ -5,6 +5,18 @@
   "workers_dev": true,
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
   "vars": { "COLLECT_ENABLED": "false" },
-  "triggers": { "crons": [] },
-  "d1_databases": [{ "binding": "DB", "database_name": "pulseboard-observatory", "database_id": "9dfae806-0948-4fa8-9cd6-ab14fa48728e" }]
+  // Each tick runs probeAll() over the fixed targets in src/projects.mjs and then maintain() (14-day event
+  // and budget retention, 30-day probe history). COLLECT_ENABLED gates browser admission only, never probing.
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "d1_databases": [{ "binding": "DB", "database_name": "pulseboard-observatory", "database_id": "9dfae806-0948-4fa8-9cd6-ab14fa48728e" }],
+  "env": {
+    // Disposable admission gate from docs/ROLLOUT.md: collection on, no cron, its own scratch database.
+    // Deploy with `npx wrangler deploy --env preview`; delete the Worker with `npx wrangler delete --env preview` afterwards.
+    "preview": {
+      "name": "pulseboard-observatory-preview",
+      "vars": { "COLLECT_ENABLED": "true" },
+      "triggers": { "crons": [] },
+      "d1_databases": [{ "binding": "DB", "database_name": "pulseboard-observatory-scratch", "database_id": "75c78861-b347-4b03-8a02-7cd9a9e13bb0" }]
+    }
+  }
 }

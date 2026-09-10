@@ -1,0 +1,33 @@
+name: Collector canary
+# Independent liveness/readiness check of the hosted collector from a second provider (GitHub-hosted runners),
+# because the Worker's own cron cannot observe a Cloudflare outage. A red run e-mails the workflow's owner.
+# GitHub may delay or skip scheduled runs under load; this is a coarse canary, not a paging monitor.
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: collector-canary
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      ORIGIN: https://pulseboard-observatory.commit-atlas.workers.dev
+    steps:
+      - name: Liveness, readiness and closed reads
+        run: |
+          set -eu
+          ua='Pulseboard-Observatory-canary/0.1 (GitHub Actions)'
+          live=$(curl -sS -A "$ua" --max-time 20 -o /dev/null -w '%{http_code}' "$ORIGIN/healthz")
+          ready_body=$(curl -sS -A "$ua" --max-time 20 -w '\n%{http_code}' "$ORIGIN/readyz")
+          ready=$(printf '%s' "$ready_body" | tail -n1)
+          closed=$(curl -sS -A "$ua" --max-time 20 -o /dev/null -w '%{http_code}' "$ORIGIN/v1/portfolio")
+          echo "healthz=$live readyz=$ready unauthenticated_portfolio=$closed"
+          printf '%s\n' "$ready_body" | head -n1
+          test "$live" = 200
+          test "$ready" = 200
+          printf '%s' "$ready_body" | head -n1 | grep -q '"ready":true'
+          test "$closed" = 401
