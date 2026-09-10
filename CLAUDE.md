@@ -68,7 +68,7 @@ measurement or data boundary. Prefer a tested vertical slice to scaffolding.
 ## Authority
 
 T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-harness/tier.json`
-binds and its ratification is open as q-1. Human-action file: `HUMAN_TODO.md`; read it before
-merging anything. Three gates are the owner's alone: ratifying the tier (q-1), any hosted
-Cloudflare/D1 resource, production read token or collection activation (q-2), and merging the Desk
-stack #15–#17 (q-3). Global laws are auto-loaded; nothing here restates them.
+binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO.md`; read it before
+merging anything. Hosted Cloudflare/D1 activation (q-2) and the Desk stack merge (q-3) were both
+authorised on 2026-09-10; q-3 carries the owner's condition that #15–#17 get a deep check and test
+pass first, and #19's hosted steps wait on Cloudflare access (q-4). Global laws are auto-loaded; nothing here restates them.
