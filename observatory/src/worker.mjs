@@ -1,5 +1,5 @@
 import { projects } from './projects.mjs';
-import { validateBatch, readBounded, monitorTransition, interval } from './contracts.mjs';
+import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
@@ -46,7 +46,7 @@ export async function summary(db, now = Date.now()) {
     projects: Object.entries(projects).map(([id, p]) => {
       const probe = probes.find(x => x.project === id), funnel = funnels.find(x => x.project === id);
       return { id, label: p.label, configuredOrigin: p.origin, probeExpected: !!p.probe,
-        monitor: probe ? { ...probe, state: now - probe.checked > 30 * 60000 ? 'stale' : probe.state } : { state: 'unknown' },
+        monitor: probe ? { ...probe, state: monitorState(probe, now) } : { state: 'unknown' },
         counts: counts.filter(x => x.project === id), sessions: sessions.find(x => x.project === id)?.n || 0,
         daily: daily.filter(x => x.project === id),
         funnel: funnel ? { ...funnel, interval: interval(funnel.completed, funnel.started) } : null,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { openDatabase } from '../src/sqlite.mjs';
 import { projects } from '../src/projects.mjs';
-import { validateEvent, validateBatch, readBounded, interval, monitorTransition } from '../src/contracts.mjs';
+import { validateEvent, validateBatch, readBounded, interval, monitorTransition, monitorState, STALE_AFTER } from '../src/contracts.mjs';
 import { handle, summary, maintain, probeAll } from '../src/worker.mjs';
 const event = (extra = {}) => ({ v: 1, id: crypto.randomUUID(), session: crypto.randomUUID(), seq: 1,
   event: 'page.view', route: 'home', release: 'unattributed', ...extra });
@@ -103,6 +103,16 @@ test('real probe pipeline persists status and bounded content checks', withDB(as
 test('stale monitoring is not presented as up', withDB(async DB => {
   await DB.prepare('INSERT INTO probes VALUES(?,?,?,?,?,?,?,?)').bind('mdviewer', 'up', 0, 2, null, Date.now() - 3600000, 200, 30).run();
   assert.equal((await summary(DB)).projects[0].monitor.state, 'stale');
+}));
+// A clock skew or a hand-edited row must not let a reading that has not happened yet stand in for current state.
+test('a future-dated reading is stale, up or down', withDB(async DB => {
+  const insert = state => DB.prepare('INSERT OR REPLACE INTO probes VALUES(?,?,?,?,?,?,?,?)').bind('mdviewer', state, 0, 2, null, Date.now() + 3600000, 200, 30).run();
+  await insert('up'); assert.equal((await summary(DB)).projects[0].monitor.state, 'stale');
+  await insert('down'); assert.equal((await summary(DB)).projects[0].monitor.state, 'stale');
+  assert.equal(monitorState({ state: 'up', checked: 1000 }, 1000), 'up');
+  assert.equal(monitorState({ state: 'up', checked: 1001 }, 1000), 'stale');
+  assert.equal(monitorState({ state: 'up', checked: -STALE_AFTER }, 1), 'stale');
+  assert.equal(monitorState(null, 1000), 'unknown');
 }));
 test('Wilson interval has a defined zero-data state', () => { assert.equal(interval(0, 0), null); const [low, high] = interval(5, 10); assert.ok(low < .5 && high > .5); });
 test('slow body reads have a deadline', async () => {
