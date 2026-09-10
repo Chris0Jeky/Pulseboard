@@ -169,7 +169,7 @@ test('security responses are private and do not opt into CORS', async t => {
 test('Watch staging preserves the authorized probe schedule and same-account service bindings', () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8')
     .replace(/^\s*\/\/.*$/gm, ''));
-  assert.equal(config.vars.COLLECT_ENABLED, 'false');
+  // Browser collection has its own pilot decision; Watch must not pin that independent switch.
   assert.equal(config.vars.WATCH_ENABLED, 'false');
   assert.deepEqual(config.triggers.crons, ['*/15 * * * *']);
   assert.deepEqual(config.services.map(s => s.binding).sort(), ['ALIBI', 'COMMITATLAS']);
