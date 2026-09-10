@@ -1,0 +1,9 @@
+# The embed builder strips module statements with newline-anchored patterns; a CRLF checkout must not change what it produces.
+*.mjs text eol=lf
+*.sql text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf

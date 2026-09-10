@@ -23,3 +23,10 @@ CREATE TABLE IF NOT EXISTS probe_history (
 
 CREATE INDEX IF NOT EXISTS events_session_flow ON events(project,session,event,seq);
 CREATE INDEX IF NOT EXISTS probe_history_time ON probe_history(checked);
+
+-- Readiness asserts this row, so a database that predates a migration reports 503 instead of ready.
+CREATE TABLE IF NOT EXISTS schema_version (
+  id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
+);
+INSERT INTO schema_version(id, version) VALUES (1, 1)
+  ON CONFLICT(id) DO UPDATE SET version = excluded.version;

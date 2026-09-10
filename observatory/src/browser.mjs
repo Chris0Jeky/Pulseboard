@@ -42,6 +42,9 @@ export function createObserver(config, runtime = globalThis) {
     if (queue.length >= 100 || failures >= 3 || requests >= 120) { stats.dropped++; return false; }
     queue.push(e); schedule(); return true;
   }
+  const post = (batch, extra) => runtime.fetch(endpoint, { method: 'POST', credentials: 'omit',
+    referrerPolicy: 'no-referrer', redirect: 'error', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ events: batch }), ...extra });
   async function flush() {
     if (!eligible()) { consent = false; clear(); return; }
     if (flight || !consent || !queue.length || failures >= 3 || requests >= 120) return;
@@ -49,9 +52,7 @@ export function createObserver(config, runtime = globalThis) {
     const abort = new runtime.AbortController(); flight = abort; requests++;
     const timeout = runtime.setTimeout(() => abort.abort(), 5000);
     try {
-      const response = await runtime.fetch(endpoint, { method: 'POST', credentials: 'omit',
-        referrerPolicy: 'no-referrer', redirect: 'error', cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ events: batch }), signal: abort.signal });
+      const response = await post(batch, { signal: abort.signal });
       if (!response.ok) throw new Error('collector');
       if (generation === epoch) { stats.sent += batch.length; failures = 0; }
     } catch {
@@ -62,6 +63,21 @@ export function createObserver(config, runtime = globalThis) {
       runtime.clearTimeout(timeout); if (flight === abort) flight = null; schedule();
     }
   }
+  /** The page is being hidden and the timer will never fire: hand the rest of the queue over with keepalive.
+   *  Deliberately not navigator.sendBeacon, which attaches cookies and cannot omit credentials. */
+  function flushOnHide() {
+    if (!consent || !eligible()) return 0;
+    const generation = epoch; let handed = 0;
+    while (queue.length && failures < 3 && requests < 120) {
+      const batch = queue.splice(0, 20); requests++; handed += batch.length;
+      try {
+        post(batch, { keepalive: true })?.then?.(
+          response => { if (generation === epoch) { if (response?.ok) stats.sent += batch.length; else stats.dropped += batch.length; } },
+          () => { stats.failures++; if (generation === epoch) stats.dropped += batch.length; });
+      } catch { stats.failures++; stats.dropped += batch.length; }
+    }
+    return handed;
+  }
   function dispose() { consent = false; disposed = true; clear(); }
-  return { setConsent, track, flush, dispose, status: () => ({ active: consent && eligible(), queued: queue.length, requests, ...stats }) };
+  return { setConsent, track, flush, flushOnHide, dispose, status: () => ({ active: consent && eligible(), queued: queue.length, requests, ...stats }) };
 }

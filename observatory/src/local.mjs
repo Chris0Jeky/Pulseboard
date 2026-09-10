@@ -9,7 +9,9 @@ import { assets } from './assets.mjs';
 mkdirSync(new URL('../.data/', import.meta.url), { recursive: true });
 const DB = openDatabase(fileURLToPath(new URL('../.data/observatory.sqlite', import.meta.url)));
 DB.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
-const READ_TOKEN = process.env.READ_TOKEN || randomBytes(32).toString('hex');
+const supplied = typeof process.env.READ_TOKEN === 'string' && process.env.READ_TOKEN.length > 0;
+const READ_TOKEN = supplied ? process.env.READ_TOKEN : randomBytes(32).toString('hex');
+if (supplied && READ_TOKEN.length < 32) console.error('READ_TOKEN is shorter than 32 characters; every authenticated read will be refused with 401.');
 const portText = process.env.PORT || '8788';
 if (!/^\d+$/.test(portText) || Number(portText) < 1 || Number(portText) > 65535) throw new Error('PORT must be 1..65535');
 const port = Number(portText);
@@ -31,9 +33,11 @@ const server = createServer({ maxHeaderSize: 8192, requestTimeout: 10000, header
 });
 server.listen(port, '127.0.0.1', () => {
   console.log(`Pulseboard Desk: http://127.0.0.1:${port}`);
-  console.log('Read token (paste into the desk; not persisted): ' + READ_TOKEN);
+  // Only a token this process generated is safe to print; one supplied by the operator stays where they put it.
+  console.log(supplied ? 'Read token: using READ_TOKEN from the environment; it is not printed here.'
+    : 'Read token (generated for this run; paste into the desk; not persisted): ' + READ_TOKEN);
   console.log('Collection is ' + (env.COLLECT_ENABLED === 'true' ? 'enabled.' : 'disabled.'));
-  console.log('Local runner does not schedule external probes. Cloudflare cron or an explicit probe command does.');
+  console.log('Local runner never probes the public sites: there is no local probe command, and egress stays off. Cloudflare cron does the probing in a deployment.');
 });
 let closing = false;
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {

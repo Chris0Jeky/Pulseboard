@@ -1,10 +1,24 @@
 import { projects } from './projects.mjs';
-import { validateBatch, readBounded, monitorTransition, interval } from './contracts.mjs';
+import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { assets } from './assets.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
+export const SCHEMA_VERSION = 1;
+// Naming every column means a database missing a later-added column fails readiness instead of failing a request.
+const READINESS = [
+  'SELECT project,day,used,receipt FROM budget LIMIT 0',
+  'SELECT project,id,received,session,seq,event,route,release,value FROM events LIMIT 0',
+  'SELECT project,state,failures,successes,opened,checked,status,duration FROM probes LIMIT 0',
+  'SELECT project,checked,ok,duration FROM probe_history LIMIT 0',
+];
+async function ready(db) {
+  for (const query of READINESS) await db.prepare(query).all();
+  const row = await db.prepare('SELECT version FROM schema_version WHERE id=1').first();
+  if (row?.version !== SCHEMA_VERSION) throw new Error('schema version');
+  return SCHEMA_VERSION;
+}
 async function authorized(request, secret) {
   if (typeof secret !== 'string' || secret.length < 32) return false;
   const supplied = request.headers.get('authorization') || '';
@@ -34,7 +48,7 @@ export async function summary(db, now = Date.now()) {
     projects: Object.entries(projects).map(([id, p]) => {
       const probe = probes.find(x => x.project === id), funnel = funnels.find(x => x.project === id);
       return { id, label: p.label, configuredOrigin: p.origin, probeExpected: !!p.probe,
-        monitor: probe ? { ...probe, state: now - probe.checked > 30 * 60000 ? 'stale' : probe.state } : { state: 'unknown' },
+        monitor: probe ? { ...probe, state: monitorState(probe, now) } : { state: 'unknown' },
         counts: counts.filter(x => x.project === id), sessions: sessions.find(x => x.project === id)?.n || 0,
         daily: daily.filter(x => x.project === id),
         funnel: funnel ? { ...funnel, interval: interval(funnel.completed, funnel.started) } : null,
@@ -43,6 +57,8 @@ export async function summary(db, now = Date.now()) {
 }
 export async function handle(request, env) {
   const url = new URL(request.url);
+  // Held outside the try so an unexpected failure after the origin match is still readable by the calling page.
+  let cors = {};
   try {
     if (['GET', 'HEAD'].includes(request.method) && assets.has(url.pathname) && env.ASSETS) {
       const response = await env.ASSETS.fetch(request);
@@ -52,8 +68,11 @@ export async function handle(request, env) {
       h.set('Cross-Origin-Resource-Policy', 'same-origin');
       return new Response(request.method === 'HEAD' ? null : response.body, { status: response.status, headers: h });
     }
-    if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
-    if (url.pathname === '/readyz') { await env.DB.prepare('SELECT e.project FROM events e JOIN budget b ON b.project=e.project JOIN probes p ON p.project=e.project LIMIT 0').all(); return json({ ready: true }); }
+    if (url.pathname === '/healthz' || url.pathname === '/readyz') {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'method' }, 405, { Allow: 'GET, HEAD' });
+      if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
+      return json({ ready: true, schema: await ready(env.DB) });
+    }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
       return json(await summary(env.DB));
@@ -70,7 +89,7 @@ export async function handle(request, env) {
     if (!match) return json({ error: 'not_found' }, 404);
     const id = match[1], project = Object.hasOwn(projects, id) ? projects[id] : null;
     if (!project || !project.origin || request.headers.get('origin') !== project.origin) return json({ error: 'origin' }, 403);
-    const cors = { 'Access-Control-Allow-Origin': project.origin, 'Vary': 'Origin' };
+    cors = { 'Access-Control-Allow-Origin': project.origin, 'Vary': 'Origin' };
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, ...cors,
       'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
     if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
@@ -80,9 +99,11 @@ export async function handle(request, env) {
     try { body = await readBounded(request); } catch { return json({ error: 'invalid_body' }, 400, cors); }
     if (!validateBatch(body, project)) return json({ error: 'contract' }, 400, cors);
     const now = Date.now(), day = new Date(now).toISOString().slice(0, 10), receipt = crypto.randomUUID();
-    const reserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) VALUES(?,?,?,?)
+    // The SELECT..WHERE guards the first batch of a UTC day; the ON CONFLICT branch guards every later one.
+    const reserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) SELECT ?,?,?,? WHERE ?<=?
       ON CONFLICT(project,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt
-      WHERE used+excluded.used<=? RETURNING used`).bind(id, day, body.events.length, receipt, project.dailyLimit);
+      WHERE used+excluded.used<=? RETURNING used`)
+      .bind(id, day, body.events.length, receipt, body.events.length, project.dailyLimit, project.dailyLimit);
     // D1 batch is transactional. Receipt gating makes a rejected reservation admit zero events.
     const inserts = body.events.map(e => env.DB.prepare(`INSERT OR IGNORE INTO events
       (project,id,received,session,seq,event,route,release,value)
@@ -91,7 +112,7 @@ export async function handle(request, env) {
     const result = await env.DB.batch([reserve, ...inserts]);
     if (!result[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
     return json({ accepted: true, meaning: 'batch admitted; duplicate event IDs ignored' }, 202, cors);
-  } catch { return json({ error: 'unavailable' }, 503); }
+  } catch { return json({ error: 'unavailable' }, 503, cors); }
 }
 export async function probeAll(env, transport = fetch, now = Date.now()) {
   for (const [id, project] of Object.entries(projects)) {
@@ -130,4 +151,5 @@ export async function maintain(env, now = Date.now()) {
     env.DB.prepare('DELETE FROM probe_history WHERE checked<?').bind(now - 30 * 86400000),
   ]);
 }
-export default { fetch: handle, async scheduled(_controller, env) { await probeAll(env); await maintain(env); } };
+// Cloudflare calls scheduled(controller, env, ctx); the fourth parameter exists so tests can inject a transport.
+export default { fetch: handle, async scheduled(_controller, env, _ctx, transport = fetch) { await probeAll(env, transport); await maintain(env); } };

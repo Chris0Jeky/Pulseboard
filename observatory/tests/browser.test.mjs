@@ -49,6 +49,24 @@ test('failure circuit opens without retrying old events', async () => {
   for (let i = 0; i < 3; i++) { client.track('page.view'); await client.flush(); }
   assert.equal(client.track('page.view'), false); assert.equal(calls.length, 3); assert.equal(client.status().queued, 0); client.dispose();
 });
+test('a hidden page hands its remaining queue over with keepalive, without cookies', async () => {
+  const { client, calls } = setup(); client.setConsent(true);
+  client.track('page.view'); client.track('action.requested');
+  assert.equal(client.flushOnHide(), 2); assert.equal(calls.length, 1);
+  const options = calls[0][1];
+  assert.equal(options.keepalive, true); assert.equal(options.credentials, 'omit');
+  assert.equal(options.referrerPolicy, 'no-referrer'); assert.equal(options.redirect, 'error');
+  assert.equal(JSON.parse(options.body).events.length, 2); assert.equal(client.status().queued, 0);
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(client.status().sent, 2);
+  client.dispose(); assert.equal(client.flushOnHide(), 0); assert.equal(calls.length, 1);
+});
+test('a hidden page sends nothing without consent, and drains more than one batch', async () => {
+  const withoutConsent = setup(); assert.equal(withoutConsent.client.flushOnHide(), 0); assert.equal(withoutConsent.calls.length, 0);
+  const { client, calls } = setup(); client.setConsent(true); for (let i = 0; i < 25; i++) client.track('page.view');
+  assert.equal(client.flushOnHide(), 25); assert.equal(calls.length, 2);
+  assert.equal(JSON.parse(calls[0][1].body).events.length, 20); assert.equal(JSON.parse(calls[1][1].body).events.length, 5);
+  client.dispose();
+});
 test('dispose never flushes', async () => {
   const { client, calls, timers } = setup(); client.setConsent(true); client.track('page.view'); client.dispose(); await client.flush(); assert.equal(calls.length, 0); assert.equal(timers.size, 0);
 });
