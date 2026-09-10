@@ -65,7 +65,10 @@ combine the two flow measures as if they shared a denominator.
   difference. The floor is a display guard, not statistical power or significance.
   Different routes, users, retries and exposure can explain a difference.
 - **Freshness:** a missing, future-dated or older-than-30-minute probe cannot be
-  shown as current health. Local-only projects do not acquire external probes.
+  shown as current health. The read model applies that rule before the response
+  leaves the server — `monitorState` in `src/contracts.mjs`, shared with
+  `/v1/summary` — so the browser is not the only place it holds. Local-only
+  projects do not acquire external probes.
 
 These choices are deliberately inspectable. Route-specific action correlation,
 release deployment timestamps, operation IDs and sampling-aware estimators need
