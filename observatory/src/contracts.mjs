@@ -48,6 +48,11 @@ export function interval(successes, total) {
   const radius = z * Math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / d;
   return [Math.max(0, centre - radius), Math.min(1, centre + radius)];
 }
+/** A reading older than this, or dated in the future, is not evidence of current state. Defined after the
+ *  browser build's cut point on purpose: it is a presentation constant the embedded artifact never needs. */
+export const STALE_AFTER = 30 * 60000;
+export const monitorState = (probe, now) => (!probe ? 'unknown'
+  : probe.checked > now || now - probe.checked > STALE_AFTER ? 'stale' : probe.state);
 export function monitorTransition(previous, ok, now) {
   const p = previous || { state: 'unknown', failures: 0, successes: 0, opened: null };
   const failures = ok ? 0 : p.failures + 1, successes = ok ? p.successes + 1 : 0;
