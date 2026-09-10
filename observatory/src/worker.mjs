@@ -1,5 +1,7 @@
 import { projects } from './projects.mjs';
 import { validateBatch, readBounded, monitorTransition, interval } from './contracts.mjs';
+import { readPortfolio, WINDOWS } from './portfolio.mjs';
+import { assets } from './assets.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
@@ -42,18 +44,27 @@ export async function summary(db, now = Date.now()) {
 export async function handle(request, env) {
   const url = new URL(request.url);
   try {
-    if (request.method === 'GET' && ['/', '/index.html', '/dashboard.mjs', '/dashboard.css'].includes(url.pathname) && env.ASSETS) {
+    if (['GET', 'HEAD'].includes(request.method) && assets.has(url.pathname) && env.ASSETS) {
       const response = await env.ASSETS.fetch(request);
       const h = new Headers(response.headers);
-      h.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+      h.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
       h.set('Cache-Control', 'no-store'); h.set('Referrer-Policy', 'no-referrer'); h.set('X-Content-Type-Options', 'nosniff');
-      return new Response(response.body, { status: response.status, headers: h });
+      h.set('Cross-Origin-Resource-Policy', 'same-origin');
+      return new Response(request.method === 'HEAD' ? null : response.body, { status: response.status, headers: h });
     }
     if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
     if (url.pathname === '/readyz') { await env.DB.prepare('SELECT e.project FROM events e JOIN budget b ON b.project=e.project JOIN probes p ON p.project=e.project LIMIT 0').all(); return json({ ready: true }); }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
       return json(await summary(env.DB));
+    }
+    if (url.pathname === '/v1/portfolio' && request.method === 'GET') {
+      if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const value = url.searchParams.get('days') ?? '7';
+      if (!/^(1|7|14)$/.test(value) || url.searchParams.getAll('days').length > 1 || !WINDOWS.includes(Number(value))) {
+        return json({ error: 'window', allowedDays: WINDOWS }, 400);
+      }
+      return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: env.COLLECT_ENABLED === 'true' }));
     }
     const match = /^\/v1\/collect\/([a-z0-9-]+)$/.exec(url.pathname);
     if (!match) return json({ error: 'not_found' }, 404);
