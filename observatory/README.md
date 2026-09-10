@@ -44,7 +44,7 @@ npx wrangler@4.129.1 secret put READ_TOKEN
 Re-run that `d1 execute` step on every upgrade of the Worker: `schema.sql` is idempotent and it installs the `schema_version` row that `/readyz` asserts, so a database created before this revision reports 503 until the file is applied again.
 
 
-The deployed Worker carries a 15-minute cron trigger, so **synthetic probing of every registered project origin begins on the first deploy**, before any browser integration exists. `COLLECT_ENABLED` gates browser event admission only; it does not gate probing. Review `src/projects.mjs` before deploying, or remove the `triggers` block in `wrangler.jsonc` until you have.
+`wrangler.jsonc` carries a 15-minute cron trigger, so **synthetic probing of every registered project origin begins as soon as a deploy includes it**, before any browser integration exists. `COLLECT_ENABLED` gates browser event admission only; it does not gate probing. Review `src/projects.mjs` before deploying, or empty the `triggers.crons` list in `wrangler.jsonc` until you have. The hosted Worker has probed since 2026-09-10 (`docs/HOSTING.md`); its first publication that day shipped with the list empty.
 
 Generate a unique, high-entropy read token of at least 32 characters. Keep it in a password manager. It grants portfolio-wide aggregate access; this version is for a single operator, not a multi-tenant service. Set it as a Worker secret, never a public build variable. Rotate by replacing the secret. Dashboard assets contain no private data; `/v1/summary` requires the token. `/healthz` is liveness only; `/readyz` checks the migrated database.
 

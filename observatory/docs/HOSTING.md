@@ -2,9 +2,11 @@
 
 Live URL: https://pulseboard-observatory.commit-atlas.workers.dev
 
-The first hosted Desk serves its UI and authenticated aggregate API from one Worker with D1.
-Collection is disabled and the cron list is empty: publishing does not activate host integrations
-or external probes. Synthetic demo data stays in the browser. Follow ROLLOUT.md before activation.
+The hosted Desk serves its UI and authenticated aggregate API from one Worker with D1.
+Collection is disabled: publishing does not activate host integrations. Since 2026-09-10 the
+`*/15 * * * *` cron probes the seven registered public origins (status, timing and a content marker;
+never page content) and runs retention. Synthetic demo data stays in the browser. Follow ROLLOUT.md
+before turning collection on.
 
 From `observatory/` (use `npm.cmd` / `npx.cmd` in Windows PowerShell):
 
@@ -62,11 +64,37 @@ Set-Clipboard -Value ''
   Follow-ups: [doctor Windows shim](https://github.com/Chris0Jeky/agent-harness/issues/276) and
   [canonical estate/map reconciliation](https://github.com/Chris0Jeky/claude-config/issues/211).
 
+## Verified 2026-09-10, later the same day: probes and the admission gate
+
+- Running the scheduled handler on local workerd (`npx wrangler dev --test-scheduled`, `GET /__scheduled`)
+  first showed every probe with status 0 after about a millisecond: Workers' fetch rejects
+  `redirect: 'error'` before sending anything. With `redirect: 'manual'` all seven targets returned
+  200 with their markers (80–680 ms), reached `up` on the second tick, and the seeded event, budget
+  and probe-history rows older than their windows were deleted while the tick's own rows survived.
+  A unit test now pins the redirect mode; `npm test` is 126 passing.
+- Preview Worker `pulseboard-observatory-preview` (versions `c16b877b…` then `f7d1fd4c…` with every
+  `dailyLimit` set to 1 for that deploy only) against scratch D1 `pulseboard-observatory-scratch`
+  (`75c78861-b347-4b03-8a02-7cd9a9e13bb0`), collection on, no cron. `tests/hosted-admission.mjs`
+  results: mdviewer one event → 202, identical batch again → 202 with one `events` row and `used` 2;
+  commitatlas two events on a fresh day → 429 with `Retry-After: 3600`, no `budget` row and no
+  events; alibi one event → 202 then 429; mdviewer over budget → 429. So `INSERT … RETURNING` inside
+  `batch()` behaves on hosted D1 as it does on `node:sqlite` for both the insert and the
+  `ON CONFLICT` branch. The preview Worker was deleted afterwards; the scratch database stays for
+  the next run.
+- Deployed routes `/`, `/dashboard.mjs` carry the CSP, `Cache-Control: no-store`,
+  `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` and
+  `Cross-Origin-Resource-Policy: same-origin`; `/healthz` carries the JSON subset.
+- Production Worker version `a400ed3d-e7a2-4980-b75e-c8ecd78dd9c6` deployed with the cron trigger
+  and the redirect fix. The first hosted tick is recorded in the paragraph below.
+- `.github/workflows/collector-canary.yml` checks `/healthz`, `/readyz` and the closed
+  `/v1/portfolio` from GitHub's runners at :07 and :37 each hour; a red run is the only
+  out-of-band signal today.
+
 Check `/healthz` and `/readyz`, confirm unauthenticated `/v1/portfolio` returns 401, then use
 the Desk's Connect control with the read token. Run `tests/desk-browser.py --origin <url>` with
 `READ_TOKEN` in the process environment to prove HTTPS assets, CSP and interactions. That gate
-also uses mocked failure scenarios; it does not prove live collection admission. The scratch-D1
-202/deduplication/429 gate in ROLLOUT.md remains required before collection is enabled.
+also uses mocked failure scenarios; it does not prove live collection admission, which is what
+the preview run above did. Turning collection on still needs the pilot decision (HUMAN_TODO q-7).
 
 This deployment uses only Workers and D1, with no paid-plan upgrade. Free-plan limits and
 account-wide usage still apply; consult the official [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)

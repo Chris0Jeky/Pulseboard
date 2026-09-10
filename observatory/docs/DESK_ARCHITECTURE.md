@@ -107,6 +107,7 @@ on Node 22.16.0. They cover authentication, range boundaries, flow isolation,
 percentile calculation, projection minimisation, deterministic rules, replay and
 asset routing. Existing kit tests must also pass on the complete PR checkout.
 
-Hosted D1 execution, production telemetry and full browser HTTP navigation are
-separate validation gates. No deployment or collection activation is part of this
-change. Legacy quality-gate debt remains tracked in #13 and #14.
+Hosted D1 execution and full browser HTTP navigation were verified on 2026-09-10
+(`HOSTING.md`, `VALIDATION.md`); the Desk is deployed with scheduled probes on and
+collection off. Production telemetry remains a separate gate that needs a reviewed
+pilot. Legacy quality-gate debt remains tracked in #13 and #14.

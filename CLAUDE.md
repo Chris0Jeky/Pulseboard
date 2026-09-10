@@ -27,13 +27,14 @@ adapter of this file; `WORKBENCH.md` is the legacy runtime's user README.
 | frontend build | `cd frontend/pulseboard-web && npm run build` | fails: Tailwind `theme.css` missing (#13) |
 | `observatory/**` | `cd observatory && npm test` | 125 passed, under 1 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
 | Desk browser | once: `python -m venv .browser-venv && .browser-venv/Scripts/pip install playwright==1.57.0 && .browser-venv/Scripts/playwright install chromium`; then, with `READ_TOKEN` exported in the foreground shell, `cd observatory && node src/local.mjs` in one shell and `cd observatory && ../.browser-venv/Scripts/python tests/desk-browser.py --origin http://127.0.0.1:8788` in another | 13 checks passed; `kill` does not stop node.exe here, free port 8788 via PowerShell `Stop-Process` |
+| Desk hosted | `cd observatory && npx wrangler deploy --dry-run`; admission gate on a preview: `npx wrangler deploy --env preview` then `node tests/hosted-admission.mjs --origin <preview> --project mdviewer --events 1 --expect 202 --repeat` (delete the preview after) | 2026-09-10: 202/202, one event row; 429 on both budget branches |
 | docs and harness | `git diff --check` (working tree) and `git diff --check origin/main...HEAD` (review range; `--cached` for staged); `python <agent-harness>/harness.py audit .` | clean |
 
 The red gates above are tracked debt (#13 lint/types/tests/build, #14 setuptools floor). A change
 that touches a seam must not move its numbers the wrong way, and a green Desk run never closes
 #13 or #14. CI: `observatory.yml` (Node 22, `npm test`) and `desk-browser.yml` (Playwright against
-the real server) run on PRs and `main` pushes that touch `observatory/**`; nothing runs for the
-workbench. `main` has no branch protection (measured 2026-09-10). Squash merge is disabled
+the real server) run on PRs and `main` pushes that touch `observatory/**`; `collector-canary.yml`
+checks the hosted collector twice an hour from GitHub's runners; nothing runs for the workbench. `main` has no branch protection (measured 2026-09-10). Squash merge is disabled
 repo-side; merge with a merge commit.
 
 ## Map
@@ -79,6 +80,7 @@ T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-har
 binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO.md`; read it before
 merging anything. Hosted Cloudflare/D1 activation (q-2) and the Desk stack merge (q-3) were both
 authorised on 2026-09-10; q-3 carries the owner's condition that #15–#17 get a deep check and test
-pass first. Cloudflare access is now verified (q-4), and the Desk is hosted with collection and
-scheduled probes disabled. The scratch-D1 admission gate in #19 remains pending before activation.
-Global laws are auto-loaded; nothing here restates them.
+pass first. Cloudflare access is verified (q-4). The Desk is hosted with scheduled probes on (every
+15 minutes over the seven registered origins) and collection off; the scratch-D1 admission gate from
+`observatory/docs/ROLLOUT.md` passed on 2026-09-10 (`HOSTING.md`). Turning collection on waits for the
+owner's pilot and privacy-notice decision (q-7). Global laws are auto-loaded; nothing here restates them.
