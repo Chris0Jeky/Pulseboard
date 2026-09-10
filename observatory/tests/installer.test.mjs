@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'n
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
-import { install, buildEmbed } from '../adapters/build-embed.mjs';
+import { install, buildEmbed, assertArtifactShape } from '../adapters/build-embed.mjs';
 test('generated browser script parses and remains inert while unconfigured', () => {
   const code = buildEmbed('mdviewer'); new vm.Script(code);
   const context = { document: { readyState: 'complete' } }; vm.runInNewContext(code, context);
@@ -30,5 +30,10 @@ test('installer refuses symlink escape', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'observatory-test-')), outside = mkdtempSync(path.join(tmpdir(), 'observatory-outside-'));
   try { symlinkSync(outside, path.join(root, 'linked')); assert.throws(() => install('mdviewer', root, 'linked/embed.js'), /Symlink/); }
   finally { rmSync(root, { recursive: true }); rmSync(outside, { recursive: true }); }
+});
+test('a malformed artifact is rejected before any file is written', () => {
+  assert.throws(() => assertArtifactShape("import { x } from './y.mjs';\n(function () {})();\n"), /module statement/);
+  assert.throws(() => assertArtifactShape("export function mount() {}\n"), /module statement/);
+  assert.throws(() => assertArtifactShape('const limit = MAX_BYTES;\n'), /server-only constants/);
 });
 test('Taskdeck cannot accidentally acquire a public embed', () => assert.throws(() => buildEmbed('taskdeck'), /no public collection origin/));

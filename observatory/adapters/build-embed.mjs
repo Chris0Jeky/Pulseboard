@@ -1,5 +1,6 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, lstatSync, realpathSync } from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { projects } from '../src/projects.mjs';
@@ -33,16 +34,20 @@ export function buildEmbed(id, options = {}) {
 export function install(id, root, target, endpoint = '') {
   const base = realpathSync(root), full = path.resolve(base, target);
   if (path.isAbsolute(target) || !full.startsWith(base + path.sep) || target.split(/[\\/]/).includes('..')) throw new Error('Target must be a relative path inside the repository');
-  // Do not follow symlink parents into another tree.
+  // Do not follow symlink parents into another tree. lstat, never existsSync: a dangling symlink is still a symlink.
   let parent = path.dirname(full);
-  while (!existsSync(parent)) parent = path.dirname(parent);
-  if (realpathSync(parent) !== base && !realpathSync(parent).startsWith(base + path.sep)) throw new Error('Symlink leaves repository');
-  if (existsSync(full) && realpathSync(full) !== full) throw new Error('Refusing a symlink target');
+  while (!lstatSync(parent, { throwIfNoEntry: false })) parent = path.dirname(parent);
+  let resolved; try { resolved = realpathSync(parent); } catch { throw new Error('Symlink leaves repository'); }
+  if (resolved !== base && !resolved.startsWith(base + path.sep)) throw new Error('Symlink leaves repository');
+  const targetStat = lstatSync(full, { throwIfNoEntry: false });
+  if (targetStat?.isSymbolicLink()) throw new Error('Refusing a symlink target');
   const lockPath = path.join(base, 'observatory.lock.json');
-  if (full === lockPath || (existsSync(lockPath) && realpathSync(lockPath) !== lockPath)) throw new Error('Refusing reserved or symlinked lock path');
-  const old = existsSync(lockPath) ? JSON.parse(readFileSync(lockPath, 'utf8')) : null;
-  if (existsSync(full) && (!old || old.target !== target || old.sha256 !== digest(readFileSync(full)))) throw new Error('Existing file has local edits or is unowned; refusing overwrite');
-  const content = buildEmbed(id, { endpoint });
+  const lockStat = lstatSync(lockPath, { throwIfNoEntry: false });
+  if (full === lockPath || lockStat?.isSymbolicLink()) throw new Error('Refusing reserved or symlinked lock path');
+  const old = lockStat ? JSON.parse(readFileSync(lockPath, 'utf8')) : null;
+  if (targetStat && (!targetStat.isFile() || !old || old.target !== target || old.sha256 !== digest(readFileSync(full)))) throw new Error('Existing file has local edits or is unowned; refusing overwrite');
+  // Nothing is written or checksummed until the artifact parses as a plain script and holds its published shape.
+  const content = buildEmbed(id, { endpoint }); new vm.Script(content); assertArtifactShape(content);
   mkdirSync(path.dirname(full), { recursive: true }); writeFileSync(full, content);
   writeFileSync(lockPath, JSON.stringify({ version: '0.1.0', project: id, target, sha256: digest(content), source: 'Chris0Jeky/Pulseboard:observatory' }, null, 2) + '\n');
   return { target, sha256: digest(content) };
