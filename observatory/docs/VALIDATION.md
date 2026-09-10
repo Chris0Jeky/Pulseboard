@@ -6,6 +6,6 @@ Browser validation now runs over real HTTP. The `Desk browser` workflow (`.githu
 
 The central Observatory GitHub Actions run passed at commit `8d92fff11f581d600c357e402cd521426665f318`. MDviewer CI and Developer Lens PR gate also passed. Later corrections to other integrations are described in `PR_INDEX.md`; consult the current PR checks rather than treating this snapshot as a promise that every host is green.
 
-Not verified by an automated test: the desk's pause of its refresh timer on a hidden tab and its 10-second read timeout. Both are plain branches in `public/dashboard.mjs` (`refresh` and the `visibilitychange` handler), read by inspection only; `public/` has no DOM test harness.
+Not verified by an automated test: the desk's pause of its refresh timer on a hidden tab and its 10-second read timeout. Both are plain branches in `public/dashboard.mjs` (`refresh` and the `visibilitychange` handler), read by inspection only; the browser harness does not drive tab-visibility changes or a hung response.
 
 Not verified: actual Cloudflare account deployment, hosted D1 integration (in particular the `INSERT … RETURNING` inside `batch()` that decides 202 versus 429 — see the hosted smoke test in `ROLLOUT.md`), production collection, all host checks at their final revisions, or every app-specific success event. No real customer traffic was collected. Application PRs remain drafts pending their release gates.

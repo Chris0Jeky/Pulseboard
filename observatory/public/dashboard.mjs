@@ -79,14 +79,14 @@ function signalCard(signal, compact = false) {
       status === 'open' ? button('Snooze 1h', () => review(signal, 'snoozed')) : null));
 }
 function signalDetail(signal) {
-  const evidenceSnapshot = state.snapshot;
+  const evidenceSnapshot = state.snapshot, evidenceStale = state.stale;
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, signal.title), e('p', { class: 'muted' }, signal.detail),
     e('div', { class: 'subline' }, `${signal.severity.toUpperCase()} / ${signal.rule} / ${signal.version}`),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'The evidence'), e('pre', { class: 'code-evidence', tabindex: '0' }, JSON.stringify(signal.evidence, null, 2))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'A sensible next check'), e('p', {}, signal.next),
       button('Prepare a task handoff ↗', () => {
         $('#detail-dialog').close();
-        preview(JSON.stringify(makeHandoff(evidenceSnapshot, signal, state.stale), null, 2), `pulseboard-${state.snapshot.mode}-handoff.json`, 'application/json');
+        preview(JSON.stringify(makeHandoff(evidenceSnapshot, signal, evidenceStale), null, 2), `pulseboard-${evidenceSnapshot.mode}-handoff.json`, 'application/json');
       }, 'primary')),
     e('p', { class: 'tiny muted' }, 'Rules are deterministic. A signal is an observation to inspect, not a diagnosis, productivity score, or instruction to deploy.'));
   showDialog('#detail-dialog');

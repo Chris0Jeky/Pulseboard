@@ -89,7 +89,8 @@ unsupervised source of incident paging.
 ## Review handoffs
 
 `pulseboard.handoff/1` records one rule observation, its evidence, proposed next
-check, source mode, window and rule version. It is deliberately tool-neutral.
+check, source mode, window, rule version and whether the desk's last refresh had
+failed (`stale`, always present). It is deliberately tool-neutral.
 Taskdeck could create a proposal card with an evidence attachment; an in-repo
 agent could first verify that the observation still holds. Neither destination
 should treat the packet as approval to edit, merge, deploy or contact users.

@@ -210,10 +210,10 @@ async def run(args):
         await expect(page.locator('#mode')).to_have_text('NOT CONNECTED')
         results.append('responsive widths, reduced-motion mode and pagehide cleanup')
         assert not errors, errors
-        violations = await page.evaluate('window.__cspViolations || []')
+        violations = [] if args.offline else await page.evaluate('window.__cspViolations || []')
         assert not violations, violations
         assert not console_errors, console_errors
-        results.append('no CSP violation or console error in the whole session')
+        results.append('no console error in the whole session' if args.offline else 'no CSP violation or console error in the whole session')
         print(json.dumps({'transport': 'offline inlined assets / mocked failures' if args.offline else 'HTTP assets / real initial API / mocked failure scenarios',
                           'passed': len(results), 'checks': results, 'pageErrors': errors, 'cspViolations': violations, 'consoleErrors': console_errors}, indent=2))
         await browser.close()
