@@ -1,5 +1,7 @@
 import { projects } from './projects.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
+import { readPortfolio, WINDOWS } from './portfolio.mjs';
+import { assets } from './assets.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
@@ -58,12 +60,13 @@ export async function handle(request, env) {
   // Held outside the try so an unexpected failure after the origin match is still readable by the calling page.
   let cors = {};
   try {
-    if (request.method === 'GET' && ['/', '/index.html', '/dashboard.mjs', '/dashboard.css'].includes(url.pathname) && env.ASSETS) {
+    if (['GET', 'HEAD'].includes(request.method) && assets.has(url.pathname) && env.ASSETS) {
       const response = await env.ASSETS.fetch(request);
       const h = new Headers(response.headers);
-      h.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+      h.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
       h.set('Cache-Control', 'no-store'); h.set('Referrer-Policy', 'no-referrer'); h.set('X-Content-Type-Options', 'nosniff');
-      return new Response(response.body, { status: response.status, headers: h });
+      h.set('Cross-Origin-Resource-Policy', 'same-origin');
+      return new Response(request.method === 'HEAD' ? null : response.body, { status: response.status, headers: h });
     }
     if (url.pathname === '/healthz' || url.pathname === '/readyz') {
       if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'method' }, 405, { Allow: 'GET, HEAD' });
@@ -73,6 +76,14 @@ export async function handle(request, env) {
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
       return json(await summary(env.DB));
+    }
+    if (url.pathname === '/v1/portfolio' && request.method === 'GET') {
+      if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const value = url.searchParams.get('days') ?? '7';
+      if (!/^(1|7|14)$/.test(value) || url.searchParams.getAll('days').length > 1 || !WINDOWS.includes(Number(value))) {
+        return json({ error: 'window', allowedDays: WINDOWS }, 400);
+      }
+      return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: env.COLLECT_ENABLED === 'true' }));
     }
     const match = /^\/v1\/collect\/([a-z0-9-]+)$/.exec(url.pathname);
     if (!match) return json({ error: 'not_found' }, 404);
