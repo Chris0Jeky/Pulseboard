@@ -40,6 +40,14 @@ test('Lens preserves finding kinds, censoring, missingness and unverified proven
   assert.equal(result.findings[0].kind, 'hypothesis'); assert.equal(result.coverage.missing, 10);
   assert.equal(result.coverage.censored, 20); assert.equal(result.trust, 'unverified-file');
 });
+test('the shipped Lens example is a file the reader actually accepts', () => {
+  const text = readFileSync(new URL('../examples/lens-projection.synthetic.json', import.meta.url), 'utf8');
+  const result = parseBridge(text);
+  assert.equal(result.kind, 'developer-lens'); assert.equal(result.mode, 'synthetic'); assert.equal(result.trust, 'unverified-file');
+  assert.deepEqual(result.findings.map(f => f.kind), ['hypothesis', 'abstention']);
+  assert.equal(result.coverage.missing, 10);
+  assert.deepEqual(readLensProjection(JSON.parse(text)), result);
+});
 test('Lens rejects extra raw fields, absent review, mismatched coverage and empty limitations', () => {
   for (const mutate of [x => x.events = [], x => x.reviewed = false, x => x.coverage.observed = 90, x => x.findings[0].n = 80,
     x => x.findings[0].limitations = [], x => x.findings[0].raw = 'private', x => x.findings[0].kind = 'productivity-score']) {
