@@ -37,7 +37,8 @@
     "deny": [
       "Read(./.env)",
       "Read(./**/.env)",
-      "Read(./**/.env.*)",
+      "Read(./**/.env.local)",
+      "Read(./**/.env.*.local)",
       "Read(./**/*.db)",
       "Read(./**/*.sqlite)",
       "Read(./**/*.sqlite3)"
