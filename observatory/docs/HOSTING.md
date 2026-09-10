@@ -46,15 +46,21 @@ Set-Clipboard -Value ''
 
 ## Verified 2026-09-10
 
-- Worker version `6192e83d-e5c3-4007-bfc7-33e73712fc22`; startup 6 ms, upload 23.40 KiB.
+- Worker version `9191b425-38a6-4174-8b97-7674188b9d20`; startup 7 ms, upload 23.34 KiB.
 - D1 schema 1, remote database 65,536 bytes, zero events and zero probes after browser checks.
 - 125 unit tests; 13 browser checks against both localhost and the hosted HTTPS URL, zero
   CSP violations, page errors or console errors. Initial authenticated reads use the real D1
   database; later failure scenarios are mocked by the gate.
 - Wrangler dry run and local/remote schema application passed. Dependency audit: zero findings.
+- Local workerd starts successfully through `src/entry.mjs` (default handler only); `/`,
+  `/healthz` and `/readyz` return 200, and unauthenticated `/v1/portfolio` returns 401.
+  The same API statuses were verified on the hosted Worker. Python urllib's default user agent
+  was refused by Cloudflare's edge (1010); Node fetch and Chromium reach the service successfully.
 - Shared harness audit and static Codex adapter checks pass. The full doctor has one environmental
   failure: its bare `codex` command resolves an unsigned PowerShell shim; `codex.cmd --version`
   succeeds (0.153.4). Runtime `/hooks` trust is not proven by these checks.
+  Follow-ups: [doctor Windows shim](https://github.com/Chris0Jeky/agent-harness/issues/276) and
+  [canonical estate/map reconciliation](https://github.com/Chris0Jeky/claude-config/issues/211).
 
 Check `/healthz` and `/readyz`, confirm unauthenticated `/v1/portfolio` returns 401, then use
 the Desk's Connect control with the read token. Run `tests/desk-browser.py --origin <url>` with
