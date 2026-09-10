@@ -88,3 +88,9 @@ resources_and_files/Capture2.JPG
 
 # Coverage HTML written by the backend pytest addopts
 htmlcov/
+
+# Cloudflare state and local secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+.browser-venv/

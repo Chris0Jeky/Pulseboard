@@ -15,6 +15,10 @@ silently rewritten or presented as migrated.
 
 ## Open the desk
 
+**[Open the hosted Desk](https://pulseboard-observatory.commit-atlas.workers.dev)** and choose
+**Try a scenario** to explore it without credentials. Live aggregate reads require the operator
+token. Collection and scheduled probes are disabled in this first deployment.
+
 Node.js 22.16 or newer is required. The Desk has no external runtime dependencies
 and no build step.
 
@@ -29,10 +33,9 @@ Open `http://127.0.0.1:8788`. Choose **Try a scenario** for an invented, interac
 portfolio, or paste the read token printed in your terminal to inspect the local
 collector. A clean database has no production evidence. Collection stays disabled.
 
-During review, check out `feat/pulseboard-desk-ui` rather than expecting this new
-surface on main. Review and merge the stacked changes in order: #15, #16, then
-the Desk UI PR. Retarget each dependent PR to main after its base is merged and
-rerun its checks. Do not merge a child into its unmerged feature-branch base.
+The Desk is on `main` since 2026-09-10 (PRs #15, #16 and #17, reviewed and merged in order).
+Issues #18–#24 are its delivery order. The first Cloudflare Worker/D1 deployment is live;
+see [hosting and verification](observatory/docs/HOSTING.md). Collection stays disabled.
 
 ## What is here
 
