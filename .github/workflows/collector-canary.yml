@@ -31,3 +31,12 @@ jobs:
           test "$ready" = 200
           printf '%s' "$ready_body" | head -n1 | grep -q '"ready":true'
           test "$closed" = 401
+      - name: Public edge of the same-account Workers the collector cannot reach itself
+        # Inside a Worker these hostnames answer 1042, so the Desk probes them through service bindings;
+        # this step is the only check of their public path.
+        run: |
+          set -eu
+          ua='Pulseboard-Observatory-canary/0.1 (GitHub Actions)'
+          check() { body=$(curl -sS -A "$ua" --max-time 20 -w '\n%{http_code}' "$1"); code=$(printf '%s' "$body" | tail -n1); echo "$1 -> $code"; test "$code" = 200; printf '%s' "$body" | grep -q "$2"; }
+          check https://commit-atlas.commit-atlas.workers.dev/ CommitAtlas
+          check https://alibi-after-hours-preview.commit-atlas.workers.dev/ Alibi

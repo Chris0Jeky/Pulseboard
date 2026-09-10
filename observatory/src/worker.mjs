@@ -121,7 +121,9 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
     try {
       // Workers fetch accepts only 'follow' and 'manual' for redirect ('error' throws before any request is sent,
       // measured on workerd 2026-09-10); with 'manual' a 3xx is a non-ok response, so a redirect still counts as a failure.
-      const r = await transport(project.probe.url, { redirect: 'manual', signal: AbortSignal.timeout(8000),
+      // A same-account Worker is reached through its service binding (public-hostname subrequests fail with 1042).
+      const send = project.probe.binding && env[project.probe.binding] ? (url, init) => env[project.probe.binding].fetch(url, init) : transport;
+      const r = await send(project.probe.url, { redirect: 'manual', signal: AbortSignal.timeout(8000),
         headers: { 'User-Agent': 'Pulseboard-Observatory/0.1 (+synthetic-monitor)' }, cache: 'no-store' });
       status = r.status;
       if (r.body) {

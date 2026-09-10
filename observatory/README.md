@@ -54,7 +54,7 @@ Wrangler deployment and Cloudflare behavior must be verified in your account. Lo
 
 ## Add another project
 
-Register its fixed origin, probe URL/marker, routes, event names and release identifiers in `src/projects.mjs`. Keep event names tied to decisions and keep all dimensions bounded. Deploy the registry change before enabling the new client.
+Register its fixed origin, probe URL/marker, routes, event names and release identifiers in `src/projects.mjs`. Keep event names tied to decisions and keep all dimensions bounded. Deploy the registry change before enabling the new client. If the target is another Worker on the same Cloudflare account, its public hostname cannot be fetched from a Worker (error 1042): give the probe a `binding` name, add the matching `services` entry in `wrangler.jsonc`, and add the public URL to `.github/workflows/collector-canary.yml`, which then owns the public-edge check for it.
 
 ```sh
 node adapters/build-embed.mjs mdviewer /path/to/MDviewer public/observatory.js

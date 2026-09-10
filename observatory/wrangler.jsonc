@@ -9,6 +9,12 @@
   // and budget retention, 30-day probe history). COLLECT_ENABLED gates browser admission only, never probing.
   "triggers": { "crons": ["*/15 * * * *"] },
   "d1_databases": [{ "binding": "DB", "database_name": "pulseboard-observatory", "database_id": "9dfae806-0948-4fa8-9cd6-ab14fa48728e" }],
+  // Same-account Workers cannot be fetched through their public hostname from a Worker (error 1042); src/projects.mjs
+  // names these bindings on the two probes that need them.
+  "services": [
+    { "binding": "COMMITATLAS", "service": "commit-atlas" },
+    { "binding": "ALIBI", "service": "alibi-after-hours-preview" }
+  ],
   "env": {
     // Disposable admission gate from docs/ROLLOUT.md: collection on, no cron, its own scratch database.
     // Deploy with `npx wrangler deploy --env preview`; delete the Worker with `npx wrangler delete --env preview` afterwards.
