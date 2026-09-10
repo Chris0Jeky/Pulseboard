@@ -109,6 +109,20 @@ Set-Clipboard -Value ''
   `/v1/portfolio` from GitHub's runners at :07 and :37 each hour; a red run is the only
   out-of-band signal today.
 
+## Activation 2026-09-10: Alibi pilot
+
+Owner decision (HUMAN_TODO q-7): "pilot Alibi, notice approved"; the account was confirmed on the
+free plan (q-6) and GitHub failure notifications are on (q-8). Version
+`1f8553ae-dc55-4227-8b8a-8307fa188d45` deploys the top-level `COLLECT_ENABLED: "true"`. With
+collection on, `/v1/collect/<id>` still answers 403 without the registered `Origin` and 204 to Alibi's
+preflight; every other project keeps an empty endpoint in its host artifact, so only Alibi can send
+once its PR (Chris0Jeky/Alibi#83) ships with the endpoint and the collector origin in its CSP.
+The player-facing consent text is the adapter's own: "Usage sharing" / "Optional: share a small set
+of action counts with pulseboard-observatory.commit-atlas.workers.dev. No document text, filenames,
+form values or browsing history is sent. Raw events expire after 14 days. Your choice lasts 90 days on
+this browser." Receipts for the first consented payload and the withdrawal check follow below once
+the Alibi deployment is live.
+
 Check `/healthz` and `/readyz`, confirm unauthenticated `/v1/portfolio` returns 401, then use
 the Desk's Connect control with the read token. Run `tests/desk-browser.py --origin <url>` with
 `READ_TOKEN` in the process environment to prove HTTPS assets, CSP and interactions. That gate

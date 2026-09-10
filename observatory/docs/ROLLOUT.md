@@ -39,7 +39,9 @@ This step is not redundant with `npm test`. The 202-versus-429 decision reads `r
 
 First deploy the isolated collector with collection disabled. Verify authentication, migrations and probe behavior. Review target origins and the monitoring cadence. Configure an independent check of the collector from another provider. Then activate one public pilot, preferably CommitAtlas, with an updated notice and the generated consent control. Inspect a real accepted payload and exercise withdrawal, GPC and failed transport before expanding.
 
-MDviewer and Alibi require an explicit notice/release review before any remote collection. Developer Lens additionally needs tests proving the private/local build and standalone exports never load the integration. Taskdeck is not a pilot: its approved release-specific zero-egress policy remains binding.
+On 2026-09-10 the owner chose Alibi as the first pilot and approved its notice (Pulseboard
+HUMAN_TODO q-7); `HOSTING.md` records the activation. MDviewer still requires an explicit
+notice/release review before any remote collection. Developer Lens additionally needs tests proving the private/local build and standalone exports never load the integration. Taskdeck is not a pilot: its approved release-specific zero-egress policy remains binding.
 
 ## Human configuration
 
