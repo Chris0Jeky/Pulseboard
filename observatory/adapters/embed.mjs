@@ -28,6 +28,7 @@ export function mountObserver(config, create, runtime = globalThis) {
   const click = event => { for (const item of config.clicks || []) { if (event.target?.closest?.(item.selector)) { observer.track(item.event); break; } } };
   runtime.addEventListener('error', error); runtime.addEventListener('unhandledrejection', error); document.addEventListener('click', click);
   const dispose = () => { observer.dispose(); runtime.removeEventListener('error', error); runtime.removeEventListener('unhandledrejection', error); document.removeEventListener('click', click); details.remove(); };
-  runtime.addEventListener('pagehide', dispose, { once: true });
-  return { track: observer.track, flush: observer.flush, status: observer.status, dispose };
+  // A tracked click that navigates would otherwise be discarded by dispose(); hand the queue over first.
+  runtime.addEventListener('pagehide', () => { observer.flushOnHide(); dispose(); }, { once: true });
+  return { track: observer.track, flush: observer.flush, flushOnHide: observer.flushOnHide, status: observer.status, dispose };
 }
