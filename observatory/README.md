@@ -44,7 +44,7 @@ npx wrangler@4.129.1 secret put READ_TOKEN
 Re-run that `d1 execute` step on every upgrade of the Worker: `schema.sql` is idempotent and it installs the `schema_version` row that `/readyz` asserts, so a database created before this revision reports 503 until the file is applied again.
 
 
-The deployed Worker carries a 15-minute cron trigger, so **synthetic probing of every registered project origin begins on the first deploy**, before any browser integration exists. `COLLECT_ENABLED` gates browser event admission only; it does not gate probing. Review `src/projects.mjs` before deploying, or remove the `triggers` block in `wrangler.jsonc` until you have.
+`wrangler.jsonc` carries a 15-minute cron trigger, so **synthetic probing of every registered project origin begins as soon as a deploy includes it**, before any browser integration exists. `COLLECT_ENABLED` gates browser event admission only; it does not gate probing. Review `src/projects.mjs` before deploying, or empty the `triggers.crons` list in `wrangler.jsonc` until you have. The hosted Worker has carried the cron since 2026-09-10; its first publication that day shipped with the list empty, and `docs/HOSTING.md` records whether Cloudflare has been observed invoking it.
 
 Generate a unique, high-entropy read token of at least 32 characters. Keep it in a password manager. It grants portfolio-wide aggregate access; this version is for a single operator, not a multi-tenant service. Set it as a Worker secret, never a public build variable. Rotate by replacing the secret. Dashboard assets contain no private data; `/v1/summary` requires the token. `/healthz` is liveness only; `/readyz` checks the migrated database.
 
@@ -54,7 +54,7 @@ Wrangler deployment and Cloudflare behavior must be verified in your account. Lo
 
 ## Add another project
 
-Register its fixed origin, probe URL/marker, routes, event names and release identifiers in `src/projects.mjs`. Keep event names tied to decisions and keep all dimensions bounded. Deploy the registry change before enabling the new client.
+Register its fixed origin, probe URL/marker, routes, event names and release identifiers in `src/projects.mjs`. Keep event names tied to decisions and keep all dimensions bounded. Deploy the registry change before enabling the new client. If the target is another Worker on the same Cloudflare account, its public hostname cannot be fetched from a Worker (error 1042): give the probe a `binding` name, add the matching `services` entry in `wrangler.jsonc`, and add the public URL to `.github/workflows/collector-canary.yml`, which then owns the public-edge check for it.
 
 ```sh
 node adapters/build-embed.mjs mdviewer /path/to/MDviewer public/observatory.js

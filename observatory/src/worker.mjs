@@ -44,7 +44,7 @@ export async function summary(db, now = Date.now()) {
       WHERE received>=? AND event='action.requested' GROUP BY project, session) a GROUP BY a.project`).bind(since, since).all()).results;
   const probes = (await db.prepare('SELECT * FROM probes').all()).results;
   const budgets = (await db.prepare('SELECT project, used FROM budget WHERE day=?').bind(new Date(now).toISOString().slice(0, 10)).all()).results;
-  return { generated: now, windowDays: 7, provenance: 'client-reported, opt-in; not verified people',
+  return { generated: now, windowDays: 7, provenance: 'client-reported, opt-in; not verified people' + (Object.values(projects).some(p => p.probe?.binding) ? '; service-bound probes observe the application, not its public edge' : ''),
     projects: Object.entries(projects).map(([id, p]) => {
       const probe = probes.find(x => x.project === id), funnel = funnels.find(x => x.project === id);
       return { id, label: p.label, configuredOrigin: p.origin, probeExpected: !!p.probe,
@@ -119,7 +119,11 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
     if (!project.probe) continue;
     const start = performance.now(); let ok = false, status = 0;
     try {
-      const r = await transport(project.probe.url, { redirect: 'error', signal: AbortSignal.timeout(8000),
+      // Workers fetch accepts only 'follow' and 'manual' for redirect ('error' throws before any request is sent,
+      // measured on workerd 2026-09-10); with 'manual' a 3xx is a non-ok response, so a redirect still counts as a failure.
+      // A same-account Worker is reached through its service binding (public-hostname subrequests fail with 1042).
+      const send = project.probe.binding && env[project.probe.binding] ? (url, init) => env[project.probe.binding].fetch(url, init) : transport;
+      const r = await send(project.probe.url, { redirect: 'manual', signal: AbortSignal.timeout(8000),
         headers: { 'User-Agent': 'Pulseboard-Observatory/0.1 (+synthetic-monitor)' }, cache: 'no-store' });
       status = r.status;
       if (r.body) {

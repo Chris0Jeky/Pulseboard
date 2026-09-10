@@ -5,8 +5,8 @@ Pulseboard is a public GPL-3.0-only repository carrying two runtimes side by sid
 WebSocket → ECharts panels). The **Desk** in `observatory/` is the new primary direction: a
 dependency-free Node collector, an aggregate read model and an operations desk, with collection
 disabled by default. The Desk landed on `main` on 2026-09-10 through PRs #15 → #16 → #17 after a
-three-region adversarial review and fix round; issues #18–#24 are its delivery order, #31 regenerates
-the host-repo artifacts, and #32/#33 hold the tracked low findings. `AGENTS.md` is the thin Codex
+three-region adversarial review and fix round; issues #18–#24 are its delivery order, the seven
+host-repo PRs carry regenerated inert artifacts (#31), and #32/#33 hold the tracked low findings. `AGENTS.md` is the thin Codex
 adapter of this file; `WORKBENCH.md` is the legacy runtime's user README.
 
 ## Run it (Kraspyon, measured 2026-09-10: Python 3.13, Node 24.19, no Docker Desktop)
@@ -25,15 +25,16 @@ adapter of this file; `WORKBENCH.md` is the legacy runtime's user README.
 | backend lint/types | `cd backend && ../venv/Scripts/python -m ruff check app` and `-m mypy app` | 19 and 9 errors, pre-existing (#13) |
 | `frontend/**` | `cd frontend/pulseboard-web && npx vitest run --maxWorkers=2` | 56 passed, 2 failed, pre-existing (#13), 17 s |
 | frontend build | `cd frontend/pulseboard-web && npm run build` | fails: Tailwind `theme.css` missing (#13) |
-| `observatory/**` | `cd observatory && npm test` | 125 passed, under 1 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
+| `observatory/**` | `cd observatory && npm test` | 128 passed, under 1 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
 | Desk browser | once: `python -m venv .browser-venv && .browser-venv/Scripts/pip install playwright==1.57.0 && .browser-venv/Scripts/playwright install chromium`; then, with `READ_TOKEN` exported in the foreground shell, `cd observatory && node src/local.mjs` in one shell and `cd observatory && ../.browser-venv/Scripts/python tests/desk-browser.py --origin http://127.0.0.1:8788` in another | 13 checks passed; `kill` does not stop node.exe here, free port 8788 via PowerShell `Stop-Process` |
+| Desk hosted | `cd observatory && npx wrangler deploy --dry-run`; admission gate on a preview: `npx wrangler deploy --env preview` then `node tests/hosted-admission.mjs --origin <preview> --project mdviewer --events 1 --expect 202 --repeat` (delete the preview after) | 2026-09-10: 202/202, one event row; 429 on both budget branches |
 | docs and harness | `git diff --check` (working tree) and `git diff --check origin/main...HEAD` (review range; `--cached` for staged); `python <agent-harness>/harness.py audit .` | clean |
 
 The red gates above are tracked debt (#13 lint/types/tests/build, #14 setuptools floor). A change
 that touches a seam must not move its numbers the wrong way, and a green Desk run never closes
 #13 or #14. CI: `observatory.yml` (Node 22, `npm test`) and `desk-browser.yml` (Playwright against
-the real server) run on PRs and `main` pushes that touch `observatory/**`; nothing runs for the
-workbench. `main` has no branch protection (measured 2026-09-10). Squash merge is disabled
+the real server) run on PRs and `main` pushes that touch `observatory/**`; `collector-canary.yml`
+checks the hosted collector twice an hour from GitHub's runners; nothing runs for the workbench. `main` has no branch protection (measured 2026-09-10). Squash merge is disabled
 repo-side; merge with a merge commit.
 
 ## Map
@@ -66,7 +67,6 @@ measurement or data boundary. Prefer a tested vertical slice to scaffolding.
 - `npm ci` in the frontend reports 27 audit findings (#13); triage individually, never `audit fix --force`.
 - `STATUS.md`, `DEMO_GUIDE.md`, `IMPROVEMENT_PROPOSALS.md` and `UI_IMPROVEMENTS.md` describe the
   2025-11 workbench and are history, not verification.
-- `.vite/deps` is a tracked build cache on `main` (#26); do not read or "fix" it in passing.
 
 ## Authority
 
@@ -79,6 +79,9 @@ T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-har
 binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO.md`; read it before
 merging anything. Hosted Cloudflare/D1 activation (q-2) and the Desk stack merge (q-3) were both
 authorised on 2026-09-10; q-3 carries the owner's condition that #15–#17 get a deep check and test
-pass first. Cloudflare access is now verified (q-4), and the Desk is hosted with collection and
-scheduled probes disabled. The scratch-D1 admission gate in #19 remains pending before activation.
-Global laws are auto-loaded; nothing here restates them.
+pass first. Cloudflare access is verified (q-4). The Desk is hosted with collection off and a 15-minute
+probe cron registered over the seven origins; the handler is proven on the edge but no unattended tick
+had been observed by 2026-09-10 16:00Z because of Cloudflare incident sjs8s0q2x4hw (#43 confirms the
+first tick once it resolves; `observatory/docs/HOSTING.md`). The scratch-D1 admission
+gate passed the same day. Turning collection on waits for the owner's pilot and privacy-notice decision
+(q-7). Global laws are auto-loaded; nothing here restates them.
