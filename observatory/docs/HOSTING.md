@@ -3,7 +3,8 @@
 Live URL: https://pulseboard-observatory.commit-atlas.workers.dev
 
 The hosted Desk serves its UI and authenticated aggregate API from one Worker with D1.
-Collection is disabled: publishing does not activate host integrations. Since 2026-09-10 a
+Collection is admitted only for the projects listed in `COLLECT_PROJECTS` (Alibi since 2026-09-10,
+see the activation section); publishing never activates a host integration by itself. Since 2026-09-10 a
 `*/15 * * * *` cron is registered to probe the seven registered public origins (status, timing and a
 content marker; never page content) and run retention; the handler is proven on the edge, but see the
 receipts below for whether Cloudflare has actually invoked it. Synthetic demo data stays in the
@@ -109,11 +110,29 @@ Set-Clipboard -Value ''
   `/v1/portfolio` from GitHub's runners at :07 and :37 each hour; a red run is the only
   out-of-band signal today.
 
+## Activation 2026-09-10: Alibi pilot
+
+Owner decision (HUMAN_TODO q-7): "pilot Alibi, notice approved"; the account was confirmed on the
+free plan (q-6) and GitHub failure notifications are on (q-8). Version
+`1f8553ae…` deployed the top-level `COLLECT_ENABLED: "true"`; the review of Pulseboard#45 pointed out that
+the global switch alone would admit forged events for every registered origin, so the Worker now also
+requires the project id in `COLLECT_PROJECTS` (`"alibi"`): version `a40b5c40-670b-47f4-a33f-b21e2c47c662`
+carries that, and a POST with the registered `Origin` of mdviewer or commitatlas answered 503 while Alibi's
+answered 400 for an empty batch (route open, contract enforced).
+`/v1/collect/alibi` still answers 403 without the registered `Origin` and 204 to Alibi's preflight; every
+other host artifact keeps an empty endpoint, so only Alibi can send once its PR (Chris0Jeky/Alibi#83)
+ships with the endpoint and the collector origin in its CSP.
+The player-facing consent text is the adapter's own: "Usage sharing" / "Optional: share a small set
+of action counts with pulseboard-observatory.commit-atlas.workers.dev. No document text, filenames,
+form values or browsing history is sent. Raw events expire after 14 days. Your choice lasts 90 days on
+this browser." Receipts for the first consented payload and the withdrawal check follow below once
+the Alibi deployment is live.
+
 Check `/healthz` and `/readyz`, confirm unauthenticated `/v1/portfolio` returns 401, then use
 the Desk's Connect control with the read token. Run `tests/desk-browser.py --origin <url>` with
 `READ_TOKEN` in the process environment to prove HTTPS assets, CSP and interactions. That gate
 also uses mocked failure scenarios; it does not prove live collection admission, which is what
-the preview run above did. Turning collection on still needs the pilot decision (HUMAN_TODO q-7).
+the preview run above did. Collection is on for the projects in `COLLECT_PROJECTS` only (q-7 decided Alibi).
 
 This deployment uses only Workers and D1, with no paid-plan upgrade. Free-plan limits and
 account-wide usage still apply; consult the official [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)

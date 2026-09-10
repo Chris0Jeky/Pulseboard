@@ -1,6 +1,6 @@
 # Portfolio rollout
 
-No PR in this rollout enables collection or changes the native apps' no-telemetry promises. The collector itself is deployed with collection off and scheduled probes on since 2026-09-10 (`HOSTING.md`); the admission gate below has been run and passed on that date.
+No host PR in this rollout changes the native apps' no-telemetry promises. The collector is deployed with scheduled probes on since 2026-09-10 and admits browser events for the projects listed in `COLLECT_PROJECTS` only (Alibi, the owner's first pilot, since the same day; `HOSTING.md`); the admission gate below has been run and passed on that date.
 
 | Repository / surface | Integration boundary | Valuable next signals |
 |---|---|---|
@@ -20,7 +20,7 @@ Future-ready candidates: NavSentinel, developer-lens-lab, collaborative-hill-lab
 
 Run this against a preview deployment, before any public pilot, and record the actual results.
 
-1. Deploy a preview Worker against a scratch D1 database and set `COLLECT_ENABLED` to `"true"` for that preview only.
+1. Deploy a preview Worker against a scratch D1 database and set `COLLECT_ENABLED` to `"true"` and `COLLECT_PROJECTS` to the test projects for that preview only.
 2. Post one valid batch of one event to `/v1/collect/<test project>` with the project's exact `Origin` header.
 3. Assert the response is **202**, and that `SELECT COUNT(*) FROM events` on the preview database is exactly **1**.
 4. Post the identical batch again: expect 202 with the row count still 1 (deduplication). Then exercise the budget path the way the unit test does: every registered project has `dailyLimit` 1000 while a batch holds at most 20 events, so an oversized batch is refused with **400** by the contract, never 429. Temporarily set the test project's `dailyLimit` to 1 in `src/projects.mjs`, redeploy the preview, post a two-event batch and expect **429** with `Retry-After` and no new `events` or `budget` rows; restore the limit afterwards.
@@ -39,7 +39,9 @@ This step is not redundant with `npm test`. The 202-versus-429 decision reads `r
 
 First deploy the isolated collector with collection disabled. Verify authentication, migrations and probe behavior. Review target origins and the monitoring cadence. Configure an independent check of the collector from another provider. Then activate one public pilot, preferably CommitAtlas, with an updated notice and the generated consent control. Inspect a real accepted payload and exercise withdrawal, GPC and failed transport before expanding.
 
-MDviewer and Alibi require an explicit notice/release review before any remote collection. Developer Lens additionally needs tests proving the private/local build and standalone exports never load the integration. Taskdeck is not a pilot: its approved release-specific zero-egress policy remains binding.
+On 2026-09-10 the owner chose Alibi as the first pilot and approved its notice (Pulseboard
+HUMAN_TODO q-7); `HOSTING.md` records the activation. MDviewer still requires an explicit
+notice/release review before any remote collection. Developer Lens additionally needs tests proving the private/local build and standalone exports never load the integration. Taskdeck is not a pilot: its approved release-specific zero-egress policy remains binding.
 
 ## Human configuration
 
