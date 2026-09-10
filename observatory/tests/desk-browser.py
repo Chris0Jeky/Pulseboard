@@ -38,10 +38,15 @@ async def run(args):
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=True, executable_path=args.chromium or None)
         context = await browser.new_context(viewport={'width': 1440, 'height': 1100}, reduced_motion='reduce')
+        # Recorded in the page so a violation survives every later navigation and is read back at the end.
+        await context.add_init_script("window.__cspViolations = [];"
+                                      "document.addEventListener('securitypolicyviolation',"
+                                      " e => window.__cspViolations.push(e.violatedDirective + ' :: ' + e.blockedURI));")
         page = await context.new_page()
-        errors, requests = [], []
+        errors, requests, console_errors = [], [], []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.on('request', lambda request: requests.append(request.url))
+        page.on('console', lambda message: console_errors.append(message.text) if message.type == 'error' else None)
         if args.offline:
             await page.set_content(offline_html(), wait_until='load')
         else:
@@ -56,8 +61,11 @@ async def run(args):
             await page.locator('#connect button[type=submit]').click()
             await expect(page.locator('#mode')).to_have_text('CONNECTED')
             await expect(page.locator('#message')).to_contain_text('collection disabled')
+            # Positive control: the recorder below can only prove an absence of /v1/ reads if it sees a real one here.
+            assert any('/v1/portfolio' in url for url in requests), 'Request recording missed the authenticated read'
             await page.locator('#disconnect').click()
             results.append('real HTTP assets, protected API and SQLite connection')
+        demo_mark = len(requests)
         await page.locator('#demo').click()
         await expect(page.locator('#mode')).to_have_text('SYNTHETIC DEMO')
         await page.locator('#search').fill('Alibi')
@@ -79,7 +87,8 @@ async def run(args):
         assert await page.locator('#view .state-chip.down').count() == 0
         await page.locator('#replay').fill('1')
         assert await page.locator('#view .state-chip.down').count() == 1
-        results.append('release guard and incident replay')
+        assert not any('/v1/' in url for url in requests[demo_mark:]), 'Replay and demo interaction must not read or write the collector'
+        results.append('release guard and incident replay write nothing to the collector')
         await page.locator('[data-view=signals]').click()
         await expect(page.locator('#page-title')).to_have_text('Signal inbox.')
         before = await page.locator('.signal').count()
@@ -90,13 +99,16 @@ async def run(args):
         await page.locator('#brief').click()
         await expect(page.locator('#export-preview')).to_contain_text('SYNTHETIC DEMO')
         await expect(page.locator('#download-export')).to_be_disabled()
+        previewed = await page.locator('#export-preview').text_content()
         await page.locator('#export-confirm').check()
         async with page.expect_download() as download_info:
             await page.locator('#download-export').click()
         download = await download_info.value
         assert 'demo-field-note' in download.suggested_filename
+        # The reviewed bytes are the downloaded bytes: the preview is the file, not a summary of it.
+        assert Path(await download.path()).read_text(encoding='utf-8') == previewed
         await expect(page.locator('#export-preview')).to_have_text('')
-        results.append('local review and exact-preview download gate')
+        results.append('downloaded file is byte-identical to the reviewed preview')
         await page.keyboard.press('Control+k')
         await expect(page.locator('#palette')).to_be_visible()
         await page.keyboard.press('Escape')
@@ -105,9 +117,11 @@ async def run(args):
         await expect(page.locator('#search')).to_be_focused()
         await page.locator('[data-view=connections]').click()
         await expect(page.locator('#page-title')).to_have_text('Connections.')
+        # The payload sits in a projected field the desk renders (ci.workflow), so the markup assertion is not vacuous.
+        payload = '<img src=x onerror=alert(1)>'
         catalog = {'version': 2, 'generator': 'CommitAtlas', 'source': 'github-public-rest', 'user': 'example-builder',
-                   'generatedAt': '2026-09-10T12:00:00Z', 'projects': [{'repo': 'example-project', 'label': '<img onerror=alert(1)>',
-                   'lifecycle': 'active', 'ci': {'state': 'passing', 'workflow': 'ci.yml'}, 'stars': 1, 'forks': 0, 'openIssuesAndPullRequests': 3,
+                   'generatedAt': '2026-09-10T12:00:00Z', 'projects': [{'repo': 'example-project', 'label': 'Example project',
+                   'lifecycle': 'active', 'ci': {'state': 'passing', 'workflow': payload}, 'stars': 1, 'forks': 0, 'openIssuesAndPullRequests': 3,
                    'description': 'PRIVATE_SENTINEL', 'actions': [{'url': 'https://never-fetch.invalid'}]}]}
         await page.locator('#import-commitatlas').set_input_files({'name': 'projects.json', 'mimeType': 'application/json', 'buffer': json.dumps(catalog).encode()})
         await expect(page.locator('#import-dialog')).to_be_visible()
@@ -115,15 +129,18 @@ async def run(args):
         assert 'never-fetch' not in await page.locator('#import-preview').text_content()
         await page.locator('#accept-import').click()
         await expect(page.locator('#view')).to_contain_text('example-builder/example-project')
+        assert payload in await page.locator('#view').text_content(), 'The rendered field must show the payload as literal text'
         assert await page.locator('#view img').count() == 0
-        results.append('tab-local native catalogue projection and non-executing text')
+        results.append('tab-local native catalogue projection renders injected markup as inert text')
         await page.locator('input[name=public-project][value=alibi]').check()
         await page.get_by_role('button', name='Preview public pulse', exact=True).click()
         packet = json.loads(await page.locator('#export-preview').text_content())
         assert len(packet['projects']) == 1 and packet['sourceMode'] == 'demo'
         assert 'PRIVATE_SENTINEL' not in json.dumps(packet) and 'sessions' not in json.dumps(packet)
+        warning = await page.locator('#export-warning').text_content()
+        assert warning.startswith('SYNTHETIC DEMO.'), warning
         await page.keyboard.press('Escape')
-        results.append('selected public projection excludes usage and imports')
+        results.append('selected public projection excludes usage and keeps the synthetic marking')
         await page.locator('#disconnect').click()
         assert 'example-builder' not in await page.locator('#view').text_content()
         # Deterministic response fault injection. This does not claim real production failures.
@@ -146,8 +163,12 @@ async def run(args):
         await page.locator('#refresh').click()
         await expect(page.locator('#mode')).to_have_text('STALE SNAPSHOT')
         assert await page.locator('#view .state-chip.up').count() == 0
+        # A failed refresh must not launder a last-known failure into an unremarkable "stale probe" chip.
+        assert await page.locator('#view .state-chip.down').count() == 1
+        await expect(page.locator('#view .state-chip.down')).to_contain_text('last known')
+        assert await page.locator('#view .state-chip.stale').count() > 0
         await expect(page.locator('#view')).to_contain_text('Alibi')
-        results.append('failed refresh keeps last-good evidence without green current-health claims')
+        results.append('failed refresh keeps last-good evidence, including a last-known probe failure')
         await page.evaluate('window.deskTestStatus = 200; window.deskTestBad = true')
         await page.locator('#refresh').click()
         await expect(page.locator('#mode')).to_have_text('STALE SNAPSHOT')
@@ -186,7 +207,12 @@ async def run(args):
         await expect(page.locator('#mode')).to_have_text('NOT CONNECTED')
         results.append('responsive widths, reduced-motion mode and pagehide cleanup')
         assert not errors, errors
-        print(json.dumps({'transport': 'offline inlined assets / mocked failures' if args.offline else 'HTTP assets / real initial API / mocked failure scenarios', 'passed': len(results), 'checks': results, 'pageErrors': errors}, indent=2))
+        violations = await page.evaluate('window.__cspViolations || []')
+        assert not violations, violations
+        assert not console_errors, console_errors
+        results.append('no CSP violation or console error in the whole session')
+        print(json.dumps({'transport': 'offline inlined assets / mocked failures' if args.offline else 'HTTP assets / real initial API / mocked failure scenarios',
+                          'passed': len(results), 'checks': results, 'pageErrors': errors, 'cspViolations': violations, 'consoleErrors': console_errors}, indent=2))
         await browser.close()
 
 if __name__ == '__main__':
