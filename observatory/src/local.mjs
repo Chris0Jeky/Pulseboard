@@ -10,6 +10,7 @@ const DB = openDatabase(fileURLToPath(new URL('../.data/observatory.sqlite', imp
 DB.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
 const supplied = typeof process.env.READ_TOKEN === 'string' && process.env.READ_TOKEN.length > 0;
 const READ_TOKEN = supplied ? process.env.READ_TOKEN : randomBytes(32).toString('hex');
+if (supplied && READ_TOKEN.length < 32) console.error('READ_TOKEN is shorter than 32 characters; every authenticated read will be refused with 401.');
 const env = { DB, READ_TOKEN, COLLECT_ENABLED: process.env.COLLECT_ENABLED || 'false',
   ASSETS: { async fetch(request) {
     const path = new URL(request.url).pathname;

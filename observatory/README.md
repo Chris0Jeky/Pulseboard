@@ -36,6 +36,8 @@ Use a separate Worker and database. Do not expose the existing Pulseboard applic
 npx wrangler@4.129.1 d1 create pulseboard-observatory
 # Put the returned database ID in wrangler.jsonc.
 npx wrangler@4.129.1 d1 execute pulseboard-observatory --remote --file schema.sql
+
+Re-run that `d1 execute` step on every upgrade of the Worker: `schema.sql` is idempotent and it installs the `schema_version` row that `/readyz` asserts, so a database created before this revision reports 503 until the file is applied again.
 npx wrangler@4.129.1 deploy --dry-run
 npx wrangler@4.129.1 deploy
 npx wrangler@4.129.1 secret put READ_TOKEN
