@@ -1,3 +1,7 @@
+> **Historical (2025-11).** This document describes the FastAPI/Vue workbench as it stood at
+> Phase 4 and is not current verification. Live proving checks, measured gate state and the
+> Desk direction are in `CLAUDE.md`; open quality-gate debt is issue #13.
+
 # Pulseboard - Implementation Status Report
 
 ## Executive Summary
