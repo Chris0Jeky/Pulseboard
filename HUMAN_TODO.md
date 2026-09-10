@@ -18,7 +18,12 @@ verified. Items that need the owner's judgement stay open until the owner answer
   "ship the stack" (or name what must change first). Once authorised, the agent review-and-ships
   them oldest first, retargeting each child after its base lands.
 
-- [ ] q-4 — **Cloudflare access for #19.** Kraspyon has no `wrangler`, no `CLOUDFLARE_API_TOKEN` and no Wrangler login (measured 2026-09-10). Before an agent can create the disposable D1 fixture or deploy the collector, provide an account and a scoped API token (Workers Scripts + D1 write on the target account) to the box that will run #19, or say which box already has them.
+- [x] q-4 ? **Cloudflare access verified 2026-09-10.** Wrangler 4.130.0 found an existing OAuth login on this machine with Workers and D1 write scopes. The Worker and D1 database are deployed; see `observatory/docs/HOSTING.md`. Collection and scheduled probes remain disabled.
+- [ ] q-5 ? **Trust the reviewed Codex adapter.** Start a fresh Codex session in this checkout, open `/hooks`, and confirm the `.codex/hooks.json` handler is enabled and trusted. Static checks pass but cannot certify this session-only state.
+- [ ] q-6 ? **Account plan and spending notifications.** Confirm the account remains on the intended free plan in Cloudflare's dashboard and select acceptable notifications. The existing OAuth token returns 403 for subscription reads. This deployment makes no paid-plan change.
+
+The encrypted operator read token is stored at `%LOCALAPPDATA%/Pulseboard/read-token.dpapi` for this Windows user. `observatory/docs/HOSTING.md` explains how to copy it without printing it. The public demo needs no token.
+
 
 Tracked debt that needs no owner input: #13 (legacy quality gates), #14 (setuptools floor), and the
 issues filed 2026-09-10 for Node 24 test failures, the tracked `.vite` cache, and the post-merge

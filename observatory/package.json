@@ -1,5 +1,25 @@
 {
-  "name": "pulseboard-observatory", "version": "0.1.0", "private": true,
-  "type": "module", "license": "GPL-3.0-only", "engines": { "node": ">=22.16.0" },
-  "scripts": { "test": "node --test tests/*.test.mjs", "start": "node src/local.mjs", "build:embed": "node adapters/build-embed.mjs" }
+  "name": "pulseboard-observatory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "node src/local.mjs",
+    "build:embed": "node adapters/build-embed.mjs",
+    "dev:worker": "wrangler dev",
+    "deploy:check": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute pulseboard-observatory --local --file schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "4.130.0"
+  },
+  "overrides": {
+    "sharp": "0.35.4"
+  }
 }

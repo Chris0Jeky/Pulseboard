@@ -70,8 +70,15 @@ measurement or data boundary. Prefer a tested vertical slice to scaffolding.
 
 ## Authority
 
+Codex setup: `scripts/agent/context.ps1` reads the current map and decisions;
+`scripts/agent/check.ps1` proves the Desk and harness (Windows: `powershell -NoProfile
+-ExecutionPolicy Bypass -File <script>`). The shared adapter is `.codex/hooks.json`; new-session
+`/hooks` trust remains a human check. Deployment commands and receipts: `observatory/docs/HOSTING.md`.
+
 T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-harness/tier.json`
 binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO.md`; read it before
 merging anything. Hosted Cloudflare/D1 activation (q-2) and the Desk stack merge (q-3) were both
 authorised on 2026-09-10; q-3 carries the owner's condition that #15–#17 get a deep check and test
-pass first, and #19's hosted steps wait on Cloudflare access (q-4). Global laws are auto-loaded; nothing here restates them.
+pass first. Cloudflare access is now verified (q-4), and the Desk is hosted with collection and
+scheduled probes disabled. The scratch-D1 admission gate in #19 remains pending before activation.
+Global laws are auto-loaded; nothing here restates them.

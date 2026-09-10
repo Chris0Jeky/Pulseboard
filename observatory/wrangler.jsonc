@@ -1,10 +1,10 @@
 {
   "name": "pulseboard-observatory",
-  "main": "src/worker.mjs",
+  "main": "src/entry.mjs",
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
   "vars": { "COLLECT_ENABLED": "false" },
-  "triggers": { "crons": ["*/15 * * * *"] },
-  "d1_databases": [{ "binding": "DB", "database_name": "pulseboard-observatory", "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID" }]
+  "triggers": { "crons": [] },
+  "d1_databases": [{ "binding": "DB", "database_name": "pulseboard-observatory", "database_id": "9dfae806-0948-4fa8-9cd6-ab14fa48728e" }]
 }
