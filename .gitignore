@@ -85,3 +85,6 @@ resources_and_files/Capture2.JPG
 
 # Claude Code per-user overrides (committed settings live in .claude/settings.json)
 .claude/settings.local.json
+
+# Coverage HTML written by the backend pytest addopts
+htmlcov/

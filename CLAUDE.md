@@ -6,8 +6,9 @@ WebSocket → ECharts panels). The **Desk** in `observatory/` is the new primary
 dependency-free Node collector, an aggregate read model and an operations desk, with collection
 disabled by default. As of 2026-09-10 the Desk exists only on the stacked PRs #15 → #16 → #17
 (`feat/portfolio-observatory-kit` → `feat/pulseboard-desk` → `feat/pulseboard-desk-ui`); issues
-#18–#24 are its delivery order and every one of them depends on that stack. Merge the stack
-oldest-first and retarget each child after its base lands (#27 tracks the post-merge doc sync).
+#18–#24 are its delivery order and every one of them depends on that stack. Whether the stack
+merges at all is the owner's call (HUMAN_TODO q-3); once authorised, merge it oldest-first and
+retarget each child after its base lands (#27 tracks the post-merge doc sync).
 
 ## Run it (Kraspyon, measured 2026-09-10: Python 3.13, Node 24.19, no Docker Desktop)
 
@@ -26,7 +27,7 @@ oldest-first and retarget each child after its base lands (#27 tracks the post-m
 | frontend build | `cd frontend/pulseboard-web && npm run build` | fails: Tailwind `theme.css` missing (#13) |
 | `observatory/**` | `cd observatory && npm test` | 94/96 on Node 24 here (#25); 96/96 in CI on Node 22 |
 | Desk browser | `.github/workflows/desk-browser.yml`, Playwright against the real server | hosted-only; local runs need a Playwright venv |
-| docs and harness | `git diff --check`; `python <agent-harness>/harness.py audit .` | clean |
+| docs and harness | `git diff --check origin/main...HEAD` (add `--cached` for staged work); `python <agent-harness>/harness.py audit .` | clean |
 
 The red gates above are tracked debt (#13 lint/types/tests/build, #14 setuptools floor). A change
 that touches a seam must not move its numbers the wrong way, and a green Desk run never closes
@@ -66,6 +67,7 @@ measurement or data boundary. Prefer a tested vertical slice to scaffolding.
 ## Authority
 
 T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-harness/tier.json`
-binds and its ratification is open as q-1. Human-action file: `HUMAN_TODO.md`. Owner approval is
-required before any hosted Cloudflare/D1 resource, production read token or collection activation
-(q-2). Global laws are auto-loaded; nothing here restates them.
+binds and its ratification is open as q-1. Human-action file: `HUMAN_TODO.md`; read it before
+merging anything. Three gates are the owner's alone: ratifying the tier (q-1), any hosted
+Cloudflare/D1 resource, production read token or collection activation (q-2), and merging the Desk
+stack #15–#17 (q-3). Global laws are auto-loaded; nothing here restates them.

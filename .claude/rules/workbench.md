@@ -20,14 +20,17 @@ architecture map for the legacy runtime. `WORKBENCH.md` (arrives with #17) is it
    (`dashboard_feeds`). New WebSocket clients get the latest events as initial state.
 3. `backend/app/ws/router.py` serves `/ws/dashboards/{id}`: reads the dashboard's panels, extracts
    feed IDs, registers with the hub. Keepalive ping every 30 s comes from the frontend.
-4. `useDashboardWebSocket.ts` reconnects with exponential backoff, max 5 attempts, then the user must
-   refresh. Events land in `liveDataStore` (latest + last 100 per feed); panels render from it.
+4. `useDashboardWebSocket.ts` reconnects with exponential backoff, max 5 attempts; after that the
+   `ConnectionStatus` "Retry Connection" button calls `manualReconnect()`. Events land in
+   `liveDataStore` (latest + last 100 per feed); panels render from it.
 
 ## Models and config
 
-- `Dashboard` → `Panel` (one-to-many); `FeedDefinition` is referenced from `Panel.config_json`
-  (`feed_id`, `feed_key` dot path into the payload). `config_json` columns are JSON strings — parse
-  with `json.loads`.
+- `Dashboard` → `Panel` (one-to-many). A panel stores `feed_ids_json` (JSON array of feed-id
+  strings, parsed in `ws/router.py`) and `options_json` (panel options; `DashboardLiveView.vue`
+  passes both as `feed-ids` / `options` props, `PanelDialog.vue` writes them). Only `FeedDefinition`
+  has a `config_json` column (feed-specific settings such as `interval_sec`); all three are JSON
+  strings — parse with `json.loads`. There is no `feed_key` anywhere in the code.
 - Feed registry: `get_feed_class(type)` in `backend/app/feeds/__init__.py`; add a feed by subclassing
   `BaseFeed`, registering it there, then creating a `FeedDefinition` via `POST /api/feeds`.
 - Backend `.env`: `DATABASE_URL` (default `sqlite:///./pulseboard.db`), `CORS_ORIGINS`,
@@ -39,7 +42,7 @@ architecture map for the legacy runtime. `WORKBENCH.md` (arrives with #17) is it
 ## Pitfalls that already cost a session
 
 - Feeds must re-check `self._running` / `self._stop_requested` after every `await`, or shutdown hangs.
-- Panels assume numeric values at `feed_key`; a string payload renders an empty ECharts panel.
+- Chart panels expect numeric payload values; a string payload renders an empty ECharts panel.
 - Frontend tests fail on `updateDashboard` and `liveData.clear` because the stores lack them (#13):
   a green run on a store change is 56/58, not 58/58, until that issue lands.
 - `npm run build` needs `node_modules/tailwindcss/theme.css`, absent with the pinned Tailwind (#13).

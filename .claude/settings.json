@@ -8,6 +8,7 @@
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
+      "Bash(cd:*)",
       "Bash(npm ci:*)",
       "Bash(npm install:*)",
       "Bash(npm run:*)",
@@ -28,7 +29,8 @@
       "Bash(ruff:*)",
       "Bash(mypy:*)",
       "Bash(black:*)",
-      "Bash(curl:*)",
+      "Bash(curl http://localhost:*)",
+      "Bash(curl http://127.0.0.1:*)",
       "Bash(netstat:*)",
       "Bash(taskkill:*)"
     ],
