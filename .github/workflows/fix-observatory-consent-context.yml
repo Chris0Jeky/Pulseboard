@@ -1,0 +1,52 @@
+name: Repair Observatory consent boundary
+on:
+  push:
+    branches:
+      - feat/alibi-observatory-context-106
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/alibi-observatory-context-106
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: observatory/package-lock.json
+      - run: npm ci
+        working-directory: observatory
+      - name: Defer host context until consent is active
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          filename = Path('observatory/adapters/embed.mjs')
+          text = filename.read_text()
+          old = "  const track = (event, options = {}) => observer.track(event, { ...hostContext(), ...options });"
+          new = """  const track = (event, options = {}) => {
+            if (!observer.status().active) return observer.track(event, options);
+            return observer.track(event, { ...hostContext(), ...options });
+          };""".replace('          ', '')
+          if text.count(old) != 1:
+              raise SystemExit('Consent-boundary replacement marker not found exactly once.')
+          filename.write_text(text.replace(old, new))
+          PY
+      - name: Verify the focused and full Observatory suite
+        run: |
+          node --test tests/embed-consent-context.test.mjs
+          npm test
+        working-directory: observatory
+      - name: Commit the reviewed fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add observatory/adapters/embed.mjs observatory/tests/embed-consent-context.test.mjs
+          git diff --cached --check
+          git commit -m "fix(observatory): defer host context until consent"
+          git push
