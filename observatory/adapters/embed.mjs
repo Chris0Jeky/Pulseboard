@@ -18,7 +18,10 @@ export function mountObserver(config, create, runtime = globalThis) {
       };
     } catch { return {}; }
   }
-  const track = (event, options = {}) => observer.track(event, { ...hostContext(), ...options });
+  const track = (event, options = {}) => {
+  if (!observer.status().active) return observer.track(event, options);
+  return observer.track(event, { ...hostContext(), ...options });
+};
   const key = 'pulseboard:consent:v1:' + config.id + ':' + config.endpoint, CONSENT_MS = 90 * 86400000;
   let granted = false, overdue = false;
   // A stored expiry is never trusted past 90 days from now; a tampered or corrupt one cannot grant indefinite consent.
