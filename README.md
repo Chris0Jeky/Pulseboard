@@ -23,7 +23,7 @@ The hosted Cloudflare Worker/D1 Desk is live. Its operating boundary is delibera
 - every other project integration remains inert until separately reviewed and activated;
 - optional Alibi events require player consent and withdrawal stops later events;
 - Taskdeck handoffs are reviewed files, not remotely issued commands;
-- there is no automatic paging, deployment, remediation, task creation, or portfolio-wide tracking.
+- there is no portfolio-wide product-event collection or cross-product user tracking, and no automatic paging, deployment, remediation, or task creation.
 
 The first consented Alibi events and a withdrawal check were recorded on 10 September 2026. The hosting runbook keeps the exact receipts and the known cold-path/cron limitations. A configured trigger, a green demo, or an admitted client event is never presented as proof of a complete monitoring system.
 
