@@ -25,6 +25,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/pulseboard-web/package-lock.json
       - run: npm ci
+      - name: Require lazy route boundaries
+        run: npx vitest run src/router/index.test.ts --maxWorkers=2
       - name: Build with module attribution
         shell: bash
         run: |
