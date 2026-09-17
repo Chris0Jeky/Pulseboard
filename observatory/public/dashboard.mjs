@@ -1,4 +1,4 @@
-import { DAY, sum, count, percent, fraction, monitorState, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff } from './desk-model.mjs';
+import { DAY, sum, count, percent, fraction, monitorState, monitorDisplay, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff } from './desk-model.mjs';
 import { makeDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
 import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
@@ -49,9 +49,14 @@ function empty(title, detail, action = null) { return e('section', { class: 'emp
 function stat(title, value, note, accent = '') { return e('article', { class: 'stat' }, e('div', { class: 'stat-title' }, title), e('strong', { class: `stat-value ${accent}` }, value), e('div', { class: 'stat-note' }, note)); }
 /** A failed refresh makes the reading unknown; it never erases a last-known failure or invents a probe claim. */
 function chip(p) {
-  const s = monitorState(p, Date.now()), unread = state.stale && state.snapshot?.mode === 'live' && p.probeExpected;
-  if (unread && s === 'down') return e('span', { class: 'state-chip down last-known' }, `${labels.down} · last known`);
-  return unread ? e('span', { class: 'state-chip stale' }, 'Reading unknown') : e('span', { class: `state-chip ${s}` }, labels[s]);
+  const failedRefresh = state.stale && state.snapshot?.mode === 'live';
+  const display = monitorDisplay(p, Date.now(), failedRefresh);
+  if (display.lastKnown) {
+    const age = display.freshness === 'stale' ? ' · old reading' : '';
+    return e('span', { class: 'state-chip down last-known' }, `${labels.down} · last known${age}`);
+  }
+  return failedRefresh && p.probeExpected ? e('span', { class: 'state-chip stale' }, 'Reading unknown')
+    : e('span', { class: `state-chip ${display.state}` }, labels[display.state]);
 }
 function panel(title, body, action = null) { return e('section', { class: 'panel' }, e('div', { class: 'panel-top' }, e('h2', {}, title), action), body); }
 function table(headers, rows) { return e('table', {}, e('thead', {}, e('tr', {}, headers.map(text => e('th', { scope: 'col' }, text)))), e('tbody', {}, rows.map(row => e('tr', {}, row.map(cell => e('td', {}, cell)))))); }

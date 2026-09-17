@@ -23,6 +23,15 @@ export function monitorState(project, now) {
   if (project.monitor.checked > now || now - project.monitor.checked > STALE_AFTER) return 'stale';
   return ['up', 'down', 'unknown'].includes(project.monitor.state) ? project.monitor.state : 'unknown';
 }
+/** Keep recorded state and reading freshness separate while a live refresh is unavailable. */
+export function monitorDisplay(project, now, refreshFailed = false) {
+  const freshness = monitorState(project, now);
+  if (refreshFailed && project.probeExpected) {
+    if (project.monitor?.state === 'down') return { state: 'down', freshness, lastKnown: true };
+    return { state: 'stale', freshness, lastKnown: false };
+  }
+  return { state: freshness, freshness, lastKnown: false };
+}
 export function compareReleases(baseline, candidate) {
   if (!baseline || !candidate || baseline.release === candidate.release || [baseline.release, candidate.release].includes('unattributed')) {
     return { supported: false, reason: 'Choose two different, attributed release cohorts.', delta: null };
