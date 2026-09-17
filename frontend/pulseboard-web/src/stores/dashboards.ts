@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Dashboard } from '../types'
+import type { Dashboard, DashboardUpdate } from '../types'
 import apiClient from '../api/client'
 import { useNotificationsStore } from './notifications'
 
@@ -62,6 +62,31 @@ export const useDashboardsStore = defineStore('dashboards', () => {
       error.value = e instanceof Error ? e.message : 'Failed to create dashboard'
       notifications.error(error.value)
       console.error('Error creating dashboard:', e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function updateDashboard(id: string, data: DashboardUpdate) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const updated = await apiClient.updateDashboard(id, data)
+      const index = dashboards.value.findIndex((dashboard) => dashboard.id === id)
+      if (index >= 0) {
+        dashboards.value[index] = updated
+      }
+      if (currentDashboard.value?.id === id) {
+        currentDashboard.value = updated
+      }
+      notifications.success(`Dashboard "${updated.name}" updated successfully`)
+      return updated
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update dashboard'
+      notifications.error(error.value)
+      console.error('Error updating dashboard:', e)
       throw e
     } finally {
       loading.value = false
@@ -146,6 +171,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     fetchDashboards,
     fetchDashboard,
     createDashboard,
+    updateDashboard,
     deleteDashboard,
     cloneDashboard,
     clearCurrentDashboard,
