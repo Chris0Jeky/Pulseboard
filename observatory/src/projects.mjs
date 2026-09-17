@@ -10,7 +10,7 @@ export const projects = {
   mdviewer: p('MDviewer', 'https://mdviewer-c9r.pages.dev', '/', 'MDviewer', ['export.print_requested', 'export.pdf_completed'], ['home', 'editor']),
   commitatlas: p('CommitAtlas', 'https://commit-atlas.commit-atlas.workers.dev', '/', 'CommitAtlas', ['studio.opened', 'card.exported'], ['home', 'studio', 'other'], 'COMMITATLAS'),
   alibi: { ...p('Alibi', 'https://alibi-after-hours-preview.commit-atlas.workers.dev', '/', 'Alibi', ['puzzle.started', 'puzzle.completed', 'hint.requested'], ['home', 'puzzle', 'castle', 'quiet-wing', 'other'], 'ALIBI'),
-    releases: ['unattributed', '0.11.3'], contextGlobal: 'ALIBI_OBSERVATORY_CONTEXT' },
+    releases: ['unattributed', '0.11.3', '0.11.4'], contextGlobal: 'ALIBI_OBSERVATORY_CONTEXT' },
   'developer-lens': p('Developer Lens showcase', 'https://chris0jeky.github.io', '/developer-lens/', 'Developer', ['story.opened', 'share.requested'], ['home', 'story', 'share']),
   idleharbor: p('IdleHarbor site', 'https://chris0jeky.github.io', '/IdleHarbor/', 'IdleHarbor', ['download.requested'], ['home']),
   portfolio: p('Portfolio', 'https://chris0jeky.github.io', '/CV_and_Portfolio/Portfolio/portfolio.html', 'Tcaci', ['project.opened', 'contact.requested'], ['home', 'project', 'cv']),
