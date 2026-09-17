@@ -10,6 +10,7 @@ test('portfolio read refuses an invalid collection allowlist', async t => {
   const DB = openDatabase();
   DB.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
   t.after(() => DB.close());
+  // A protected read must not turn fail-closed configuration into apparently intentional exclusion.
   const response = await handle(new Request('https://desk.test/v1/portfolio?days=7', {
     headers: { authorization: `Bearer ${token}` },
   }), {
