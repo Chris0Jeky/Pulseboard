@@ -8,6 +8,7 @@ import { projects } from '../src/projects.mjs';
 // Sources may be checked out with CRLF (core.autocrlf); the strip patterns below are anchored on bare newlines.
 const read = name => readFileSync(new URL(name, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
 const digest = value => createHash('sha256').update(value).digest('hex');
+const normalise = value => String(value).replaceAll('\r\n', '\n');
 /** The artifact is a plain script: no module statements survive, and no server-only constant is published. */
 export function assertArtifactShape(content) {
   const leaked = content.split('\n').find(line => /^(?:import|export)\b/.test(line));
@@ -67,8 +68,11 @@ function readLock(lockPath, present) {
   return empty;
 }
 export function install(id, root, target, endpoint = '') {
-  const base = realpathSync(root), full = path.resolve(base, target);
+  const base = realpathSync(root), full = path.resolve(base, target), key = target.split(/[\\/]/).join('/');
+  const reservedKeys = new Set([HOST_CHECKER, HOST_README, 'observatory/check.local.mjs', 'observatory.lock.json']);
+  const reservedPaths = new Set([...reservedKeys].map(relative => path.resolve(base, relative)));
   if (path.isAbsolute(target) || !full.startsWith(base + path.sep) || target.split(/[\\/]/).includes('..')) throw new Error('Target must be a relative path inside the repository');
+  if (reservedKeys.has(key) || reservedPaths.has(full)) throw new Error('Target is reserved for Observatory installer metadata');
   // Do not follow symlink parents into another tree. lstat, never existsSync: a dangling symlink is still a symlink.
   let parent = path.dirname(full);
   while (!lstatSync(parent, { throwIfNoEntry: false })) parent = path.dirname(parent);
@@ -79,13 +83,18 @@ export function install(id, root, target, endpoint = '') {
   const lockPath = path.join(base, 'observatory.lock.json');
   const lockStat = lstatSync(lockPath, { throwIfNoEntry: false });
   if (full === lockPath || lockStat?.isSymbolicLink()) throw new Error('Refusing reserved or symlinked lock path');
-  const lock = readLock(lockPath, !!lockStat), key = target.split(/[\\/]/).join('/'), owned = lock.installs[key];
-  if (targetStat && (!targetStat.isFile() || !owned || owned.sha256 !== digest(readFileSync(full)))) throw new Error('Existing file has local edits or is unowned; refusing overwrite');
+  const lock = readLock(lockPath, !!lockStat), owned = lock.installs[key];
+  if (targetStat && (!targetStat.isFile() || !owned || owned.sha256 !== digest(normalise(readFileSync(full, 'utf8'))))) throw new Error('Existing file has local edits or is unowned; refusing overwrite');
   // Nothing is written or checksummed until the artifact parses as a plain script and holds its published shape.
   const content = buildEmbed(id, { endpoint }); new vm.Script(content); assertArtifactShape(content);
   const expectedHash = digest(content), checkerContent = buildHostChecker();
   const inspectAuxiliary = (relative, label) => {
     const candidate = path.resolve(base, relative);
+    let logicalParent = path.dirname(candidate);
+    while (logicalParent !== base) {
+      if (lstatSync(logicalParent, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(label + ' auxiliary parent must not be a symlink');
+      logicalParent = path.dirname(logicalParent);
+    }
     let ancestor = path.dirname(candidate);
     while (!lstatSync(ancestor, { throwIfNoEntry: false })) ancestor = path.dirname(ancestor);
     const resolvedAncestor = realpathSync(ancestor);
@@ -95,10 +104,10 @@ export function install(id, root, target, endpoint = '') {
     return { candidate, stat };
   };
   const checker = inspectAuxiliary(HOST_CHECKER, 'Shared host checker');
-  if (checker.stat && readFileSync(checker.candidate, 'utf8') !== checkerContent) throw new Error('Shared host checker has local edits; move host-specific assertions to observatory/check.local.mjs, remove the old checker, and reinstall');
+  if (checker.stat && normalise(readFileSync(checker.candidate, 'utf8')) !== checkerContent) throw new Error('Shared host checker has local edits; move host-specific assertions to observatory/check.local.mjs, remove the old checker, and reinstall');
   const readme = inspectAuxiliary(HOST_README, 'Observatory host README');
   const previousReadme = buildHostReadme(Object.keys(lock.installs));
-  const manageReadme = !readme.stat || readFileSync(readme.candidate, 'utf8') === previousReadme;
+  const manageReadme = !readme.stat || normalise(readFileSync(readme.candidate, 'utf8')) === previousReadme;
 
   mkdirSync(path.dirname(full), { recursive: true }); writeFileSync(full, content);
   const writtenHash = digest(readFileSync(full));

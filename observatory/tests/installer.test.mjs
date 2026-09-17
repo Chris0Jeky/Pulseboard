@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -140,6 +140,44 @@ test('installer preserves host notes and refuses an edited shared checker', () =
     writeFileSync(checkerPath, '// hand-written checker\n');
     assert.throws(() => install('mdviewer', root, 'public/observer.js'), /shared host checker has local edits/i);
     assert.equal(readFileSync(checkerPath, 'utf8'), '// hand-written checker\n');
+  } finally { rmSync(root, { recursive: true }); }
+});
+test('installer accepts checkout-only CRLF for generated artifacts and auxiliary files', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'observatory-test-'));
+  try {
+    install('mdviewer', root, 'public/observer.js');
+    for (const relative of ['public/observer.js', 'observatory/check.mjs', 'observatory/README.md']) {
+      const file = path.join(root, relative);
+      writeFileSync(file, readFileSync(file, 'utf8').replaceAll('\n', '\r\n'));
+    }
+    assert.doesNotThrow(() => install('commitatlas', root, 'site/observer.js'));
+    const readme = readFileSync(path.join(root, 'observatory/README.md'), 'utf8');
+    assert.match(readme, /public\/observer\.js text eol=lf/);
+    assert.match(readme, /site\/observer\.js text eol=lf/);
+    assert.equal(readme.includes('\r'), false);
+    assert.equal(readFileSync(path.join(root, 'observatory/check.mjs'), 'utf8').includes('\r'), false);
+    const healthy = runChecker(root);
+    assert.equal(healthy.status, 0, healthy.stderr || healthy.stdout);
+    assert.doesNotThrow(() => install('mdviewer', root, 'public/observer.js'));
+    assert.equal(readFileSync(path.join(root, 'public/observer.js'), 'utf8').includes('\r'), false);
+  } finally { rmSync(root, { recursive: true }); }
+});
+test('installer reserves every generated auxiliary path from browser artifacts', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'observatory-test-'));
+  try {
+    for (const target of ['observatory/check.mjs', 'observatory/README.md', 'observatory/check.local.mjs', 'observatory\\check.mjs']) {
+      assert.throws(() => install('mdviewer', root, target), /reserved/i, target);
+    }
+    assert.throws(() => install('mdviewer', root, 'observatory/./README.md'), /reserved/i);
+  } finally { rmSync(root, { recursive: true }); }
+});
+test('installer rejects a symlinked auxiliary directory even when it stays inside the repository', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'observatory-test-'));
+  try {
+    const physical = path.join(root, 'tools', 'obs');
+    mkdirSync(physical, { recursive: true });
+    symlinkSync(physical, path.join(root, 'observatory'), 'dir');
+    assert.throws(() => install('mdviewer', root, 'public/observer.js'), /auxiliary|parent.*symlink/i);
   } finally { rmSync(root, { recursive: true }); }
 });
 test('Taskdeck cannot accidentally acquire a public embed', () => assert.throws(() => buildEmbed('taskdeck'), /no public collection origin/));
