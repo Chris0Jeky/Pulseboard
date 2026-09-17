@@ -11,6 +11,7 @@ import { createAlibiJourneyReporter } from '../adapters/alibi-journey.mjs';
 
 const token = 'j'.repeat(64);
 const origin = projects.alibi.origin;
+const JOURNEY_SESSION = crypto.randomUUID();
 const event = (name, seq) => ({
   v: 1,
   id: crypto.randomUUID(),
@@ -20,7 +21,6 @@ const event = (name, seq) => ({
   route: 'puzzle',
   release: '0.11.4',
 });
-const JOURNEY_SESSION = crypto.randomUUID();
 
 function database(t) {
   const DB = openDatabase();
@@ -90,16 +90,17 @@ test('admitted journey events reconcile into a separate low-volume Desk aggregat
   });
   assert.equal(assertPortfolio(snapshot), snapshot);
   const alibi = snapshot.projects.find(project => project.id === 'alibi');
-  assert.deepEqual(alibi.journey, {
-    schema: 'pulseboard.named-journey/1',
-    id: 'puzzle',
-    label: 'Puzzle attempt',
-    attempts: { initial: 1, retries: 1, total: 2 },
-    outcomes: { completed: 1, failed: 1, open: 0, orphaned: 0 },
-    hints: 1,
-    completion: { numerator: 1, denominator: 2, value: 0.5, interval: assert.any(Array) },
-    limitations: assert.any(Array),
-  });
+  assert.equal(alibi.journey.schema, 'pulseboard.named-journey/1');
+  assert.equal(alibi.journey.id, 'puzzle');
+  assert.equal(alibi.journey.label, 'Puzzle attempt');
+  assert.deepEqual(alibi.journey.attempts, { initial: 1, retries: 1, total: 2 });
+  assert.deepEqual(alibi.journey.outcomes, { completed: 1, failed: 1, open: 0, orphaned: 0 });
+  assert.equal(alibi.journey.hints, 1);
+  assert.equal(alibi.journey.completion.numerator, 1);
+  assert.equal(alibi.journey.completion.denominator, 2);
+  assert.equal(alibi.journey.completion.value, 0.5);
+  assert.ok(Array.isArray(alibi.journey.completion.interval));
+  assert.ok(Array.isArray(alibi.journey.limitations));
   assert.match(alibi.journey.limitations.join(' '), /client-reported/i);
   assert.match(alibi.journey.limitations.join(' '), /puzzle identit/i);
 
