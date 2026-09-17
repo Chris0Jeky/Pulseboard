@@ -1,0 +1,45 @@
+name: Temporary bundle split proof
+
+on:
+  push:
+    branches:
+      - perf/frontend-bundle-60
+
+permissions:
+  contents: write
+
+jobs:
+  red-then-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend/pulseboard-web
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/pulseboard-web/package-lock.json
+      - run: npm ci
+      - name: Prove eager routes violate the async boundary
+        shell: bash
+        run: |
+          set +e
+          npx vitest run src/router/index.test.ts
+          status=$?
+          set -e
+          test "$status" -ne 0
+      - name: Build the current production bundle
+        run: npm run build
+      - name: Prove the current bundle violates the executable budget
+        shell: bash
+        run: |
+          set +e
+          npm run build:budget
+          status=$?
+          set -e
+          test "$status" -ne 0
