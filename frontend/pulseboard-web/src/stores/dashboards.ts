@@ -74,15 +74,19 @@ export const useDashboardsStore = defineStore('dashboards', () => {
 
     try {
       const updated = await apiClient.updateDashboard(id, data)
+      const preserveDetails = (existing: Dashboard | null | undefined): Dashboard =>
+        existing?.panels === undefined
+          ? updated
+          : { ...existing, ...updated, panels: existing.panels }
       const index = dashboards.value.findIndex((dashboard) => dashboard.id === id)
       if (index >= 0) {
-        dashboards.value[index] = updated
+        dashboards.value[index] = preserveDetails(dashboards.value[index])
       }
       if (currentDashboard.value?.id === id) {
-        currentDashboard.value = updated
+        currentDashboard.value = preserveDetails(currentDashboard.value)
       }
       notifications.success(`Dashboard "${updated.name}" updated successfully`)
-      return updated
+      return currentDashboard.value?.id === id ? currentDashboard.value : updated
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to update dashboard'
       notifications.error(error.value)
