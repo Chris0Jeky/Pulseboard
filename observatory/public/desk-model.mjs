@@ -40,7 +40,7 @@ function fingerprint(value) {
   return (hash >>> 0).toString(16);
 }
 /** Rules surface inspectable observations, never diagnoses or automated changes. */
-export function buildSignals(snapshot, now = Date.now()) {
+export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) {
   const signals = [];
   const add = (project, rule, severity, title, detail, evidence, next) => {
     const id = `${project?.id || 'portfolio'}:${rule}`;
@@ -52,12 +52,20 @@ export function buildSignals(snapshot, now = Date.now()) {
     'Finish the rollout checks before explicitly enabling collection.');
   if (now - snapshot.generatedAt > STALE_AFTER || snapshot.generatedAt > now) add(null, 'snapshot.stale', 'warning', 'This snapshot needs a fresh reading',
     'Keep its observations as history, not current health.', { generatedAt: snapshot.generatedAt }, 'Reconnect to the collector or import a newer snapshot.');
+  if (refreshFailed === true) add(null, 'snapshot.refresh_failed', 'warning', 'The latest refresh failed',
+    'Current readings are unknown. The remaining observations come from the last-good snapshot.',
+    { generatedAt: snapshot.generatedAt, lastKnown: true }, 'Reconnect to the collector before treating any observation as current health.');
   for (const p of snapshot.projects) {
     const state = monitorState(p, now);
-    if (state === 'down') add(p, 'monitor.down', 'critical', `${p.label} failed its synthetic check`,
-      'The configured path failed the monitor hysteresis. This does not prove every user journey is down.',
-      { state, checked: p.monitor.checked, failures: p.monitor.failures, status: p.monitor.status },
-      'Check the configured probe, then the latest deployment and a real product journey.');
+    if (state === 'down') {
+      const lastKnown = refreshFailed === true;
+      add(p, 'monitor.down', 'critical', lastKnown ? `${p.label} last-known probe failure` : `${p.label} failed its synthetic check`,
+        lastKnown ? 'The last successful snapshot contained a failed probe. The current reading is unknown.'
+          : 'The configured path failed the monitor hysteresis. This does not prove every user journey is down.',
+        { state, checked: p.monitor.checked, failures: p.monitor.failures, status: p.monitor.status, ...(lastKnown ? { lastKnown: true } : {}) },
+        lastKnown ? 'Refresh the desk, then check the configured probe, latest deployment and a real product journey.'
+          : 'Check the configured probe, then the latest deployment and a real product journey.');
+    }
     if (state === 'stale') add(p, 'monitor.stale', 'warning', `${p.label} has an old probe reading`,
       'No current availability claim is possible.', { checked: p.monitor.checked }, 'Check the probe schedule and collector readiness.');
     if (state === 'unknown') add(p, 'monitor.unknown', 'note', `${p.label} is waiting for probe evidence`,

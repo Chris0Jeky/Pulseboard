@@ -1,6 +1,7 @@
 import { DAY, sum, count, percent, fraction, monitorState, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff } from './desk-model.mjs';
 import { makeDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
+import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
 
 const $ = selector => document.querySelector(selector);
 /** One visible-tab poll interval, named once: it sets the collector read multiplier documented in docs/ENGINEERING.md. */
@@ -40,7 +41,8 @@ const relative = value => {
 const matches = p => `${p.label} ${p.id}`.toLowerCase().includes(state.query);
 /** Every export warning starts here, so an invented snapshot stays labelled whichever exporter wrote the preview. */
 const demoPrefix = () => state.snapshot?.mode === 'demo' ? 'SYNTHETIC DEMO. ' : '';
-const signals = () => state.snapshot ? buildSignals(state.snapshot).filter(s => !state.query || `${s.label} ${s.title} ${s.rule}`.toLowerCase().includes(state.query)) : [];
+const signalSet = () => state.snapshot ? buildSignals(state.snapshot, Date.now(), state.stale) : [];
+const signals = () => signalSet().filter(s => !state.query || `${s.label} ${s.title} ${s.rule}`.toLowerCase().includes(state.query));
 function notify(message) { const toast = $('#toast'); toast.textContent = message; toast.hidden = false; clearTimeout(notify.timer); notify.timer = setTimeout(() => { toast.hidden = true; }, 4500); }
 function showDialog(id) { const dialog = $(id); if (!dialog.open) dialog.showModal(); }
 function empty(title, detail, action = null) { return e('section', { class: 'empty' }, e('div', { class: 'empty-mark', 'aria-hidden': true }, '⌁'), e('h2', {}, title), e('p', {}, detail), action); }
@@ -48,7 +50,7 @@ function stat(title, value, note, accent = '') { return e('article', { class: 's
 /** A failed refresh makes the reading unknown; it never erases a last-known failure or invents a probe claim. */
 function chip(p) {
   const s = monitorState(p, Date.now()), unread = state.stale && state.snapshot?.mode === 'live' && p.probeExpected;
-  if (unread && s === 'down') return e('span', { class: 'state-chip down' }, `${labels.down} · last known`);
+  if (unread && s === 'down') return e('span', { class: 'state-chip down last-known' }, `${labels.down} · last known`);
   return unread ? e('span', { class: 'state-chip stale' }, 'Reading unknown') : e('span', { class: `state-chip ${s}` }, labels[s]);
 }
 function panel(title, body, action = null) { return e('section', { class: 'panel' }, e('div', { class: 'panel-top' }, e('h2', {}, title), action), body); }
@@ -114,7 +116,7 @@ function chart(projects, mini = false) {
     e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'Admitted events'], days.map((day, i) => [new Date(day * DAY).toISOString().slice(0, 10), count(totals[i])]))));
 }
 function projectTable() {
-  const ss = buildSignals(state.snapshot);
+  const ss = signalSet();
   const priority = p => sum(ss.filter(s => s.project === p.id), s => s.severity === 'critical' ? 100 : s.severity === 'warning' ? 10 : 1);
   const projects = state.snapshot.projects.filter(matches).sort((a, b) => state.sort === 'name' ? a.label.localeCompare(b.label)
     : state.sort === 'events' ? b.totals.events - a.totals.events || a.label.localeCompare(b.label)
@@ -265,7 +267,7 @@ function render() {
   const [title, subtitle] = views[state.view];
   $('#page-title').textContent = title; $('#page-subtitle').textContent = subtitle; $('#breadcrumb').textContent = state.view.toUpperCase();
   for (const link of document.querySelectorAll('nav a')) { if (link.dataset.view === state.view) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); }
-  $('#signal-count').textContent = state.snapshot ? String(buildSignals(state.snapshot).filter(s => reviewState(s, state.reviews) === 'open').length) : '0';
+  $('#signal-count').textContent = state.snapshot ? String(signalSet().filter(s => reviewState(s, state.reviews) === 'open').length) : '0';
   $('#density').textContent = document.body.dataset.density === 'compact' ? 'Comfortable view' : 'Compact view';
   $('#brief').disabled = !state.snapshot; $('#refresh').disabled = state.busy || (!state.token && !state.snapshot);
   $('#disconnect').hidden = !state.snapshot && !state.token && !Object.keys(state.imported).length; $('#demo-controls').hidden = state.snapshot?.mode !== 'demo';
@@ -292,9 +294,9 @@ async function refresh() {
   if (state.busy || document.hidden) return;
   clearTimeout(state.timer);
   const epoch = state.epoch, controller = new AbortController(); state.controller = controller; state.busy = true; render();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
   try {
-    const response = await fetch(`/v1/portfolio?days=${state.days}`, { headers: { authorization: `Bearer ${state.token}` }, cache: 'no-store', credentials: 'omit', redirect: 'error', signal: controller.signal });
+    const response = await requestPortfolio(fetch, { token: state.token, days: state.days, signal: controller.signal });
     if (epoch !== state.epoch) return;
     if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return; }
     if (!response.ok) throw new Error('Collector unavailable');
@@ -310,7 +312,7 @@ async function refresh() {
   }
 }
 function preview(text, name, type = 'text/markdown') { state.export = { text, name, type }; $('#export-confirm').checked = false; $('#download-export').disabled = true; $('#export-preview').textContent = text; $('#export-warning').textContent = `${demoPrefix() || 'PRIVATE AGGREGATE EXPORT. '}Review the complete file below. Nothing is uploaded; sharing it later is your decision.`; showDialog('#export-dialog'); }
-function fieldNote() { if (state.snapshot) preview(makeBrief(state.snapshot, buildSignals(state.snapshot), state.stale), `pulseboard-${state.snapshot.mode}-field-note.md`); }
+function fieldNote() { if (state.snapshot) preview(makeBrief(state.snapshot, signalSet(), state.stale), `pulseboard-${state.snapshot.mode}-field-note.md`); }
 function density() { document.body.dataset.density = document.body.dataset.density === 'compact' ? 'comfortable' : 'compact'; try { localStorage.setItem('pulseboard.desk.density', document.body.dataset.density); } catch { /* In-memory setting works. */ } render(); }
 readSettings();
 for (const close of document.querySelectorAll('.close-dialog')) close.addEventListener('click', () => close.closest('dialog').close());
