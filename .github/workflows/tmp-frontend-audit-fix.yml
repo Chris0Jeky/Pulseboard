@@ -24,8 +24,12 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
         working-directory: frontend/pulseboard-web
-      - name: Apply non-breaking audit fixes
-        run: npm audit fix
+      - name: Apply non-breaking audit fixes to a stable graph
+        run: |
+          for pass in 1 2 3; do
+            echo "Audit repair pass $pass"
+            npm audit fix && break || true
+          done
         working-directory: frontend/pulseboard-web
       - name: Require a clean complete audit
         run: npm audit --audit-level=low
