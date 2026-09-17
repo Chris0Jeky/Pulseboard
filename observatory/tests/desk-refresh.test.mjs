@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeDemo } from '../public/desk-demo.mjs';
-import { buildSignals } from '../public/desk-model.mjs';
+import { buildSignals, monitorDisplay } from '../public/desk-model.mjs';
 import { assets } from '../src/assets.mjs';
 import { readFileSync } from 'node:fs';
 
@@ -39,10 +39,12 @@ test('prolonged failed refresh retains an old recorded failure and also reports 
   assert.equal(down.evidence.state, 'down');
   assert.equal(down.evidence.freshness, 'stale');
   assert.equal(down.evidence.lastKnown, true);
+  assert.deepEqual(monitorDisplay(project, now, true), { state: 'down', freshness: 'stale', lastKnown: true });
 
   const freshRead = buildSignals(snapshot, now, false);
   assert.equal(freshRead.some(signal => signal.project === project.id && signal.rule === 'monitor.down'), false);
   assert.ok(freshRead.some(signal => signal.project === project.id && signal.rule === 'monitor.stale'));
+  assert.deepEqual(monitorDisplay(project, now, false), { state: 'stale', freshness: 'stale', lastKnown: false });
 });
 
 test('overview attention count uses the same refresh-aware signal set as the inbox', () => {
