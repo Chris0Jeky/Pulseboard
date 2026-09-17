@@ -1,0 +1,50 @@
+name: Temporary frontend audit repair
+
+on:
+  push:
+    branches:
+      - fix/frontend-gates-13
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/pulseboard-web/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+        working-directory: frontend/pulseboard-web
+      - name: Pin the first non-affected Vitest toolchain
+        run: npm install --save-dev vitest@4.1.11 @vitest/ui@4.1.11
+        working-directory: frontend/pulseboard-web
+      - name: Repair remaining dependencies within declared ranges
+        run: npm audit fix
+        working-directory: frontend/pulseboard-web
+      - name: Require a clean complete audit
+        run: npm audit --audit-level=low
+        working-directory: frontend/pulseboard-web
+      - name: Run frontend tests
+        run: npx vitest run --maxWorkers=2
+        working-directory: frontend/pulseboard-web
+      - name: Build production frontend
+        run: npm run build
+        working-directory: frontend/pulseboard-web
+      - name: Publish verified dependency refresh
+        run: |
+          git diff --check
+          rm .github/workflows/tmp-frontend-audit-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Refresh frontend dependencies to non-affected releases'
+          git push origin HEAD:fix/frontend-gates-13
