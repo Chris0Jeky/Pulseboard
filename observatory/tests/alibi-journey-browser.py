@@ -170,13 +170,16 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
                 lambda route, request: proxy_to_collector(route, request, local_origin, posts),
             )
             page.goto(HOST_ORIGIN + "/", wait_until="load")
-            page.locator("#pulseboard-usage-sharing input[type=checkbox]").wait_for()
+            sharing = page.locator("#pulseboard-usage-sharing")
+            sharing.wait_for(state="attached")
+            sharing.locator("summary").click()
+            consent = sharing.locator("input[type=checkbox]")
+            consent.wait_for(state="visible")
 
             assert page.evaluate("() => globalThis.PulseboardUsage.track('puzzle.started')") is False
             time.sleep(0.2)
             assert posts == [], "pre-consent events must not reach the collector"
 
-            consent = page.locator("#pulseboard-usage-sharing input[type=checkbox]")
             consent.check()
             wait_for(lambda: len(posts) == 1, "consented page view was not delivered")
 
