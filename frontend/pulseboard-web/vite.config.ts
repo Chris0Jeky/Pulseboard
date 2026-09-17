@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
-import { workbenchChunk } from './build/chunks'
+import { workbenchChunk } from './config/chunks'
 
 // https://vite.dev/config/
 export default defineConfig({
