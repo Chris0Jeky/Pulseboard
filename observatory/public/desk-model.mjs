@@ -53,10 +53,15 @@ export function buildSignals(snapshot, now = Date.now()) {
   if (now - snapshot.generatedAt > STALE_AFTER || snapshot.generatedAt > now) add(null, 'snapshot.stale', 'warning', 'This snapshot needs a fresh reading',
     'Keep its observations as history, not current health.', { generatedAt: snapshot.generatedAt }, 'Reconnect to the collector or import a newer snapshot.');
   for (const p of snapshot.projects) {
-    if (snapshot.collectionEnabled && p.collectionEligible && !p.collectionAdmitted) add(p, 'collection.not_admitted', 'note', `${p.label} is registered but not admitted`,
-      'Its zero event count cannot be read as no traffic because this project is outside the active collection allowlist.',
-      { collectionEnabled: true, collectionEligible: true, collectionAdmitted: false },
-      'Add the exact project id to COLLECT_PROJECTS after its rollout review, or keep the exclusion intentional.');
+    if (snapshot.collectionEnabled && p.collectionEligible && !p.collectionAdmitted) {
+      const retainedEvents = p.totals.events;
+      const detail = retainedEvents === 0
+        ? 'Its zero event count cannot be read as no traffic because this project is outside the active collection allowlist.'
+        : `${retainedEvents} retained events belong to the selected historical window; current browser collection is not admitted.`;
+      add(p, 'collection.not_admitted', 'note', `${p.label} is registered but not admitted`, detail,
+        { collectionEnabled: true, collectionEligible: true, collectionAdmitted: false, retainedEvents },
+        'Add the exact project id to COLLECT_PROJECTS after its rollout review, or keep the exclusion intentional.');
+    }
     const state = monitorState(p, now);
     if (state === 'down') add(p, 'monitor.down', 'critical', `${p.label} failed its synthetic check`,
       'The configured path failed the monitor hysteresis. This does not prove every user journey is down.',
