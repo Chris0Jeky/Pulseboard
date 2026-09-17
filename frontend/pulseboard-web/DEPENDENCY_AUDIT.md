@@ -20,6 +20,7 @@ The remaining findings were development-tool dependencies rather than browser ru
 4. The remaining findings were isolated to Vitest 4 tooling: `vitest`, `@vitest/ui`, and transitive `@vitest/mocker`.
 5. Updated `vitest` and `@vitest/ui` together to 5.0.1, then reinstalled from the lock.
 6. Verified the complete dependency graph with `npm audit --audit-level=low`: zero vulnerabilities.
+7. Aligned the production Docker builder with the supported Node 22 runtime. Vitest 5 is loaded by `vite.config.ts` during a production build, so retaining the previous Node 20 builder would leave the container path outside the package's declared engine support.
 
 No `--force`, advisory suppression, audit allowlist, or lockfile-only override was used.
 
@@ -27,19 +28,23 @@ No `--force`, advisory suppression, audit allowlist, or lockfile-only override w
 
 - `npx vitest run --maxWorkers=2`: 7 files and 59 tests passed under Vitest 5.0.1.
 - `npm run build`: TypeScript, Tailwind, Vite and PWA production build passed.
+- `docker build --tag pulseboard-frontend:ci .`: the complete Node 22 builder and nginx runtime image path passed.
 - `npm audit --audit-level=low`: zero vulnerabilities across production and development dependencies.
 - `npm ci` reproduced the repaired graph before every test and build pass.
 
 ## Ongoing gate
 
-`.github/workflows/workbench-frontend.yml` now treats the complete npm audit as a required step after tests and the production build:
+`.github/workflows/workbench-frontend.yml` now requires all of the following after a clean install:
 
 ```sh
+npx vitest run --maxWorkers=2
+npm run build
+docker build --tag pulseboard-frontend:ci .
 npm audit --audit-level=low
 ```
 
-A future vulnerable direct or transitive package therefore fails the frontend workflow instead of being reported as an informational warning.
+A future test regression, unsupported container toolchain, broken production image, or vulnerable direct/transitive package therefore fails the frontend workflow instead of being reported as an informational warning.
 
 ## Separate performance observation
 
-The production build still warns that its main JavaScript chunk is above Vite's 500 kB warning threshold. That is a bundle-shaping and loading-performance concern, not a dependency-audit exception, and should be handled as a separate measured optimization slice.
+The production build still warns that its main JavaScript chunk is above Vite's 500 kB warning threshold. That is a bundle-shaping and loading-performance concern, not a dependency-audit exception, and is tracked separately in issue #60.
