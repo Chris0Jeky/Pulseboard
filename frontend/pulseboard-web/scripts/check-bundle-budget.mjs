@@ -2,96 +2,93 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 
-const DIST = path.resolve(process.cwd(), 'dist')
-const INITIAL_JS_MAX_BYTES = 250_000
-const CHUNK_JS_MAX_BYTES = 500_000
+const root = path.resolve(process.argv[2] || 'dist')
+const entryBudget = 150_000
+const chunkBudget = 500_000
+const chartChunkPrefixes = ['assets/charts-echarts-', 'assets/charts-renderer-']
 
-function fail(message) {
-  console.error(`Bundle budget failed: ${message}`)
-  process.exitCode = 1
-}
-
-function javascriptFiles(directory) {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const absolute = path.join(directory, entry.name)
-    if (entry.isDirectory()) return javascriptFiles(absolute)
-    return entry.isFile() && entry.name.endsWith('.js') ? [absolute] : []
+function filesBelow(directory, relative = '') {
+  return readdirSync(path.join(directory, relative), { withFileTypes: true }).flatMap((entry) => {
+    const child = path.join(relative, entry.name)
+    return entry.isDirectory() ? filesBelow(directory, child) : [child.replaceAll('\\', '/')]
   })
 }
 
-const indexPath = path.join(DIST, 'index.html')
-const serviceWorkerPath = path.join(DIST, 'sw.js')
-if (!existsSync(indexPath)) {
-  throw new Error('dist/index.html is missing; run npm run build before checking the bundle budget')
-}
-if (!existsSync(serviceWorkerPath)) {
-  throw new Error('dist/sw.js is missing; the production build must generate its offline manifest')
+function fail(messages) {
+  for (const message of messages) console.error(`bundle-budget: ${message}`)
+  process.exitCode = 1
 }
 
-const indexHtml = readFileSync(indexPath, 'utf8')
-const initialReferences = [
-  ...indexHtml.matchAll(/(?:src|href)=["']([^"']+\.js(?:[?#][^"']*)?)["']/g),
-].map((match) => match[1].split(/[?#]/, 1)[0])
+const indexPath = path.join(root, 'index.html')
+const workerPath = path.join(root, 'sw.js')
+if (!existsSync(indexPath) || !existsSync(workerPath)) {
+  fail(['run the production build first; dist/index.html and dist/sw.js are required'])
+} else {
+  const html = readFileSync(indexPath, 'utf8')
+  const scriptTags = html.match(/<script\b[^>]*>/gi) || []
+  const moduleTag = scriptTags.find((tag) => /\btype=["']module["']/i.test(tag))
+  const entrySource = moduleTag?.match(/\bsrc=["']([^"']+)["']/i)?.[1]
+  const entry = entrySource?.replace(/^\.?\//, '')
+  const modulePreloads = (html.match(/<link\b[^>]*\brel=["']modulepreload["'][^>]*>/gi) || [])
+    .map((tag) => tag.match(/\bhref=["']([^"']+)["']/i)?.[1]?.replace(/^\.?\//, ''))
+    .filter(Boolean)
+  const assets = filesBelow(root).filter((name) => /\.(?:js|css)$/.test(name) && name !== 'sw.js')
+  const javascript = assets.filter((name) => name.endsWith('.js'))
+  const applicationAssets = assets.filter((name) => name.startsWith('assets/') || name === 'registerSW.js')
+  const serviceWorker = readFileSync(workerPath, 'utf8')
+  const errors = []
 
-const initialFiles = [...new Set(initialReferences)].map((reference) => {
-  const relative = reference.replace(/^\/+/, '')
-  const absolute = path.resolve(DIST, relative)
-  if (absolute !== DIST && !absolute.startsWith(DIST + path.sep)) {
-    throw new Error(`initial JavaScript reference leaves dist: ${reference}`)
+  if (!entry || !javascript.includes(entry)) {
+    errors.push(`could not resolve the module entry from index.html (${entrySource || 'missing src'})`)
   }
-  if (!existsSync(absolute)) throw new Error(`initial JavaScript reference is missing: ${reference}`)
-  return absolute
-})
-
-if (initialFiles.length === 0) fail('index.html contains no initial JavaScript references')
-
-const allFiles = javascriptFiles(DIST)
-const describe = (file) => {
-  const bytes = statSync(file).size
-  return {
-    file: path.relative(DIST, file).split(path.sep).join('/'),
-    bytes,
-    gzipBytes: gzipSync(readFileSync(file)).length,
+  if (javascript.length < 2) {
+    errors.push(`expected code splitting, found ${javascript.length} JavaScript asset`)
   }
-}
-const chunks = allFiles.map(describe).sort((a, b) => b.bytes - a.bytes)
-const initial = initialFiles.map(describe)
-const initialBytes = initial.reduce((total, item) => total + item.bytes, 0)
-const initialGzipBytes = initial.reduce((total, item) => total + item.gzipBytes, 0)
-const largestChunk = chunks[0]
+  for (const prefix of chartChunkPrefixes) {
+    if (!javascript.some((name) => name.startsWith(prefix))) {
+      errors.push(`missing measured chart chunk ${prefix}*.js`)
+    }
+  }
+  const eagerCharts = modulePreloads.filter((name) => chartChunkPrefixes.some((prefix) => name.startsWith(prefix)))
+  if (eagerCharts.length) {
+    errors.push(`lazy chart chunks are eagerly module-preloaded: ${eagerCharts.join(', ')}`)
+  }
 
-if (initialBytes > INITIAL_JS_MAX_BYTES) {
-  fail(`initial JavaScript is ${initialBytes} bytes; budget is ${INITIAL_JS_MAX_BYTES}`)
-}
-if (largestChunk && largestChunk.bytes > CHUNK_JS_MAX_BYTES) {
-  fail(`${largestChunk.file} is ${largestChunk.bytes} bytes; per-chunk budget is ${CHUNK_JS_MAX_BYTES}`)
-}
+  const rows = assets.map((name) => {
+    const file = path.join(root, name)
+    const bytes = statSync(file).size
+    return { file: name, bytes, gzip: gzipSync(readFileSync(file)).length, entry: name === entry }
+  }).sort((a, b) => b.bytes - a.bytes)
 
-// Route splitting must not trade initial transfer for broken offline navigation. Workbox emits
-// the precache manifest inside sw.js, so every hashed application chunk and the registration
-// helper must remain named there. The service worker and its Workbox runtime are bootstrap files,
-// not entries in their own precache manifest.
-const serviceWorker = readFileSync(serviceWorkerPath, 'utf8')
-const offlineJavaScript = chunks
-  .map((chunk) => chunk.file)
-  .filter((file) => file === 'registerSW.js' || file.startsWith('assets/'))
-const missingFromPrecache = offlineJavaScript.filter((file) => !serviceWorker.includes(file))
-if (missingFromPrecache.length > 0) {
-  fail(`PWA precache is missing JavaScript chunks: ${missingFromPrecache.join(', ')}`)
-}
+  const entryRow = rows.find((row) => row.entry)
+  if (entryRow && entryRow.bytes > entryBudget) {
+    errors.push(`entry ${entryRow.file} is ${entryRow.bytes} bytes; budget is ${entryBudget}`)
+  }
+  for (const row of rows.filter((item) => item.file.endsWith('.js'))) {
+    if (row.bytes > chunkBudget) {
+      errors.push(`chunk ${row.file} is ${row.bytes} bytes; budget is ${chunkBudget}`)
+    }
+  }
 
-console.log(JSON.stringify({
-  budgets: {
-    initialJavaScriptBytes: INITIAL_JS_MAX_BYTES,
-    individualChunkBytes: CHUNK_JS_MAX_BYTES,
-  },
-  initialBytes,
-  initialGzipBytes,
-  initial,
-  largestChunks: chunks.slice(0, 8),
-  pwa: {
-    serviceWorker: 'sw.js',
-    precachedJavaScriptChunks: offlineJavaScript.length,
-    missingJavaScriptChunks: missingFromPrecache,
-  },
-}, null, 2))
+  // Workbox's generated runtime is loaded by the service worker rather than included in
+  // its own precache manifest. Every application JS/CSS asset and the registration shim
+  // must still be named in the generated worker so route chunks remain available offline.
+  const missingFromPrecache = applicationAssets.filter((name) => !serviceWorker.includes(name))
+  if (missingFromPrecache.length) {
+    errors.push(`service worker does not precache: ${missingFromPrecache.join(', ')}`)
+  }
+
+  console.log(JSON.stringify({
+    budgets: { entryBytes: entryBudget, chunkBytes: chunkBudget },
+    entry,
+    modulePreloads,
+    chartChunksLazy: eagerCharts.length === 0,
+    assets: rows,
+    precache: {
+      checked: applicationAssets,
+      verified: missingFromPrecache.length === 0,
+    },
+  }, null, 2))
+
+  if (errors.length) fail(errors)
+}
