@@ -26,7 +26,10 @@ jobs:
           cache-dependency-path: frontend/pulseboard-web/package-lock.json
       - run: npm ci
       - name: Apply only semver-compatible audit fixes to the lockfile
-        run: npm audit fix --package-lock-only --ignore-scripts
+        shell: bash
+        run: npm audit fix --package-lock-only --ignore-scripts || test $? -eq 1
+      - name: Raise the direct Vitest tools to the audited safe line
+        run: npm install --save-dev --ignore-scripts vitest@^4.1.11 @vitest/ui@^4.1.11
       - name: Show the proposed dependency changes
         shell: bash
         run: |
@@ -39,33 +42,8 @@ jobs:
           npm ci
           npx vitest run --maxWorkers=2
           npm run build
-      - name: Capture post-fix full and runtime audits
+      - name: Require clean runtime and full dependency audits
         shell: bash
         run: |
-          npm audit --json > audit-all.json || true
-          npm audit --omit=dev --json > audit-runtime.json || true
-          node <<'NODE'
-          import fs from 'node:fs';
-          for (const name of ['audit-runtime.json', 'audit-all.json']) {
-            const report = JSON.parse(fs.readFileSync(name, 'utf8'));
-            const vulnerabilities = Object.fromEntries(Object.entries(report.vulnerabilities || {}).map(([pkg, value]) => [pkg, {
-              severity: value.severity,
-              isDirect: value.isDirect,
-              via: (value.via || []).map(item => typeof item === 'string' ? item : {
-                source: item.source,
-                name: item.name,
-                title: item.title,
-                url: item.url,
-                severity: item.severity,
-                range: item.range,
-              }),
-              effects: value.effects,
-              range: value.range,
-              nodes: value.nodes,
-              fixAvailable: value.fixAvailable,
-            }]));
-            console.log(`AUDIT_REPORT_BEGIN ${name}`);
-            console.log(JSON.stringify({ metadata: report.metadata, vulnerabilities }, null, 2));
-            console.log(`AUDIT_REPORT_END ${name}`);
-          }
-          NODE
+          npm audit --omit=dev --audit-level=low
+          npm audit --audit-level=low
