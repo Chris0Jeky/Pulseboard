@@ -40,7 +40,7 @@ export function mountObserver(config, create, runtime = globalThis) {
   const label = document.createElement('label'), checkbox = document.createElement('input'); checkbox.type = 'checkbox';
   label.append(checkbox, document.createTextNode(' Share basic usage for this site'));
   const status = document.createElement('p'); status.setAttribute('role', 'status');
-  let announced = false, storageWarning = false;
+  let announced = false, storageWarning = false, disposed = false;
   const privacyBlocked = () => runtime.navigator?.globalPrivacyControl === true || runtime.navigator?.doNotTrack === '1';
   function paint() {
     const active = observer.status().active;
@@ -83,9 +83,22 @@ export function mountObserver(config, create, runtime = globalThis) {
     try { for (const item of config.clicks || []) { if (event.target?.closest?.(item.selector)) { track(item.event); break; } } }
     catch { /* A bad selector must never throw inside a listener on the host document. */ }
   };
+  const pagehide = event => {
+    flushOnHide();
+    if (!event.persisted) dispose();
+  };
   runtime.addEventListener('error', error); runtime.addEventListener('unhandledrejection', error); document.addEventListener('click', click);
-  const dispose = () => { observer.dispose(); runtime.removeEventListener('error', error); runtime.removeEventListener('unhandledrejection', error); document.removeEventListener('click', click); details.remove(); };
-  // A tracked click that navigates would otherwise be discarded by dispose(); hand the queue over first.
-  runtime.addEventListener('pagehide', () => { flushOnHide(); dispose(); }, { once: true });
-  return { track, flush, flushOnHide, status: observer.status, dispose };
+  runtime.addEventListener('pagehide', pagehide);
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    observer.dispose();
+    runtime.removeEventListener('error', error);
+    runtime.removeEventListener('unhandledrejection', error);
+    runtime.removeEventListener('pagehide', pagehide);
+    document.removeEventListener('click', click);
+    details.remove();
+  };
+  // A bfcache restore keeps the same JS realm and session-only choice. Ordinary navigation disposes through pagehide.
+  return { track, flush, flushOnHide, resume: paint, status: observer.status, dispose };
 }
