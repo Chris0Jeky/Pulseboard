@@ -1,0 +1,28 @@
+name: Temporary Alibi journey proof
+
+on:
+  push:
+    branches:
+      - feat/alibi-journey-contract-18
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: observatory
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Run focused journey contract
+        run: node --test tests/alibi-journey.test.mjs
