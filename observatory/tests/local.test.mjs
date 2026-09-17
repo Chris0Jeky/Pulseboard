@@ -8,11 +8,11 @@ const sourceUrl = new URL('../src/local.mjs', import.meta.url);
 test('local runner exposes a bounded HTTP and process-lifecycle contract', async () => {
   const source = readFileSync(sourceUrl, 'utf8');
   // Fail before importing the old side-effectful module: importing it currently starts port 8788 and never returns.
-  for (const seam of ['parsePort', 'resolveReadToken', 'runnerBanner', 'startLocalRunner', 'installShutdownHooks']) {
+  for (const seam of ['parsePort', 'resolveReadToken', 'runnerBanner', 'startLocalRunner', 'onceAsync', 'installShutdownHooks']) {
     assert.match(source, new RegExp(`export (?:async )?function ${seam}\\b`), `missing ${seam} test seam`);
   }
 
-  const { parsePort, resolveReadToken, runnerBanner, startLocalRunner, installShutdownHooks } = await import(sourceUrl.href + '?contract=1');
+  const { parsePort, resolveReadToken, runnerBanner, startLocalRunner, onceAsync, installShutdownHooks } = await import(sourceUrl.href + '?contract=1');
   assert.equal(parsePort('8788'), 8788);
   for (const invalid of ['0', '65536', '-1', '8.5', 'not-a-port', '']) assert.throws(() => parsePort(invalid), /1\.\.65535/);
 
@@ -72,14 +72,23 @@ test('local runner exposes a bounded HTTP and process-lifecycle contract', async
     await runner.close();
   }
 
+  let compositeCloses = 0;
+  const closeOnce = onceAsync(async () => { compositeCloses += 1; });
+  const [firstClose, secondClose] = [closeOnce(), closeOnce()];
+  assert.equal(firstClose, secondClose);
+  await Promise.all([firstClose, secondClose]);
+  await closeOnce();
+  assert.equal(compositeCloses, 1);
+
   const processLike = new EventEmitter();
   let closes = 0, exitCode = null;
   processLike.exit = code => { exitCode = code; };
-  const removeHooks = installShutdownHooks({ processLike, close: async () => { closes += 1; } });
+  const removeHooks = installShutdownHooks({ processLike, close: closeOnce });
   processLike.emit('SIGINT');
   processLike.emit('SIGTERM');
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(closes, 1);
+  assert.equal(compositeCloses, 1);
+  assert.equal(closes, 0);
   assert.equal(exitCode, 0);
   removeHooks();
   assert.equal(processLike.listenerCount('SIGINT'), 0);
