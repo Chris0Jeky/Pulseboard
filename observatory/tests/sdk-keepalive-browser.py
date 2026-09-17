@@ -162,10 +162,13 @@ async def run() -> None:
         )
         diagnostics.update({"pageErrors": page_errors, "console": console_messages, "requests": requests})
         assert diagnostics["webdriver"] is False, diagnostics
-        sharing = page.locator("#pulseboard-usage-sharing input[type=checkbox]")
-        if await sharing.count() == 0:
+        sharing_panel = page.locator("#pulseboard-usage-sharing")
+        if await sharing_panel.count() == 0:
             print(json.dumps({"mountDiagnostics": diagnostics}, indent=2))
             raise AssertionError("generated SDK did not mount its consent control")
+        await expect(sharing_panel).to_be_visible()
+        await sharing_panel.locator("summary").click()
+        sharing = sharing_panel.locator("input[type=checkbox]")
         await expect(sharing).to_be_visible()
         await sharing.check()
         await wait_for_event(receipts, "page.view")
