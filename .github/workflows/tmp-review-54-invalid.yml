@@ -1,0 +1,25 @@
+name: Temporary PR 54 invalid admission fix
+
+on:
+  push:
+    branches:
+      - fix/project-admission-contract-46
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: cd observatory && npm ci
+      - name: Run regression fix and verification
+        run: python scripts/tmp_review_54_invalid.py
