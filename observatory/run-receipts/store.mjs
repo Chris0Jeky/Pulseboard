@@ -124,22 +124,24 @@ export async function readRunReceiptSummary(DB, { project, start, end, registry 
   if (results.length > MAX_SUMMARY_ROWS) throw new RangeError('Run receipt summary row limit exceeded');
 
   const statuses = zeroCounts(RUN_RECEIPT_STATUSES), outcomes = zeroCounts(RUN_RECEIPT_OUTCOMES);
-  const runs = new Set(), sources = new Set(), limitations = new Set(), resources = new Map(), costs = new Map();
-  const coverageIntervals = [];
+  const runs = new Set(), limitations = new Set(), resources = new Map(), costs = new Map();
+  const coverageBySource = new Map();
   let durationMs = 0, retries = 0, generatedAt = null, claimedComplete = results.length > 0;
 
   for (const row of results) {
     statuses[row.status]++;
     outcomes[row.outcome_state]++;
-    runs.add(`${row.source_kind}:${row.source_id}:${row.run_id}`);
-    sources.add(`${row.source_kind}:${row.source_id}`);
+    runs.add(JSON.stringify([row.source_kind, row.source_id, row.run_id]));
+    const source = JSON.stringify([row.source_kind, row.source_id]);
     if (row.attempt > 1) retries++;
     durationMs = safeAdd(durationMs, row.ended - row.started, 'Run duration');
     generatedAt = generatedAt === null ? row.generated : Math.max(generatedAt, row.generated);
     requireValue(Number.isSafeInteger(row.coverage_start) && Number.isSafeInteger(row.coverage_end)
       && row.coverage_start >= 0 && row.coverage_end > row.coverage_start,
     'Invalid stored coverage window');
-    coverageIntervals.push({ start: row.coverage_start, end: row.coverage_end });
+    const intervals = coverageBySource.get(source) || [];
+    intervals.push({ start: row.coverage_start, end: row.coverage_end });
+    coverageBySource.set(source, intervals);
     claimedComplete &&= row.coverage_complete === 1;
 
     for (const limitation of parseStoredList(row.coverage_limitations,
@@ -168,7 +170,9 @@ export async function readRunReceiptSummary(DB, { project, start, end, registry 
     }
   }
 
-  const complete = claimedComplete && coversWindow(coverageIntervals, start, end);
+  // One source cannot certify a missing interval for another observed source.
+  const complete = claimedComplete
+    && [...coverageBySource.values()].every(intervals => coversWindow(intervals, start, end));
   const costList = [...costs.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.currency.localeCompare(b.currency));
   let costPerVerifiedAccepted = null, costAbstention = null;
   if (results.length === 0) costAbstention = 'No run receipts were observed in this window.';
@@ -200,7 +204,7 @@ export async function readRunReceiptSummary(DB, { project, start, end, registry 
     resources: [...resources].map(([unit, value]) => ({ unit, value })).sort((a, b) => a.unit.localeCompare(b.unit)),
     costs: costList,
     outcomes,
-    coverage: { complete, sources: sources.size, limitations: [...limitations].sort() },
+    coverage: { complete, sources: coverageBySource.size, limitations: [...limitations].sort() },
     costPerVerifiedAccepted,
     costAbstention,
     limitations: [
