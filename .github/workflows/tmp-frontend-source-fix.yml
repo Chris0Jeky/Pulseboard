@@ -1,0 +1,28 @@
+name: Temporary frontend source fix
+
+on:
+  push:
+    branches:
+      - fix/frontend-gates-13
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/pulseboard-web/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend/pulseboard-web
+      - name: Apply source fixes and verify
+        run: python scripts/tmp_frontend_source_fix.py
