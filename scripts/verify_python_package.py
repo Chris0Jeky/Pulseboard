@@ -8,7 +8,7 @@ import tarfile
 import zipfile
 from email.message import Message
 from email.parser import BytesParser
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 EXPECTED_LICENSE_EXPRESSION = "GPL-3.0-only"
 EXPECTED_LICENSE_FILES = (
@@ -90,9 +90,18 @@ def verify_wheel(wheel: Path) -> None:
 def verify_sdist(sdist: Path) -> None:
     with tarfile.open(sdist, "r:gz") as archive:
         members = {member.name: member for member in archive.getmembers() if member.isfile()}
-        metadata_names = sorted(name for name in members if name.endswith("/PKG-INFO"))
+        # Setuptools legitimately includes an egg-info copy as well as the canonical
+        # metadata at the source distribution root. Only the latter defines the sdist.
+        metadata_names = sorted(
+            name
+            for name in members
+            if PurePosixPath(name).name == "PKG-INFO"
+            and len(PurePosixPath(name).parts) == 2
+        )
         if len(metadata_names) != 1:
-            raise AssertionError(f"{sdist}: expected one PKG-INFO entry, found {metadata_names}")
+            raise AssertionError(
+                f"{sdist}: expected one root PKG-INFO entry, found {metadata_names}"
+            )
 
         metadata_name = metadata_names[0]
         metadata_file = archive.extractfile(members[metadata_name])
