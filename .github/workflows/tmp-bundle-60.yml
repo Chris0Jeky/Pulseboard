@@ -66,22 +66,5 @@ jobs:
           npm run build:css
           npx vue-tsc -b
           npx vite build --config vite.bundle.config.ts
-      - name: Record minified and gzip sizes
-        shell: bash
-        run: |
-          node <<'NODE'
-          import fs from 'node:fs';
-          import path from 'node:path';
-          import { gzipSync } from 'node:zlib';
-          const root = 'dist/assets';
-          const rows = fs.readdirSync(root)
-            .filter(name => /\.(?:js|css)$/.test(name))
-            .map(name => {
-              const bytes = fs.readFileSync(path.join(root, name));
-              return { file: name, bytes: bytes.length, gzip: gzipSync(bytes).length };
-            })
-            .sort((a, b) => b.bytes - a.bytes);
-          console.log('PULSEBOARD_ASSET_SIZES_BEGIN');
-          console.log(JSON.stringify(rows, null, 2));
-          console.log('PULSEBOARD_ASSET_SIZES_END');
-          NODE
+      - name: Enforce bundle and offline-precache budgets
+        run: node scripts/check-bundle-budget.mjs
