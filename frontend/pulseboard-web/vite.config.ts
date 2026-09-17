@@ -3,6 +3,15 @@ import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
 
+/** Keep the measured chart stack out of the live-route module without creating a broad vendor bucket. */
+export function workbenchChunk(id: string) {
+  const moduleId = id.replaceAll('\\', '/')
+  if (moduleId.includes('/node_modules/echarts/')) return 'charts-echarts'
+  if (moduleId.includes('/node_modules/zrender/')) return 'charts-renderer'
+  if (moduleId.includes('/node_modules/vue-echarts/')) return 'charts-vue'
+  return undefined
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -86,6 +95,11 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: workbenchChunk,
+      },
+    },
   },
   test: {
     globals: true,
