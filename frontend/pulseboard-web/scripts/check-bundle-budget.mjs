@@ -19,11 +19,16 @@ function javascriptFiles(directory) {
   })
 }
 
-if (!existsSync(path.join(DIST, 'index.html'))) {
+const indexPath = path.join(DIST, 'index.html')
+const serviceWorkerPath = path.join(DIST, 'sw.js')
+if (!existsSync(indexPath)) {
   throw new Error('dist/index.html is missing; run npm run build before checking the bundle budget')
 }
+if (!existsSync(serviceWorkerPath)) {
+  throw new Error('dist/sw.js is missing; the production build must generate its offline manifest')
+}
 
-const indexHtml = readFileSync(path.join(DIST, 'index.html'), 'utf8')
+const indexHtml = readFileSync(indexPath, 'utf8')
 const initialReferences = [
   ...indexHtml.matchAll(/(?:src|href)=["']([^"']+\.js(?:[?#][^"']*)?)["']/g),
 ].map((match) => match[1].split(/[?#]/, 1)[0])
@@ -52,6 +57,7 @@ const describe = (file) => {
 const chunks = allFiles.map(describe).sort((a, b) => b.bytes - a.bytes)
 const initial = initialFiles.map(describe)
 const initialBytes = initial.reduce((total, item) => total + item.bytes, 0)
+const initialGzipBytes = initial.reduce((total, item) => total + item.gzipBytes, 0)
 const largestChunk = chunks[0]
 
 if (initialBytes > INITIAL_JS_MAX_BYTES) {
@@ -61,12 +67,31 @@ if (largestChunk && largestChunk.bytes > CHUNK_JS_MAX_BYTES) {
   fail(`${largestChunk.file} is ${largestChunk.bytes} bytes; per-chunk budget is ${CHUNK_JS_MAX_BYTES}`)
 }
 
+// Route splitting must not trade initial transfer for broken offline navigation. Workbox emits
+// the precache manifest inside sw.js, so every hashed application chunk and the registration
+// helper must remain named there. The service worker and its Workbox runtime are bootstrap files,
+// not entries in their own precache manifest.
+const serviceWorker = readFileSync(serviceWorkerPath, 'utf8')
+const offlineJavaScript = chunks
+  .map((chunk) => chunk.file)
+  .filter((file) => file === 'registerSW.js' || file.startsWith('assets/'))
+const missingFromPrecache = offlineJavaScript.filter((file) => !serviceWorker.includes(file))
+if (missingFromPrecache.length > 0) {
+  fail(`PWA precache is missing JavaScript chunks: ${missingFromPrecache.join(', ')}`)
+}
+
 console.log(JSON.stringify({
   budgets: {
     initialJavaScriptBytes: INITIAL_JS_MAX_BYTES,
     individualChunkBytes: CHUNK_JS_MAX_BYTES,
   },
   initialBytes,
+  initialGzipBytes,
   initial,
   largestChunks: chunks.slice(0, 8),
+  pwa: {
+    serviceWorker: 'sw.js',
+    precachedJavaScriptChunks: offlineJavaScript.length,
+    missingJavaScriptChunks: missingFromPrecache,
+  },
 }, null, 2))
