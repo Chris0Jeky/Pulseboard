@@ -39,25 +39,40 @@ export function mountObserver(config, create, runtime = globalThis) {
   const label = document.createElement('label'), checkbox = document.createElement('input'); checkbox.type = 'checkbox';
   label.append(checkbox, document.createTextNode(' Share basic usage for this site'));
   const status = document.createElement('p'); status.setAttribute('role', 'status');
-  let announced = false;
-  function paint(suffix = '') {
+  let announced = false, storageWarning = false;
+  const privacyBlocked = () => runtime.navigator?.globalPrivacyControl === true || runtime.navigator?.doNotTrack === '1';
+  function paint() {
     const active = observer.status().active;
+    const blockedNow = privacyBlocked();
     checkbox.checked = active;
-    const privacyBlocked = runtime.navigator?.globalPrivacyControl === true || runtime.navigator?.doNotTrack === '1';
-    status.textContent = active ? 'Sharing is on. Untick to stop future collection.'
-      : privacyBlocked ? 'Sharing is off because a browser privacy setting blocks collection.'
+    checkbox.disabled = blockedNow;
+    let message = active ? 'Sharing is on. Untick to stop future collection.'
+      : blockedNow ? 'Sharing is off because a browser privacy setting blocks collection.'
         : 'Sharing is off. The app works normally.';
-    status.textContent += suffix;
+    if (storageWarning) message += ' This choice could not be saved; it applies only to this tab.';
+    if (status.textContent !== message) status.textContent = message;
     return active;
   }
   async function flush() { try { return await observer.flush(); } finally { paint(); } }
   function flushOnHide() { const handed = observer.flushOnHide(); paint(); return handed; }
   function apply(value, persist) {
-    observer.setConsent(value);
-    const active = paint();
-    if (persist) { try { runtime.localStorage.setItem(key, JSON.stringify({ allow: active, until: Date.now() + CONSENT_MS })); } catch { paint(' This choice could not be saved.'); } }
+    if (privacyBlocked()) {
+      observer.setConsent(false);
+      paint();
+      return false;
+    }
+    const preferred = value === true;
+    const active = observer.setConsent(preferred);
+    if (persist) {
+      try {
+        runtime.localStorage.setItem(key, JSON.stringify({ allow: preferred, until: Date.now() + CONSENT_MS }));
+        storageWarning = false;
+      } catch { storageWarning = true; }
+    }
+    paint();
     // One page view per page, on the first time sharing is on: re-ticking the box is not another visit.
     if (active && !announced) { announced = true; track('page.view'); void flush(); }
+    return active;
   }
   checkbox.addEventListener('change', () => apply(checkbox.checked, true));
   details.append(title, note, label, status); document.body.append(details); apply(granted, overdue);
