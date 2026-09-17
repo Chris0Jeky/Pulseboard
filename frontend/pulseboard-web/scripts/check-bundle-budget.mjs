@@ -5,6 +5,7 @@ import { gzipSync } from 'node:zlib'
 const root = path.resolve(process.argv[2] || 'dist')
 const entryBudget = 150_000
 const chunkBudget = 500_000
+const chartChunkPrefixes = ['assets/charts-echarts-', 'assets/charts-renderer-']
 
 function filesBelow(directory, relative = '') {
   return readdirSync(path.join(directory, relative), { withFileTypes: true }).flatMap((entry) => {
@@ -28,6 +29,9 @@ if (!existsSync(indexPath) || !existsSync(workerPath)) {
   const moduleTag = scriptTags.find((tag) => /\btype=["']module["']/i.test(tag))
   const entrySource = moduleTag?.match(/\bsrc=["']([^"']+)["']/i)?.[1]
   const entry = entrySource?.replace(/^\.?\//, '')
+  const modulePreloads = (html.match(/<link\b[^>]*\brel=["']modulepreload["'][^>]*>/gi) || [])
+    .map((tag) => tag.match(/\bhref=["']([^"']+)["']/i)?.[1]?.replace(/^\.?\//, ''))
+    .filter(Boolean)
   const assets = filesBelow(root).filter((name) => /\.(?:js|css)$/.test(name) && name !== 'sw.js')
   const javascript = assets.filter((name) => name.endsWith('.js'))
   const applicationAssets = assets.filter((name) => name.startsWith('assets/') || name === 'registerSW.js')
@@ -39,6 +43,15 @@ if (!existsSync(indexPath) || !existsSync(workerPath)) {
   }
   if (javascript.length < 2) {
     errors.push(`expected code splitting, found ${javascript.length} JavaScript asset`)
+  }
+  for (const prefix of chartChunkPrefixes) {
+    if (!javascript.some((name) => name.startsWith(prefix))) {
+      errors.push(`missing measured chart chunk ${prefix}*.js`)
+    }
+  }
+  const eagerCharts = modulePreloads.filter((name) => chartChunkPrefixes.some((prefix) => name.startsWith(prefix)))
+  if (eagerCharts.length) {
+    errors.push(`lazy chart chunks are eagerly module-preloaded: ${eagerCharts.join(', ')}`)
   }
 
   const rows = assets.map((name) => {
@@ -68,6 +81,8 @@ if (!existsSync(indexPath) || !existsSync(workerPath)) {
   console.log(JSON.stringify({
     budgets: { entryBytes: entryBudget, chunkBytes: chunkBudget },
     entry,
+    modulePreloads,
+    chartChunksLazy: eagerCharts.length === 0,
     assets: rows,
     precache: {
       checked: applicationAssets,
