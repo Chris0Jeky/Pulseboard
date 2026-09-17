@@ -19,9 +19,12 @@ export function mountObserver(config, create, runtime = globalThis) {
     } catch { return {}; }
   }
   const track = (event, options = {}) => {
-  if (!observer.status().active) return observer.track(event, options);
-  return observer.track(event, { ...hostContext(), ...options });
-};
+    const result = observer.status().active
+      ? observer.track(event, { ...hostContext(), ...options })
+      : observer.track(event, options);
+    paint();
+    return result;
+  };
   const key = 'pulseboard:consent:v1:' + config.id + ':' + config.endpoint, CONSENT_MS = 90 * 86400000;
   let granted = false, overdue = false;
   // A stored expiry is never trusted past 90 days from now; a tampered or corrupt one cannot grant indefinite consent.
@@ -37,12 +40,24 @@ export function mountObserver(config, create, runtime = globalThis) {
   label.append(checkbox, document.createTextNode(' Share basic usage for this site'));
   const status = document.createElement('p'); status.setAttribute('role', 'status');
   let announced = false;
+  function paint(suffix = '') {
+    const active = observer.status().active;
+    checkbox.checked = active;
+    const privacyBlocked = runtime.navigator?.globalPrivacyControl === true || runtime.navigator?.doNotTrack === '1';
+    status.textContent = active ? 'Sharing is on. Untick to stop future collection.'
+      : privacyBlocked ? 'Sharing is off because a browser privacy setting blocks collection.'
+        : 'Sharing is off. The app works normally.';
+    status.textContent += suffix;
+    return active;
+  }
+  async function flush() { try { return await observer.flush(); } finally { paint(); } }
+  function flushOnHide() { const handed = observer.flushOnHide(); paint(); return handed; }
   function apply(value, persist) {
-    checkbox.checked = observer.setConsent(value);
-    status.textContent = checkbox.checked ? 'Sharing is on. Untick to stop future collection.' : 'Sharing is off. The app works normally.';
-    if (persist) { try { runtime.localStorage.setItem(key, JSON.stringify({ allow: checkbox.checked, until: Date.now() + CONSENT_MS })); } catch { status.textContent += ' This choice could not be saved.'; } }
+    observer.setConsent(value);
+    const active = paint();
+    if (persist) { try { runtime.localStorage.setItem(key, JSON.stringify({ allow: active, until: Date.now() + CONSENT_MS })); } catch { paint(' This choice could not be saved.'); } }
     // One page view per page, on the first time sharing is on: re-ticking the box is not another visit.
-    if (checkbox.checked && !announced) { announced = true; track('page.view'); void observer.flush(); }
+    if (active && !announced) { announced = true; track('page.view'); void flush(); }
   }
   checkbox.addEventListener('change', () => apply(checkbox.checked, true));
   details.append(title, note, label, status); document.body.append(details); apply(granted, overdue);
@@ -54,6 +69,6 @@ export function mountObserver(config, create, runtime = globalThis) {
   runtime.addEventListener('error', error); runtime.addEventListener('unhandledrejection', error); document.addEventListener('click', click);
   const dispose = () => { observer.dispose(); runtime.removeEventListener('error', error); runtime.removeEventListener('unhandledrejection', error); document.removeEventListener('click', click); details.remove(); };
   // A tracked click that navigates would otherwise be discarded by dispose(); hand the queue over first.
-  runtime.addEventListener('pagehide', () => { observer.flushOnHide(); dispose(); }, { once: true });
-  return { track, flush: observer.flush, flushOnHide: observer.flushOnHide, status: observer.status, dispose };
+  runtime.addEventListener('pagehide', () => { flushOnHide(); dispose(); }, { once: true });
+  return { track, flush, flushOnHide, status: observer.status, dispose };
 }
