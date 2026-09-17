@@ -6,7 +6,8 @@ export function mountObserver(config, create, runtime = globalThis) {
   if (navigator?.globalPrivacyControl || navigator?.doNotTrack === '1' || navigator?.webdriver) return null;
   try { const u = new URL(config.endpoint); if (u.protocol !== 'https:' || u.search || u.hash || u.username || u.password) return null; } catch { return null; }
   if (config.publicFlag && runtime[config.publicFlag.global]?.[config.publicFlag.key] !== config.publicFlag.expected) return null;
-  const observer = create(config, runtime);
+  let reconcile = () => {};
+  const observer = create(config, runtime, () => reconcile());
   function hostContext() {
     if (!config.contextGlobal) return {};
     try {
@@ -53,6 +54,7 @@ export function mountObserver(config, create, runtime = globalThis) {
     if (status.textContent !== message) status.textContent = message;
     return active;
   }
+  reconcile = paint;
   async function flush() { try { return await observer.flush(); } finally { paint(); } }
   function flushOnHide() { const handed = observer.flushOnHide(); paint(); return handed; }
   function apply(value, persist) {
