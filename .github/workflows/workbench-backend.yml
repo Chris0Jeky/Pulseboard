@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      - 'pyproject.toml'
       - '.github/workflows/workbench-backend.yml'
   push:
     branches: [main]
     paths:
       - 'backend/**'
+      - 'pyproject.toml'
       - '.github/workflows/workbench-backend.yml'
   workflow_dispatch:
 
