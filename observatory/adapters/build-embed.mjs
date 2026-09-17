@@ -51,7 +51,7 @@ ${embed}
 const config = ${json};
 function start() { globalThis.PulseboardUsage?.dispose(); globalThis.PulseboardUsage = mountObserver(config, createObserver); }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
-globalThis.addEventListener?.('pageshow', event => { if (event.persisted) start(); });
+globalThis.addEventListener?.('pageshow', event => { if (event.persisted && globalThis.PulseboardUsage?.resume?.() === undefined) start(); });
 })();
 `);
 }
