@@ -30,6 +30,7 @@ if (!existsSync(indexPath) || !existsSync(workerPath)) {
   const entry = entrySource?.replace(/^\.?\//, '')
   const assets = filesBelow(root).filter((name) => /\.(?:js|css)$/.test(name) && name !== 'sw.js')
   const javascript = assets.filter((name) => name.endsWith('.js'))
+  const applicationAssets = assets.filter((name) => name.startsWith('assets/') || name === 'registerSW.js')
   const serviceWorker = readFileSync(workerPath, 'utf8')
   const errors = []
 
@@ -56,7 +57,10 @@ if (!existsSync(indexPath) || !existsSync(workerPath)) {
     }
   }
 
-  const missingFromPrecache = assets.filter((name) => !serviceWorker.includes(name))
+  // Workbox's generated runtime is loaded by the service worker rather than included in
+  // its own precache manifest. Every application JS/CSS asset and the registration shim
+  // must still be named in the generated worker so route chunks remain available offline.
+  const missingFromPrecache = applicationAssets.filter((name) => !serviceWorker.includes(name))
   if (missingFromPrecache.length) {
     errors.push(`service worker does not precache: ${missingFromPrecache.join(', ')}`)
   }
@@ -65,7 +69,10 @@ if (!existsSync(indexPath) || !existsSync(workerPath)) {
     budgets: { entryBytes: entryBudget, chunkBytes: chunkBudget },
     entry,
     assets: rows,
-    precacheVerified: missingFromPrecache.length === 0,
+    precache: {
+      checked: applicationAssets,
+      verified: missingFromPrecache.length === 0,
+    },
   }, null, 2))
 
   if (errors.length) fail(errors)
