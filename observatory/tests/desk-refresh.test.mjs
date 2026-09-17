@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { makeDemo } from '../public/desk-demo.mjs';
 import { buildSignals } from '../public/desk-model.mjs';
 import { assets } from '../src/assets.mjs';
+import { readFileSync } from 'node:fs';
 
 const now = Date.UTC(2026, 8, 17, 12);
 
@@ -21,6 +22,32 @@ test('failed refresh signals identify last-good evidence and missing current rea
   const fresh = buildSignals(snapshot, now, false);
   assert.equal(fresh.some(signal => signal.rule === 'snapshot.refresh_failed'), false);
   assert.equal(Object.hasOwn(fresh.find(signal => signal.rule === 'monitor.down').evidence, 'lastKnown'), false);
+});
+
+test('prolonged failed refresh retains an old recorded failure and also reports its stale age', () => {
+  const snapshot = makeDemo('release', { now, phase: 1 });
+  snapshot.mode = 'live';
+  const project = snapshot.projects.find(item => item.monitor.state === 'down');
+  project.monitor.checked = now - 31 * 60_000;
+
+  const failedRefresh = buildSignals(snapshot, now, true);
+  const down = failedRefresh.find(signal => signal.project === project.id && signal.rule === 'monitor.down');
+  const stale = failedRefresh.find(signal => signal.project === project.id && signal.rule === 'monitor.stale');
+  assert.ok(down, 'raw down evidence must survive after its timestamp becomes stale');
+  assert.ok(stale, 'the same reading must still be qualified as old');
+  assert.equal(down.evidence.state, 'down');
+  assert.equal(down.evidence.freshness, 'stale');
+  assert.equal(down.evidence.lastKnown, true);
+
+  const freshRead = buildSignals(snapshot, now, false);
+  assert.equal(freshRead.some(signal => signal.project === project.id && signal.rule === 'monitor.down'), false);
+  assert.ok(freshRead.some(signal => signal.project === project.id && signal.rule === 'monitor.stale'));
+});
+
+test('overview attention count uses the same refresh-aware signal set as the inbox', () => {
+  const source = readFileSync(new URL('../public/dashboard.mjs', import.meta.url), 'utf8');
+  assert.match(source, /stat\('Needs a look', count\(signalSet\(\)\.filter/);
+  assert.doesNotMatch(source, /stat\('Needs a look', count\(buildSignals\(s\)\.filter/);
 });
 
 test('authenticated portfolio requests pin privacy, redirect and timeout policy', async () => {

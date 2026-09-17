@@ -57,12 +57,15 @@ export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) 
     { generatedAt: snapshot.generatedAt, lastKnown: true }, 'Reconnect to the collector before treating any observation as current health.');
   for (const p of snapshot.projects) {
     const state = monitorState(p, now);
-    if (state === 'down') {
+    const recordedDown = p.monitor?.state === 'down';
+    const lastKnownDown = refreshFailed === true && recordedDown;
+    if (state === 'down' || lastKnownDown) {
       const lastKnown = refreshFailed === true;
       add(p, 'monitor.down', 'critical', lastKnown ? `${p.label} last-known probe failure` : `${p.label} failed its synthetic check`,
-        lastKnown ? 'The last successful snapshot contained a failed probe. The current reading is unknown.'
+        lastKnown ? 'The last successful snapshot contained a failed probe. Its age is qualified separately; the current reading is unknown.'
           : 'The configured path failed the monitor hysteresis. This does not prove every user journey is down.',
-        { state, checked: p.monitor.checked, failures: p.monitor.failures, status: p.monitor.status, ...(lastKnown ? { lastKnown: true } : {}) },
+        { state: p.monitor.state, freshness: state, checked: p.monitor.checked, failures: p.monitor.failures, status: p.monitor.status,
+          ...(lastKnown ? { lastKnown: true } : {}) },
         lastKnown ? 'Refresh the desk, then check the configured probe, latest deployment and a real product journey.'
           : 'Check the configured probe, then the latest deployment and a real product journey.');
     }

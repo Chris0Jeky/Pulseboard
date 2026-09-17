@@ -141,7 +141,7 @@ function overview() {
   const completed = sum(ps, p => p.totals.completed), outcomes = completed + sum(ps, p => p.totals.failed);
   return [e('section', { class: 'stats-grid', 'aria-label': 'Whole portfolio summary' },
     stat('Receiving evidence', `${ps.filter(p => p.totals.events > 0).length} / ${ps.length}`, 'Projects with admitted browser events', 'lime'),
-    stat('Needs a look', count(buildSignals(s).filter(x => x.severity !== 'note').length), 'Warnings and critical observations', 'orange'),
+    stat('Needs a look', count(signalSet().filter(x => x.severity !== 'note').length), 'Warnings and critical observations', 'orange'),
     stat('Reported sessions', count(sum(ps, p => p.totals.sessions)), 'Summed per project. Not unique people.'),
     stat('Completed outcomes', percent(fraction(completed, outcomes).value), `${count(outcomes)} reported action outcomes`)),
     e('div', { class: 'overview-grid' }, panel('What needs you', open.length ? e('div', {}, open.slice(0, 2).map(x => signalCard(x, true)))
