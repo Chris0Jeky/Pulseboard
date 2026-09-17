@@ -68,8 +68,8 @@ export function findingsFor(sources, aggregates, now) {
       title: 'Receipt budget is nearly used', next: 'Inspect volume and source-side aggregation. Budget exhaustion also rejects heartbeats; raising limits needs a storage-cost review.' });
     for (const a of aggregates.filter(x => x.source === s.id)) {
       const def = ruleDefs[a.kind];
-      // Scanner/check receipts are relevant for the selected day; burst rules use the last five minutes.
-      const dayRule = ['exposure.unexpected', 'check.error', 'scan.finding', 'host.unexpected'].includes(a.kind);
+      // Scanner/check and threshold-one posture receipts remain relevant for the selected day; burst rules use the last five minutes.
+      const dayRule = ['exposure.unexpected', 'check.error', 'scan.finding', 'host.unexpected', 'egress.unexpected'].includes(a.kind);
       const n = dayRule ? a.n : a.recent;
       if (def && n >= def[0]) findings.push({ id: `${s.id}:${a.asset}:${a.kind}`, source: s.id, project: s.project,
         asset: a.asset, rule: a.kind, severity: def[1], count: n, windowSeconds: dayRule ? 86400 : 300,
