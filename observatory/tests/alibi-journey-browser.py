@@ -149,6 +149,11 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
             page = browser.new_page()
+            # Production correctly rejects automated browsers. This fixture neutralises only
+            # Playwright's automation marker so the otherwise real client path can be exercised.
+            page.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', { get: () => false });"
+            )
 
             def host(route: Route, request: Request) -> None:
                 path = urlparse(request.url).path
