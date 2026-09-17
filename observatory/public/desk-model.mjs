@@ -2,6 +2,7 @@
 export const DAY = 86_400_000;
 export const RULE_VERSION = 'desk-rules/1';
 export const MIN_OUTCOMES = 20;
+export const MIN_JOURNEY_ATTEMPTS = 5;
 export const STALE_AFTER = 30 * 60_000;
 export const sum = (xs, get = x => x) => xs.reduce((n, x) => n + get(x), 0);
 export const percent = value => value === null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(1)}%`;
@@ -75,6 +76,23 @@ export function buildSignals(snapshot, now = Date.now()) {
     if (ratio !== null && ratio >= 0.8) add(p, 'budget.pressure', 'warning', `${p.label} is close to its event allowance`,
       'Admission stops at the configured daily limit. Counts describe admitted events, not all traffic.',
       { used: p.budget.used, limit: p.budget.limit, day: p.budget.day }, 'Inspect event volume and sampling before raising the allowance.');
+    if (p.journey) {
+      const attempts = p.journey.attempts.total, failed = p.journey.outcomes.failed;
+      if (attempts < MIN_JOURNEY_ATTEMPTS) add(p, 'journey.low_volume', 'note', `${p.label} has too little named journey evidence`,
+        `Only ${attempts} client-reported ${p.journey.label.toLowerCase()}${attempts === 1 ? '' : 's'} are in this window. That is not evidence of a healthy journey.`,
+        { journey: p.journey.id, attempts, minimum: MIN_JOURNEY_ATTEMPTS, completed: p.journey.outcomes.completed,
+          failed, retries: p.journey.attempts.retries },
+        'Keep the state as low-volume and inspect the hook before interpreting the completion fraction.');
+      if (failed > 0) add(p, 'journey.failure', 'warning', `${p.label} reported a failed named journey`,
+        `${failed} of ${attempts} client-reported ${p.journey.label.toLowerCase()}${attempts === 1 ? '' : 's'} ended in failure. This is a hook observation, not proof of a unique person or puzzle.`,
+        { journey: p.journey.id, attempts, completed: p.journey.outcomes.completed, failed,
+          retries: p.journey.attempts.retries, hints: p.journey.hints },
+        'Reproduce one current puzzle journey and verify the host emits the closed lifecycle in order.');
+      if (p.journey.outcomes.orphaned > 0) add(p, 'journey.contract', 'warning', `${p.label} has unmatched journey outcomes`,
+        'More terminal journey events were reported than attempts. Do not calculate a completion rate from this window.',
+        { journey: p.journey.id, attempts, orphaned: p.journey.outcomes.orphaned },
+        'Inspect the host lifecycle adapter and reproduce start, terminal and retry ordering.');
+    }
     const outcomes = p.totals.completed + p.totals.failed;
     if (outcomes >= MIN_OUTCOMES && p.totals.failed / outcomes >= 0.1) add(p, 'outcomes.failure', 'warning', `${p.label} has a failure signal`,
       'At least 10% of reported action outcomes failed, with at least 20 outcomes. Retries may appear more than once.',
