@@ -24,6 +24,13 @@ test('the artifact publishes the client contract only, never operator data', () 
   assert.deepEqual(Object.keys(config.project).sort(), ['events', 'measurements', 'releases', 'routes']);
   assert.ok(config.project.events.includes('export.print_requested'));
 });
+test('Alibi artifact publishes only its bounded context handle and registered release', () => {
+  const code = buildEmbed('alibi', { endpoint: 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi' });
+  const config = JSON.parse(/const config = (\{.*\});/.exec(code)[1].replaceAll('\\u003c', '<'));
+  assert.equal(config.contextGlobal, 'ALIBI_OBSERVATORY_CONTEXT');
+  assert.deepEqual(config.project.releases, ['unattributed', '0.11.3']);
+  assert.equal(code.includes('ALIBI_CONFIG.version'), false);
+});
 test('embed options are an allowlist, not an arbitrary override', () => {
   assert.throws(() => buildEmbed('mdviewer', { origin: 'https://attacker.test' }), /Unsupported embed option: origin/);
   assert.throws(() => buildEmbed('mdviewer', { project: { events: ['anything'] } }), /Unsupported embed option: project/);

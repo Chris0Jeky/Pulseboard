@@ -36,9 +36,9 @@ export function createObserver(config, runtime = globalThis) {
     if (lastEvent && now - lastEvent > 1800000) { session = runtime.crypto.randomUUID(); seq = 0; }
     lastEvent = now;
     const e = { v: 1, id: runtime.crypto.randomUUID(), session, seq: ++seq,
-      event, route: options.route ?? route, release };
+      event, route: options.route ?? route, release: options.release ?? release };
     if (options.value !== undefined) e.value = options.value;
-    if (!validateEvent(e, project) || Object.keys(options).some(k => !['route', 'value'].includes(k))) { stats.dropped++; return false; }
+    if (!validateEvent(e, project) || Object.keys(options).some(k => !['route', 'release', 'value'].includes(k))) { stats.dropped++; return false; }
     if (queue.length >= 100 || failures >= 3 || requests >= 120) { stats.dropped++; return false; }
     queue.push(e); schedule(); return true;
   }
