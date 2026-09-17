@@ -27,6 +27,11 @@ export const RUN_RECEIPT_LIMITATIONS = [
 
 const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const requireValue = (condition, message) => { if (!condition) throw new TypeError(message); };
+const safeAdd = (left, right, label) => {
+  const value = left + right;
+  if (!Number.isSafeInteger(value)) throw new RangeError(`${label} exceeds safe integer range`);
+  return value;
+};
 const exactKeys = (value, keys, message = 'Unexpected receipt fields') => {
   requireValue(plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key)), message);
 };
@@ -189,12 +194,17 @@ export function previewRunReceiptFile(text, registry = projects) {
     projectCounts.set(item.project, (projectCounts.get(item.project) || 0) + 1);
     statuses[item.status]++;
     outcomes[item.outcome.state]++;
-    totalDurationMs += item.durationMs;
-    for (const resource of item.resources) resourceTotals.set(resource.unit, (resourceTotals.get(resource.unit) || 0) + resource.value);
+    totalDurationMs = safeAdd(totalDurationMs, item.durationMs, 'Run duration');
+    for (const resource of item.resources) {
+      resourceTotals.set(resource.unit,
+        safeAdd(resourceTotals.get(resource.unit) || 0, resource.value, `Resource ${resource.unit}`));
+    }
     if (item.cost) {
       const key = `${item.cost.kind}:${item.cost.currency}`;
       const current = costTotals.get(key) || { kind: item.cost.kind, currency: item.cost.currency, minor: 0, receipts: 0 };
-      current.minor += item.cost.minor; current.receipts++; costTotals.set(key, current);
+      current.minor = safeAdd(current.minor, item.cost.minor, 'Cost total');
+      current.receipts = safeAdd(current.receipts, 1, 'Cost receipt count');
+      costTotals.set(key, current);
     }
   }
   const sorted = map => [...map.values()].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
