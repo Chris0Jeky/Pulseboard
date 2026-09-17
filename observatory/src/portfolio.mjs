@@ -9,6 +9,7 @@ const LIMITATIONS = [
   'Browser events are opt-in, client-reported and spoofable. Sessions are not people.',
   'Action outcomes count events. Retries and repeated attempts are not deduplicated operations.',
   'Paired flows match session, route and release, in sequence. They are not named-action funnels.',
+  'Named journeys count a closed event vocabulary and remain separate from paired flows.',
   'Probe success describes scheduled samples, not time-weighted uptime or a service-level objective.',
   'Release cohorts are descriptive and may differ in users, routes and exposure.',
   'No acquisition attribution, retention cohorts, production tracing or automatic remediation is inferred.',
@@ -18,6 +19,22 @@ const LIMITATIONS = [
 export function limitations(projects = registry) {
   const bound = Object.values(projects).filter(p => p.probe?.binding).map(p => p.label);
   return bound.length ? [...LIMITATIONS, `${bound.join(' and ')} are probed through a service binding inside Cloudflare: an up reading proves the application answers, not that its public address does.`] : LIMITATIONS;
+}
+function namedJourney(config, total) {
+  if (!config?.journey) return null;
+  const { schema, id, label, events } = config.journey;
+  const initial = total(events.initial), retries = total(events.retry), attempts = initial + retries;
+  const completed = total(events.completed), failed = total(events.failed), terminal = completed + failed;
+  const orphaned = Math.max(0, terminal - attempts), open = Math.max(0, attempts - terminal);
+  const completion = orphaned === 0 ? fraction(completed, attempts)
+    : { numerator: completed, denominator: attempts, value: null, interval: null };
+  return { schema, id, label, attempts: { initial, retries, total: attempts },
+    outcomes: { completed, failed, open, orphaned }, hints: total(events.hint), completion,
+    limitations: [
+      'Counts are opt-in and client-reported; they do not prove unique people or successful puzzle verification.',
+      'No puzzle identity or answer is collected, so attempts cannot be joined to a particular puzzle.',
+      'A retry is an explicit bounded host event, not an inference from repeated sessions or route visits.',
+    ] };
 }
 export async function readPortfolio(db, { days = 7, now = Date.now(), collectionEnabled = false, admittedProjects = [], projects = registry } = {}) {
   if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days || !Array.isArray(admittedProjects) || admittedProjects.some(id => typeof id !== 'string')) throw new RangeError('Unsupported window or admission');
@@ -81,7 +98,7 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
         totals: { events: total(), sessions: sessions.find(row => row.project === id)?.n || 0,
           completed: total('action.completed'), failed: total('action.failed'), errors: total('app.error'),
           last: events.length ? Math.max(...events.map(row => row.last)) : null },
-        flow: fraction(flow?.completed || 0, flow?.started || 0),
+        flow: fraction(flow?.completed || 0, flow?.started || 0), journey: namedJourney(config, total),
         daily: daily.filter(row => row.project === id).map(({ day, n }) => ({ day, n })),
         routes: routes.filter(row => row.project === id).map(({ route, n }) => ({ route, n })), releases,
         budget: { used: budgets.find(row => row.project === id)?.used || 0, limit: config.dailyLimit,
