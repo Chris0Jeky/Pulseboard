@@ -137,6 +137,36 @@ export function assertPortfolio(input) {
       requireValue(plain(f), 'Missing fraction'); integer(f.numerator); integer(f.denominator);
       requireValue(f.numerator <= f.denominator && (f.denominator ? Number.isFinite(f.value) && Math.abs(f.value - f.numerator / f.denominator) < 1e-12 : f.value === null), 'Invalid fraction');
     }
+    const operations = p.operations === undefined ? [] : list(p.operations, 16);
+    unique(operations.map(operation => operation.id));
+    for (const operation of operations) {
+      exactKeys(operation, ['id', 'version', 'attempts', 'completed', 'failed', 'open', 'retries', 'completion', 'releases']);
+      requireValue(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(boundedString(operation.id, 80)) && operation.version === 1,
+        'Invalid operation identity or version');
+      for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) integer(operation[key]);
+      requireValue(operation.completed + operation.failed + operation.open === operation.attempts
+        && operation.retries <= operation.attempts, 'Invalid operation totals');
+      const completion = operation.completion;
+      requireValue(plain(completion), 'Missing operation completion fraction');
+      integer(completion.numerator); integer(completion.denominator);
+      requireValue(completion.numerator === operation.completed && completion.denominator === operation.attempts
+        && (completion.denominator ? Number.isFinite(completion.value)
+          && Math.abs(completion.value - completion.numerator / completion.denominator) < 1e-12 : completion.value === null),
+        'Invalid operation completion fraction');
+      const operationReleases = list(operation.releases, 64);
+      unique(operationReleases.map(row => row.release));
+      for (const row of operationReleases) {
+        exactKeys(row, ['release', 'attempts', 'completed', 'failed', 'open', 'retries']);
+        boundedString(row.release, 160);
+        for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) integer(row[key]);
+        requireValue(row.completed + row.failed + row.open === row.attempts && row.retries <= row.attempts,
+          'Invalid operation release totals');
+      }
+      for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) {
+        requireValue(operationReleases.reduce((total, row) => total + row[key], 0) === operation[key],
+          'Operation release totals do not reconcile');
+      }
+    }
     requireValue(plain(p.budget), 'Missing budget'); integer(p.budget.used); integer(p.budget.limit); boundedString(p.budget.day, 10);
     const daily = list(p.daily, 15), routes = list(p.routes, 128), releases = list(p.releases, 64);
     unique(daily.map(d => d.day)); unique(routes.map(r => r.route)); unique(releases.map(r => r.release));
