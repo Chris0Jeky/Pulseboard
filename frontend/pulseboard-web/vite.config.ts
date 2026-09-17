@@ -3,6 +3,24 @@ import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
 
+function workbenchChunk(id: string): string | undefined {
+  const moduleId = id.replaceAll('\\', '/')
+  if (!moduleId.includes('/node_modules/')) return undefined
+
+  if (
+    moduleId.includes('/node_modules/vue/')
+    || moduleId.includes('/node_modules/@vue/')
+    || moduleId.includes('/node_modules/vue-router/')
+    || moduleId.includes('/node_modules/pinia/')
+  ) return 'vue-vendor'
+
+  if (moduleId.includes('/node_modules/zrender/')) return 'zrender'
+  if (moduleId.includes('/node_modules/echarts/')) return 'echarts'
+  if (moduleId.includes('/node_modules/vue-echarts/')) return 'vue-echarts'
+
+  return undefined
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -86,6 +104,11 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: workbenchChunk,
+      },
+    },
   },
   test: {
     globals: true,
