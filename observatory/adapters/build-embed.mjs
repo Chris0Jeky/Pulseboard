@@ -40,6 +40,10 @@ export function buildEmbed(id, options = {}) {
   const contract = read('../src/contracts.mjs').split('export function validateBatch')[0].replace(/^export const MAX_(?:BYTES|BATCH) =.*\n/gm, '').replace(/^export /gm, '');
   const browser = read('../src/browser.mjs').replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
   const embed = read('./embed.mjs').replace(/^export /gm, '');
+  const journey = id === 'alibi' ? read('./alibi-journey.mjs').replace(/^export /gm, '') : '';
+  const mountJourney = id === 'alibi'
+    ? 'globalThis.AlibiPulseboardJourney = globalThis.PulseboardUsage ? createAlibiJourneyReporter(globalThis.PulseboardUsage) : null;'
+    : '';
   return assertArtifactShape(`/* SPDX-License-Identifier: GPL-3.0-only
  * Pulseboard Observatory 0.1.0. Generated; see observatory.lock.json.
  * Disabled until endpoint is configured. No dynamic/CDN dependency. */
@@ -48,8 +52,9 @@ export function buildEmbed(id, options = {}) {
 ${contract}
 ${browser}
 ${embed}
+${journey}
 const config = ${json};
-function start() { globalThis.PulseboardUsage?.dispose(); globalThis.PulseboardUsage = mountObserver(config, createObserver); }
+function start() { globalThis.PulseboardUsage?.dispose(); globalThis.PulseboardUsage = mountObserver(config, createObserver); ${mountJourney} }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 globalThis.addEventListener?.('pageshow', event => { if (event.persisted) start(); });
 })();
