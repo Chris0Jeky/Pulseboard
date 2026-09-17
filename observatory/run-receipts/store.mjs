@@ -32,12 +32,9 @@ function coversWindow(intervals, start, end) {
 function storedReceipt(parsed, receipt, now) {
   const identity = [parsed.source.kind, parsed.source.id, receipt.run, receipt.attempt];
   const receiptKey = hash(identity);
-  const contentHash = hash({
-    source: parsed.source,
-    generatedAt: parsed.generatedAt,
-    coverage: parsed.coverage,
-    receipt,
-  });
+  // Snapshot generation and coverage describe an export, not the immutable run attempt.
+  // Repeated evidence from a later overlapping export must remain idempotent.
+  const contentHash = hash({ source: parsed.source, receipt });
   return {
     receiptKey,
     contentHash,
