@@ -41,3 +41,6 @@ jobs:
             sleep 1
           done
           ../.browser-venv/bin/python tests/desk-browser.py --origin http://127.0.0.1:8788
+      - name: Prove generated SDK pagehide delivery in Chromium
+        working-directory: observatory
+        run: ../.browser-venv/bin/python tests/sdk-keepalive-browser.py
