@@ -67,3 +67,17 @@ test('incomplete source coverage prevents a unit-cost claim even with one curren
   assert.equal(summary.costPerVerifiedAccepted, null);
   assert.match(summary.costAbstention, /coverage is incomplete/i);
 });
+
+test('a complete export cannot certify a wider summary window than it covers', async t => {
+  const DB = database(t), input = document();
+  input.coverage.start = '2026-09-01T00:30:00.000Z';
+  input.coverage.end = '2026-09-01T03:00:00.000Z';
+  await importRunReceiptFile(DB, encode(input));
+
+  const summary = await readRunReceiptSummary(DB, options);
+  assert.equal(summary.attempts.receipts, 2);
+  assert.equal(summary.outcomes['verified-accepted'], 2);
+  assert.equal(summary.coverage.complete, false);
+  assert.equal(summary.costPerVerifiedAccepted, null);
+  assert.match(summary.costAbstention, /coverage is incomplete/i);
+});
