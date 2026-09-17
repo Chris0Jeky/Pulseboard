@@ -11,7 +11,7 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend/pulseboard-web
@@ -25,7 +25,21 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/pulseboard-web/package-lock.json
       - run: npm ci
-      - name: Capture full and runtime audits
+      - name: Apply only semver-compatible audit fixes to the lockfile
+        run: npm audit fix --package-lock-only --ignore-scripts
+      - name: Show the proposed dependency changes
+        shell: bash
+        run: |
+          git diff --stat -- package.json package-lock.json
+          git diff -- package.json package-lock.json
+          test -n "$(git status --short -- package-lock.json package.json)"
+      - name: Reinstall and prove the application gates
+        shell: bash
+        run: |
+          npm ci
+          npx vitest run --maxWorkers=2
+          npm run build
+      - name: Capture post-fix full and runtime audits
         shell: bash
         run: |
           npm audit --json > audit-all.json || true
