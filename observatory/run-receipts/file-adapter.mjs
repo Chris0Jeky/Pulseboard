@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from '../src/sqlite.mjs';
@@ -9,8 +9,8 @@ const schema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
 
 export function readBoundedRunReceiptFile(filename) {
   if (typeof filename !== 'string' || filename.length === 0) throw new TypeError('A run receipt filename is required');
-  const stat = statSync(filename, { throwIfNoEntry: false });
-  if (!stat?.isFile()) throw new TypeError('Run receipt input must be a regular file');
+  const stat = lstatSync(filename, { throwIfNoEntry: false });
+  if (!stat?.isFile() || stat.isSymbolicLink()) throw new TypeError('Run receipt input must be a regular non-symlink file');
   if (stat.size > RUN_RECEIPT_MAX_BYTES) throw new RangeError('Run receipt file exceeds 256 KiB');
   const bytes = readFileSync(filename);
   if (bytes.byteLength > RUN_RECEIPT_MAX_BYTES) throw new RangeError('Run receipt file exceeds 256 KiB');
