@@ -32,3 +32,15 @@ CREATE INDEX IF NOT EXISTS idx_private_run_receipts_project_window
 
 CREATE INDEX IF NOT EXISTS idx_private_run_receipts_source
   ON private_run_receipts(source_kind, source_id, generated);
+
+-- Preflight reads cannot serialize competing importers. Enforce immutable evidence
+-- at insertion so a conflict aborts the enclosing batch, while exact repeats stay idempotent.
+CREATE TRIGGER IF NOT EXISTS private_run_receipts_reject_conflicting_identity
+BEFORE INSERT ON private_run_receipts
+WHEN EXISTS (
+  SELECT 1 FROM private_run_receipts
+  WHERE receipt_key = NEW.receipt_key AND content_hash <> NEW.content_hash
+)
+BEGIN
+  SELECT RAISE(ABORT, 'Conflicting run receipt identity');
+END;
