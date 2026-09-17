@@ -1,5 +1,5 @@
-import { lstatSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { lstatSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from '../src/sqlite.mjs';
 import { RUN_RECEIPT_MAX_BYTES, previewRunReceiptFile } from './contracts.mjs';
@@ -25,7 +25,9 @@ export async function importRunReceiptPath(filename, databasePath, options = {})
   if (typeof databasePath !== 'string' || databasePath.length === 0 || databasePath === ':memory:') {
     throw new TypeError('Import requires an explicit SQLite database path');
   }
-  const DB = openDatabase(databasePath);
+  const resolvedDatabasePath = resolve(databasePath);
+  mkdirSync(dirname(resolvedDatabasePath), { recursive: true });
+  const DB = openDatabase(resolvedDatabasePath);
   try {
     DB.exec(schema);
     return await importRunReceiptFile(DB, readBoundedRunReceiptFile(filename), options);
