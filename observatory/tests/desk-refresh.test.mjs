@@ -39,6 +39,7 @@ test('prolonged failed refresh retains an old recorded failure and also reports 
   assert.equal(down.evidence.state, 'down');
   assert.equal(down.evidence.freshness, 'stale');
   assert.equal(down.evidence.lastKnown, true);
+  // During a failed live refresh, the chip must retain the recorded failure while qualifying its age.
   assert.deepEqual(monitorDisplay(project, now, true), { state: 'down', freshness: 'stale', lastKnown: true });
 
   const freshRead = buildSignals(snapshot, now, false);
