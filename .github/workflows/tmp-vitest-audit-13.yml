@@ -1,0 +1,54 @@
+name: Temporary Vitest audit repair
+
+on:
+  push:
+    branches:
+      - fix/frontend-audit-13
+
+permissions:
+  contents: write
+
+jobs:
+  update-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend/pulseboard-web
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/pulseboard-web/package-lock.json
+      - run: npm ci
+      - name: Install matched current Vitest packages
+        shell: bash
+        run: |
+          vitest_version="$(npm view vitest version)"
+          ui_version="$(npm view @vitest/ui version)"
+          echo "vitest=$vitest_version @vitest/ui=$ui_version"
+          test "$vitest_version" = "$ui_version"
+          npm install --save-dev "vitest@$vitest_version" "@vitest/ui@$ui_version"
+      - name: Reinstall from the updated lock
+        run: npm ci
+      - name: Run frontend tests
+        run: npx vitest run --maxWorkers=2
+      - name: Build production frontend
+        run: npm run build
+      - name: Require a clean complete dependency graph
+        run: npm audit --audit-level=low
+      - name: Verify and publish the matched update
+        working-directory: .
+        shell: bash
+        run: |
+          git diff --check
+          rm .github/workflows/tmp-vitest-audit-13.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: update Vitest past audited vulnerabilities'
+          git push origin HEAD:fix/frontend-audit-13
