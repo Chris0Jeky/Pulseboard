@@ -2,7 +2,6 @@
 DataHub for managing feed events and WebSocket connections.
 """
 
-import asyncio
 import logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
