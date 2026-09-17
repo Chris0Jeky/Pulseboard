@@ -9,9 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  red:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: observatory
@@ -19,17 +19,22 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
       - run: npm ci
-      - name: Prove the private run receipt implementation is absent
-        shell: bash
+      - name: Run focused run receipt tests
+        run: node --test tests/run-receipts.test.mjs
+      - name: Run the complete Observatory suite
+        run: npm test
+      - name: Check new modules
         run: |
-          set +e
-          node --test tests/run-receipts.test.mjs > /tmp/run-receipts-red.log 2>&1
-          status=$?
-          set -e
-          cat /tmp/run-receipts-red.log
-          test "$status" -ne 0
-          grep -q "run-receipts/contracts.mjs" /tmp/run-receipts-red.log
+          node --check run-receipts/contracts.mjs
+          node --check run-receipts/store.mjs
+          node --check run-receipts/model.mjs
+      - name: Check Worker packaging remains unchanged
+        run: npx wrangler deploy --dry-run
+      - name: Verify patch whitespace
+        working-directory: .
+        run: git diff --check origin/main...HEAD
