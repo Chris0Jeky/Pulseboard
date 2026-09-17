@@ -41,6 +41,8 @@ jobs:
         run: npx vitest run --maxWorkers=2
       - name: Build production frontend
         run: npm run build
+      - name: Build production container
+        run: docker build --tag pulseboard-frontend:ci .
       - name: Audit complete dependency graph
         run: npm audit --audit-level=low
       - name: Verify patch whitespace
