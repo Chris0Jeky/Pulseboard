@@ -42,4 +42,5 @@ jobs:
       - name: Run Ruff
         run: python -m ruff check app
       - name: Run mypy
+        if: ${{ always() }}
         run: python -m mypy app
