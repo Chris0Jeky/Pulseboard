@@ -8,6 +8,7 @@
     "dev": "vite",
     "build:css": "node scripts/build-tailwind-css.js",
     "build": "npm run build:css && vue-tsc -b && vite build",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
