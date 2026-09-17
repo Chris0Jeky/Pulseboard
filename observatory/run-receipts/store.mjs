@@ -18,6 +18,17 @@ const safeAdd = (left, right, label) => {
 };
 const zeroCounts = values => Object.fromEntries(values.map(value => [value, 0]));
 
+function coversWindow(intervals, start, end) {
+  let coveredUntil = start;
+  for (const interval of [...intervals].sort((a, b) => a.start - b.start || a.end - b.end)) {
+    if (interval.end <= coveredUntil) continue;
+    if (interval.start > coveredUntil) return false;
+    coveredUntil = interval.end;
+    if (coveredUntil >= end) return true;
+  }
+  return false;
+}
+
 function storedReceipt(parsed, receipt, now) {
   const identity = [parsed.source.kind, parsed.source.id, receipt.run, receipt.attempt];
   const receiptKey = hash(identity);
@@ -117,7 +128,8 @@ export async function readRunReceiptSummary(DB, { project, start, end, registry 
 
   const statuses = zeroCounts(RUN_RECEIPT_STATUSES), outcomes = zeroCounts(RUN_RECEIPT_OUTCOMES);
   const runs = new Set(), sources = new Set(), limitations = new Set(), resources = new Map(), costs = new Map();
-  let durationMs = 0, retries = 0, generatedAt = null, complete = results.length > 0;
+  const coverageIntervals = [];
+  let durationMs = 0, retries = 0, generatedAt = null, claimedComplete = results.length > 0;
 
   for (const row of results) {
     statuses[row.status]++;
@@ -127,7 +139,11 @@ export async function readRunReceiptSummary(DB, { project, start, end, registry 
     if (row.attempt > 1) retries++;
     durationMs = safeAdd(durationMs, row.ended - row.started, 'Run duration');
     generatedAt = generatedAt === null ? row.generated : Math.max(generatedAt, row.generated);
-    complete &&= row.coverage_complete === 1;
+    requireValue(Number.isSafeInteger(row.coverage_start) && Number.isSafeInteger(row.coverage_end)
+      && row.coverage_start >= 0 && row.coverage_end > row.coverage_start,
+    'Invalid stored coverage window');
+    coverageIntervals.push({ start: row.coverage_start, end: row.coverage_end });
+    claimedComplete &&= row.coverage_complete === 1;
 
     for (const limitation of parseStoredList(row.coverage_limitations,
       item => typeof item === 'string' && item.length <= 80, 'coverage limitations')) limitations.add(limitation);
@@ -155,6 +171,7 @@ export async function readRunReceiptSummary(DB, { project, start, end, registry 
     }
   }
 
+  const complete = claimedComplete && coversWindow(coverageIntervals, start, end);
   const costList = [...costs.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.currency.localeCompare(b.currency));
   let costPerVerifiedAccepted = null, costAbstention = null;
   if (results.length === 0) costAbstention = 'No run receipts were observed in this window.';
