@@ -32,6 +32,13 @@ export function runnerBanner({ origin, token, supplied, collectEnabled, collectP
   ];
 }
 
+/** Cache a complete asynchronous shutdown, including resources layered above the HTTP server. */
+export function onceAsync(operation) {
+  if (typeof operation !== 'function') throw new TypeError('operation is required');
+  let promise = null;
+  return () => promise ??= Promise.resolve().then(operation);
+}
+
 function localAssets() {
   return { async fetch(request) {
     const entry = assets.get(new URL(request.url).pathname);
@@ -139,7 +146,7 @@ export async function main(envVars = process.env, logger = console) {
       COLLECT_PROJECTS: collectProjects,
     });
     for (const line of runnerBanner({ origin: runner.origin, token, supplied, collectEnabled, collectProjects })) logger.log(line);
-    const close = async () => { await runner.close(); DB.close(); };
+    const close = onceAsync(async () => { await runner.close(); DB.close(); });
     installShutdownHooks({ processLike: process, close });
     return { ...runner, close };
   } catch (error) {
