@@ -1,0 +1,25 @@
+name: Temporary PR 52 project status fix
+
+on:
+  push:
+    branches:
+      - fix/desk-refresh-state-33
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: cd observatory && npm ci
+      - name: Run review regression and fix
+        run: python scripts/tmp_review_52_chip.py
