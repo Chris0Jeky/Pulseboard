@@ -3,21 +3,11 @@ import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
 
-function workbenchChunk(id: string): string | undefined {
+/** Keep the measured chart engines below the chunk budget without creating a broad vendor bucket. */
+export function workbenchChunk(id: string) {
   const moduleId = id.replaceAll('\\', '/')
-  if (!moduleId.includes('/node_modules/')) return undefined
-
-  if (
-    moduleId.includes('/node_modules/vue/')
-    || moduleId.includes('/node_modules/@vue/')
-    || moduleId.includes('/node_modules/vue-router/')
-    || moduleId.includes('/node_modules/pinia/')
-  ) return 'vue-vendor'
-
-  if (moduleId.includes('/node_modules/zrender/')) return 'zrender'
-  if (moduleId.includes('/node_modules/echarts/')) return 'echarts'
-  if (moduleId.includes('/node_modules/vue-echarts/')) return 'vue-echarts'
-
+  if (moduleId.includes('/node_modules/echarts/')) return 'charts-echarts'
+  if (moduleId.includes('/node_modules/zrender/')) return 'charts-renderer'
   return undefined
 }
 
