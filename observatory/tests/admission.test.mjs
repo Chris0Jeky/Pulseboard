@@ -25,6 +25,7 @@ test('collection configuration is exact, registry-aware and fail-closed', async 
   assert.deepEqual(valid, { enabled: true, valid: true, configured: ['alibi', 'mdviewer'], admitted: ['alibi', 'mdviewer'], invalid: [] });
   const disabled = collectionAdmission({ COLLECT_ENABLED: 'false', COLLECT_PROJECTS: 'alibi' });
   assert.equal(disabled.valid, true); assert.deepEqual(disabled.admitted, []);
+  // Case and separator mistakes are configuration errors, never aliases for registered ids.
   for (const value of ['Alibi', 'mdviewer;commitatlas', 'taskdeck', 'alibi,missing']) {
     const result = collectionAdmission({ COLLECT_ENABLED: 'true', COLLECT_PROJECTS: value });
     assert.equal(result.valid, false, value); assert.deepEqual(result.admitted, [], value); assert.ok(result.invalid.length > 0, value);
