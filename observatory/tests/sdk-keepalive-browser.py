@@ -58,7 +58,13 @@ async def run() -> None:
     page_errors: list[str] = []
 
     async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(headless=True)
+        # The production SDK deliberately stays inert when navigator.webdriver is true.
+        # Disable Blink's automation exposure only for this fixture so it reaches the
+        # real visitor navigation/keepalive path rather than testing the webdriver gate.
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
         context = await browser.new_context()
         await context.add_cookies(
             [
@@ -136,6 +142,7 @@ async def run() -> None:
         page = await context.new_page()
         page.on("pageerror", lambda error: page_errors.append(str(error)))
         await page.goto(f"{SOURCE_ORIGIN}/", wait_until="load")
+        assert await page.evaluate("navigator.webdriver") is False
         sharing = page.locator("#pulseboard-usage-sharing input[type=checkbox]")
         await expect(sharing).to_be_visible()
         await sharing.check()
