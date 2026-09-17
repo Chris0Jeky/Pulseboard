@@ -127,3 +127,45 @@ test('colon-bearing source and run identifiers stay distinct', async t => {
   assert.equal(summary.coverage.complete, true);
   assert.equal(summary.costPerVerifiedAccepted.valueMinor, 15);
 });
+
+test('racing changed evidence rejects one importer rather than counting a duplicate', async t => {
+  const DB = database(t), first = document(), changed = document();
+  first.receipts = [first.receipts[0]];
+  changed.receipts = [changed.receipts[0]];
+  changed.receipts[0].resources[0].value = 11;
+  const results = await Promise.allSettled([
+    importRunReceiptFile(DB, encode(first)),
+    importRunReceiptFile(DB, encode(changed)),
+  ]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  const rejected = results.find(result => result.status === 'rejected');
+  assert.match(rejected.reason.message, /conflicting run receipt identity/i);
+  assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM private_run_receipts').first()).n, 1);
+});
+
+test('racing identical evidence is still idempotent', async t => {
+  const DB = database(t), input = document();
+  const results = await Promise.all([
+    importRunReceiptFile(DB, encode(input)),
+    importRunReceiptFile(DB, encode(input)),
+  ]);
+  assert.equal(results.reduce((total, result) => total + result.imported, 0), 2);
+  assert.equal(results.reduce((total, result) => total + result.duplicates, 0), 2);
+  assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM private_run_receipts').first()).n, 2);
+});
+
+test('a racing conflict rolls back preceding non-conflicting rows in its batch', async t => {
+  const DB = database(t), winner = document(), mixed = document();
+  winner.receipts[1] = { ...winner.receipts[1], id: 'winner-3', run: '3' };
+  mixed.receipts = [mixed.receipts[1], mixed.receipts[0]];
+  mixed.receipts[1].resources[0].value = 11;
+  const results = await Promise.allSettled([
+    importRunReceiptFile(DB, encode(winner)),
+    importRunReceiptFile(DB, encode(mixed)),
+  ]);
+  assert.equal(results[0].status, 'fulfilled');
+  assert.equal(results[1].status, 'rejected');
+  assert.match(results[1].reason.message, /conflicting run receipt identity/i);
+  const rows = (await DB.prepare('SELECT run_id FROM private_run_receipts').all()).results;
+  assert.deepEqual(rows.map(row => row.run_id).sort(), ['1', '3']);
+});
