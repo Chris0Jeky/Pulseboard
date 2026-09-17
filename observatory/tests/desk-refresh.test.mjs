@@ -28,6 +28,7 @@ test('prolonged failed refresh retains an old recorded failure and also reports 
   const snapshot = makeDemo('release', { now, phase: 1 });
   snapshot.mode = 'live';
   const project = snapshot.projects.find(item => item.monitor.state === 'down');
+  // Cross STALE_AFTER deliberately: raw failure evidence and reading age must remain separate facts.
   project.monitor.checked = now - 31 * 60_000;
 
   const failedRefresh = buildSignals(snapshot, now, true);
