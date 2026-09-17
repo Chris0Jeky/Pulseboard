@@ -25,7 +25,7 @@ jobs:
           node-version: '22'
       - run: npm ci
       - name: Run focused run receipt tests
-        run: node --test tests/run-receipts.test.mjs
+        run: node --test tests/run-receipts*.test.mjs
       - name: Run the complete Observatory suite
         run: npm test
       - name: Check new modules
@@ -33,6 +33,7 @@ jobs:
           node --check run-receipts/contracts.mjs
           node --check run-receipts/store.mjs
           node --check run-receipts/model.mjs
+          node --check run-receipts/file-adapter.mjs
       - name: Check Worker packaging remains unchanged
         run: npx wrangler deploy --dry-run
       - name: Verify patch whitespace
