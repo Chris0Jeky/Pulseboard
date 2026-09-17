@@ -134,8 +134,12 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         await apiClient.createPanel(clonedDashboard.id, {
           title: panel.title,
           type: panel.type,
-          config_json: panel.config_json,
-          position: panel.position,
+          feed_ids_json: panel.feed_ids_json,
+          options_json: panel.options_json,
+          position_x: panel.position_x,
+          position_y: panel.position_y,
+          width: panel.width,
+          height: panel.height,
         })
       }
 
