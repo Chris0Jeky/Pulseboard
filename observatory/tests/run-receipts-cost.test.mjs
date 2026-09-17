@@ -81,3 +81,49 @@ test('a complete export cannot certify a wider summary window than it covers', a
   assert.equal(summary.costPerVerifiedAccepted, null);
   assert.match(summary.costAbstention, /coverage is incomplete/i);
 });
+
+function splitCoverage(sameSource) {
+  const first = document(), second = document();
+  first.source.id = 'source-a';
+  second.source.id = sameSource ? 'source-a' : 'source-b';
+  first.coverage.end = second.coverage.start = '2026-09-01T12:00:00.000Z';
+  first.receipts = [first.receipts[0]];
+  second.receipts = [receipt('cost-2', '2', '2026-09-01T13:00:00.000Z',
+    '2026-09-01T13:00:10.000Z', 'estimated', 20)];
+  return [first, second];
+}
+
+test('different sources cannot fill one another\'s coverage gaps', async t => {
+  const DB = database(t);
+  for (const input of splitCoverage(false)) await importRunReceiptFile(DB, encode(input));
+  const summary = await readRunReceiptSummary(DB, options);
+  assert.equal(summary.coverage.sources, 2);
+  assert.equal(summary.attempts.receipts, 2);
+  assert.equal(summary.coverage.complete, false);
+  assert.equal(summary.costPerVerifiedAccepted, null);
+  assert.match(summary.costAbstention, /coverage is incomplete/i);
+});
+
+test('adjacent complete exports from the same source can cover the window', async t => {
+  const DB = database(t);
+  for (const input of splitCoverage(true)) await importRunReceiptFile(DB, encode(input));
+  const summary = await readRunReceiptSummary(DB, options);
+  assert.equal(summary.coverage.sources, 1);
+  assert.equal(summary.coverage.complete, true);
+  assert.equal(summary.costPerVerifiedAccepted.valueMinor, 15);
+});
+
+test('colon-bearing source and run identifiers stay distinct', async t => {
+  const DB = database(t), first = document(), second = document();
+  first.source.id = 'a:b';
+  second.source.id = 'a';
+  first.receipts = [{ ...first.receipts[0], run: 'c' }];
+  second.receipts = [{ ...second.receipts[1], run: 'b:c' }];
+  for (const input of [first, second]) await importRunReceiptFile(DB, encode(input));
+  const summary = await readRunReceiptSummary(DB, options);
+  assert.equal(summary.attempts.receipts, 2);
+  assert.equal(summary.attempts.distinctRuns, 2);
+  assert.equal(summary.coverage.sources, 2);
+  assert.equal(summary.coverage.complete, true);
+  assert.equal(summary.costPerVerifiedAccepted.valueMinor, 15);
+});
