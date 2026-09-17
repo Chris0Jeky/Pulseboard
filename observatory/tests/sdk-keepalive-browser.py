@@ -56,6 +56,8 @@ async def run() -> None:
     script = generated_sdk()
     receipts: list[dict] = []
     page_errors: list[str] = []
+    console_messages: list[dict] = []
+    requests: list[dict] = []
 
     async with async_playwright() as playwright:
         # The production SDK deliberately stays inert when navigator.webdriver is true.
@@ -141,9 +143,29 @@ async def run() -> None:
 
         page = await context.new_page()
         page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on("console", lambda message: console_messages.append({"type": message.type, "text": message.text}))
+        page.on("request", lambda request: requests.append({"url": request.url, "resourceType": request.resource_type}))
         await page.goto(f"{SOURCE_ORIGIN}/", wait_until="load")
-        assert await page.evaluate("navigator.webdriver") is False
+        await page.wait_for_timeout(250)
+        diagnostics = await page.evaluate(
+            """() => ({
+              location: { origin: location.origin, protocol: location.protocol, pathname: location.pathname },
+              readyState: document.readyState,
+              webdriver: navigator.webdriver,
+              doNotTrack: navigator.doNotTrack,
+              globalPrivacyControl: navigator.globalPrivacyControl ?? null,
+              scripts: [...document.scripts].map(script => ({ src: script.src, type: script.type })),
+              pulseboardUsageType: typeof globalThis.PulseboardUsage,
+              pulseboardUsageIsNull: globalThis.PulseboardUsage === null,
+              bodyText: document.body?.innerText || '',
+            })"""
+        )
+        diagnostics.update({"pageErrors": page_errors, "console": console_messages, "requests": requests})
+        assert diagnostics["webdriver"] is False, diagnostics
         sharing = page.locator("#pulseboard-usage-sharing input[type=checkbox]")
+        if await sharing.count() == 0:
+            print(json.dumps({"mountDiagnostics": diagnostics}, indent=2))
+            raise AssertionError("generated SDK did not mount its consent control")
         await expect(sharing).to_be_visible()
         await sharing.check()
         await wait_for_event(receipts, "page.view")
