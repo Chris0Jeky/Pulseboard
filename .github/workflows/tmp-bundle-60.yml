@@ -6,10 +6,10 @@ on:
       - perf/frontend-bundle-60
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  red-then-green:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -18,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
@@ -25,21 +26,16 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/pulseboard-web/package-lock.json
       - run: npm ci
-      - name: Prove eager routes violate the async boundary
-        shell: bash
-        run: |
-          set +e
-          npx vitest run src/router/index.test.ts
-          status=$?
-          set -e
-          test "$status" -ne 0
-      - name: Build the current production bundle
+      - name: Run frontend tests
+        run: npx vitest run --maxWorkers=2
+      - name: Build production frontend
         run: npm run build
-      - name: Prove the current bundle violates the executable budget
-        shell: bash
-        run: |
-          set +e
-          npm run build:budget
-          status=$?
-          set -e
-          test "$status" -ne 0
+      - name: Enforce initial and per-chunk budgets
+        run: npm run build:budget
+      - name: Build production container
+        run: docker build --tag pulseboard-frontend:bundle-ci .
+      - name: Audit complete dependency graph
+        run: npm audit --audit-level=low
+      - name: Verify patch whitespace
+        working-directory: .
+        run: git diff --check origin/fix/frontend-audit-13...HEAD
