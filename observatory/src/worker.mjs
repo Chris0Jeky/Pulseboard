@@ -91,6 +91,7 @@ export async function handle(request, env) {
         return json({ error: 'window', allowedDays: WINDOWS }, 400);
       }
       const admission = collectionAdmission(env);
+      if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
       return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: admission.enabled, admittedProjects: admission.admitted }));
     }
     const match = /^\/v1\/collect\/([a-z0-9-]+)$/.exec(url.pathname);
