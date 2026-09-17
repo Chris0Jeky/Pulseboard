@@ -1,0 +1,85 @@
+name: Temporary workbench bundle measurement
+
+on:
+  push:
+    branches:
+      - perf/frontend-bundle-split-60
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend/pulseboard-web
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/pulseboard-web/package-lock.json
+      - run: npm ci
+      - name: Build with module attribution
+        shell: bash
+        run: |
+          cat > vite.bundle.config.ts <<'EOF'
+          import base from './vite.config'
+          import { defineConfig, mergeConfig, type Plugin } from 'vite'
+
+          const report: Plugin = {
+            name: 'pulseboard-bundle-report',
+            generateBundle(_options, bundle) {
+              const chunks = Object.values(bundle)
+                .filter((entry): entry is Extract<typeof entry, { type: 'chunk' }> => entry.type === 'chunk')
+                .map((chunk) => ({
+                  file: chunk.fileName,
+                  entry: chunk.isEntry,
+                  dynamicEntry: chunk.isDynamicEntry,
+                  imports: chunk.imports,
+                  dynamicImports: chunk.dynamicImports,
+                  bytes: Buffer.byteLength(chunk.code),
+                  modules: Object.entries(chunk.modules)
+                    .map(([id, metadata]) => ({ id, bytes: metadata.renderedLength }))
+                    .sort((a, b) => b.bytes - a.bytes)
+                    .slice(0, 25),
+                }))
+                .sort((a, b) => b.bytes - a.bytes)
+              console.log('PULSEBOARD_BUNDLE_REPORT_BEGIN')
+              console.log(JSON.stringify(chunks, null, 2))
+              console.log('PULSEBOARD_BUNDLE_REPORT_END')
+            },
+          }
+
+          export default mergeConfig(base, defineConfig({
+            plugins: [report],
+            build: { manifest: true },
+          }))
+          EOF
+          npm run build:css
+          npx vue-tsc -b
+          npx vite build --config vite.bundle.config.ts
+      - name: Record minified and gzip sizes
+        shell: bash
+        run: |
+          node <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { gzipSync } from 'node:zlib';
+          const root = 'dist/assets';
+          const rows = fs.readdirSync(root)
+            .filter(name => /\.(?:js|css)$/.test(name))
+            .map(name => {
+              const bytes = fs.readFileSync(path.join(root, name));
+              return { file: name, bytes: bytes.length, gzip: gzipSync(bytes).length };
+            })
+            .sort((a, b) => b.bytes - a.bytes);
+          console.log('PULSEBOARD_ASSET_SIZES_BEGIN');
+          console.log(JSON.stringify(rows, null, 2));
+          console.log('PULSEBOARD_ASSET_SIZES_END');
+          NODE
