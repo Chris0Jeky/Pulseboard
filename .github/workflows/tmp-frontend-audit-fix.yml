@@ -24,11 +24,11 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
         working-directory: frontend/pulseboard-web
-      - name: Repair runtime dependencies within declared ranges
-        run: npm audit fix || true
-        working-directory: frontend/pulseboard-web
       - name: Pin the first non-affected Vitest toolchain
         run: npm install --save-dev vitest@4.1.11 @vitest/ui@4.1.11
+        working-directory: frontend/pulseboard-web
+      - name: Repair remaining dependencies within declared ranges
+        run: npm audit fix
         working-directory: frontend/pulseboard-web
       - name: Require a clean complete audit
         run: npm audit --audit-level=low
