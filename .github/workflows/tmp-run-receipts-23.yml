@@ -1,0 +1,35 @@
+name: Temporary run receipt proof
+
+on:
+  push:
+    branches:
+      - feat/run-receipts-23
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: observatory
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Prove the private run receipt implementation is absent
+        shell: bash
+        run: |
+          set +e
+          node --test tests/run-receipts.test.mjs > /tmp/run-receipts-red.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/run-receipts-red.log
+          test "$status" -ne 0
+          grep -q "run-receipts/contracts.mjs" /tmp/run-receipts-red.log
