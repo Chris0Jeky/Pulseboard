@@ -9,8 +9,8 @@ WORKDIR /build
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production=false
+# Install the exact build dependency graph, including dev tools used by vue-tsc and Vite
+RUN npm ci
 
 # Copy source code
 COPY . .
