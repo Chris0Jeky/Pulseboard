@@ -67,12 +67,18 @@ function readLock(lockPath, present) {
   if (typeof raw?.target === 'string') return { ...empty, installs: { [raw.target.split(/[\\/]/).join('/')]: { project: raw.project, sha256: raw.sha256 } } };
   return empty;
 }
+const RESERVED_INSTALL_TARGETS = [HOST_CHECKER, HOST_README, 'observatory/check.local.mjs', 'observatory.lock.json'];
+/** Windows normally resolves path aliases case-insensitively; reject every alias before any write occurs. */
+export function isReservedInstallTarget(target, base, platform = process.platform) {
+  const fold = value => platform === 'win32' ? value.toLowerCase() : value;
+  const key = fold(target.split(/[\\/]/).join('/'));
+  const full = fold(path.resolve(base, target));
+  return RESERVED_INSTALL_TARGETS.some(relative => fold(relative) === key || fold(path.resolve(base, relative)) === full);
+}
 export function install(id, root, target, endpoint = '') {
   const base = realpathSync(root), full = path.resolve(base, target), key = target.split(/[\\/]/).join('/');
-  const reservedKeys = new Set([HOST_CHECKER, HOST_README, 'observatory/check.local.mjs', 'observatory.lock.json']);
-  const reservedPaths = new Set([...reservedKeys].map(relative => path.resolve(base, relative)));
   if (path.isAbsolute(target) || !full.startsWith(base + path.sep) || target.split(/[\\/]/).includes('..')) throw new Error('Target must be a relative path inside the repository');
-  if (reservedKeys.has(key) || reservedPaths.has(full)) throw new Error('Target is reserved for Observatory installer metadata');
+  if (isReservedInstallTarget(target, base)) throw new Error('Target is reserved for Observatory installer metadata');
   // Do not follow symlink parents into another tree. lstat, never existsSync: a dangling symlink is still a symlink.
   let parent = path.dirname(full);
   while (!lstatSync(parent, { throwIfNoEntry: false })) parent = path.dirname(parent);
