@@ -127,7 +127,7 @@ function projectTable() {
     e('th', { scope: 'col', class: 'right' }, 'SESSIONS'), e('th', { scope: 'col', class: 'right' }, 'OUTCOMES'), e('th', { scope: 'col', class: 'right' }, 'DAILY ALLOWANCE'))),
     e('tbody', {}, projects.map(p => e('tr', {},
       e('td', {}, e('div', { class: 'project-name' }, e('span', { class: 'project-glyph', 'aria-hidden': true }, p.label.slice(0, 2).toUpperCase()), e('div', {}, button(p.label, () => projectDetail(p)), e('small', {}, p.probeExpected ? relative(p.totals.last) : 'No external probe by design')))),
-      e('td', {}, chip(p)), e('td', { class: 'right mono' }, count(p.totals.events), chart([p], true)),
+      e('td', {}, chip(p), e('div', { class: 'tiny muted' }, p.collectionEligible ? (p.collectionAdmitted ? 'Collection admitted' : 'Collection not admitted') : 'Local-only; no browser collection')), e('td', { class: 'right mono' }, count(p.totals.events), chart([p], true)),
       e('td', { class: 'right mono' }, count(p.totals.sessions)),
       e('td', { class: 'right' }, e('span', { class: 'mono' }, percent(fraction(p.totals.completed, p.totals.completed + p.totals.failed).value)), e('div', { class: 'tiny muted' }, `${count(p.totals.completed + p.totals.failed)} reported`)),
       e('td', { class: 'right' }, e('span', { class: 'mono' }, `${count(p.budget.used)} / ${count(p.budget.limit)}`), e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, p.budget.limit), value: p.budget.used, 'aria-label': `${p.label}: ${p.budget.used} of ${p.budget.limit} daily admission units used` }))))));
@@ -150,7 +150,8 @@ function projectDetail(p) {
   const outcomes = p.totals.completed + p.totals.failed;
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, p.label), chip(p),
     e('div', { class: 'facts' }, ...[['Admitted events', count(p.totals.events)], ['Reported sessions', count(p.totals.sessions)],
-      ['Completed / reported outcomes', `${p.totals.completed} / ${outcomes}`], ['Probe successes / samples', `${p.probeSamples.numerator} / ${p.probeSamples.denominator}`]]
+      ['Completed / reported outcomes', `${p.totals.completed} / ${outcomes}`], ['Probe successes / samples', `${p.probeSamples.numerator} / ${p.probeSamples.denominator}`],
+      ['Collection admission', p.collectionEligible ? (p.collectionAdmitted ? 'Admitted' : 'Not admitted') : 'Not eligible (local-only)']]
       .map(([label, value]) => e('div', { class: 'fact' }, e('span', {}, label), e('strong', {}, value)))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Provenance'), e('p', { class: 'muted' }, `Snapshot: ${date(state.snapshot.generatedAt)}. Last probe: ${date(p.monitor.checked)}. Browser data is opt-in and client-reported. Probe data comes from the configured synthetic check.`)),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Paired flow'), e('p', {}, `${p.flow.numerator} completed of ${p.flow.denominator} started session / route / release groups (${percent(p.flow.value)}).`),
