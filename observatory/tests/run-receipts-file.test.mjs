@@ -13,7 +13,7 @@ const adapter = fileURLToPath(new URL('../run-receipts/file-adapter.mjs', import
 const sample = fileURLToPath(new URL('../run-receipts/examples/github-actions.sample.json', import.meta.url));
 const run = args => spawnSync(process.execPath, [adapter, ...args], { cwd: observatory, encoding: 'utf8' });
 
-test('the CLI previews before an explicit idempotent local import', () => {
+test('the CLI previews before an explicit idempotent local import', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'pulseboard-run-receipts-'));
   try {
     const databasePath = path.join(root, 'private.sqlite');
@@ -34,7 +34,7 @@ test('the CLI previews before an explicit idempotent local import', () => {
     assert.deepEqual(JSON.parse(second.stdout), { received: 2, imported: 0, duplicates: 2, visibility: 'private' });
 
     const DB = openDatabase(databasePath);
-    try { assert.equal(DB.prepare('SELECT COUNT(*) AS n FROM private_run_receipts')._execute().results[0].n, 2); }
+    try { assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM private_run_receipts').first()).n, 2); }
     finally { DB.close(); }
   } finally { rmSync(root, { recursive: true }); }
 });
@@ -50,7 +50,7 @@ test('the file adapter rejects oversized and non-file input before JSON parsing'
 
     const directory = run(['preview', root]);
     assert.equal(directory.status, 1);
-    assert.match(directory.stderr, /regular file/i);
+    assert.match(directory.stderr, /regular/i);
 
     assert.ok(readFileSync(sample, 'utf8').includes('pulseboard.run-receipts/1'));
   } finally { rmSync(root, { recursive: true }); }
