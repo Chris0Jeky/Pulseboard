@@ -1,6 +1,6 @@
 import { validateEvent } from './contracts.mjs';
 /** No DOM capture, URLs, storage, identity, network or timers before explicit consent. */
-export function createObserver(config, runtime = globalThis) {
+export function createObserver(config, runtime = globalThis, onSelfRevoke = () => {}) {
   const { project, endpoint = '', origin, release = 'unattributed', route = 'home' } = config;
   let consent = false, disposed = false, epoch = 0, session = '', seq = 0;
   let queue = [], timer = null, flight = null, lastEvent = 0, failures = 0, requests = 0;
@@ -19,6 +19,14 @@ export function createObserver(config, runtime = globalThis) {
     if (timer !== null) runtime.clearTimeout(timer);
     timer = null; flight?.abort();
   }
+  function status() { return { active: consent && eligible(), queued: queue.length, requests, ...stats }; }
+  function revoke() {
+    if (!consent) return false;
+    consent = false;
+    clear();
+    try { onSelfRevoke(status()); } catch { /* UI reconciliation must never weaken privacy revocation. */ }
+    return true;
+  }
   function schedule() {
     if (timer === null && consent && queue.length && !disposed) {
       timer = runtime.setTimeout(() => { timer = null; void flush(); }, 5000);
@@ -31,7 +39,7 @@ export function createObserver(config, runtime = globalThis) {
     return consent;
   }
   function track(event, options = {}) {
-    if (!consent || !eligible()) { if (consent) { consent = false; clear(); } return false; }
+    if (!consent || !eligible()) { if (consent) revoke(); return false; }
     const now = Date.now();
     if (lastEvent && now - lastEvent > 1800000) { session = runtime.crypto.randomUUID(); seq = 0; }
     lastEvent = now;
@@ -46,7 +54,7 @@ export function createObserver(config, runtime = globalThis) {
     referrerPolicy: 'no-referrer', redirect: 'error', cache: 'no-store',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ events: batch }), ...extra });
   async function flush() {
-    if (!eligible()) { consent = false; clear(); return; }
+    if (!eligible()) { revoke(); return; }
     if (flight || !consent || !queue.length || failures >= 3 || requests >= 120) return;
     const generation = epoch, batch = queue.splice(0, 20);
     const abort = new runtime.AbortController(); flight = abort; requests++;
@@ -66,7 +74,7 @@ export function createObserver(config, runtime = globalThis) {
   /** The page is being hidden and the timer will never fire: hand the rest of the queue over with keepalive.
    *  Deliberately not navigator.sendBeacon, which attaches cookies and cannot omit credentials. */
   function flushOnHide() {
-    if (!consent || !eligible()) return 0;
+    if (!consent || !eligible()) { if (consent) revoke(); return 0; }
     const generation = epoch; let handed = 0;
     while (queue.length && failures < 3 && requests < 120) {
       const batch = queue.splice(0, 20); requests++; handed += batch.length;
@@ -79,5 +87,5 @@ export function createObserver(config, runtime = globalThis) {
     return handed;
   }
   function dispose() { consent = false; disposed = true; clear(); }
-  return { setConsent, track, flush, flushOnHide, dispose, status: () => ({ active: consent && eligible(), queued: queue.length, requests, ...stats }) };
+  return { setConsent, track, flush, flushOnHide, dispose, status };
 }
