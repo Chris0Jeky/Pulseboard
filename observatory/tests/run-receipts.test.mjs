@@ -52,7 +52,7 @@ function fixture() {
     schema: 'pulseboard.run-receipts/1',
     source: { kind: 'github-actions-file', id: 'github-actions-export' },
     generatedAt,
-    coverage,
+    coverage: { ...coverage, limitations: [...coverage.limitations] },
     receipts: [
       receipt({ id: 'gha-100-1', run: '100', startedAt: '2026-09-01T00:00:00.000Z', endedAt: '2026-09-01T00:01:00.000Z',
         status: 'succeeded', runnerSeconds: 60, costMinor: 10, outcomeState: 'verified-accepted', verificationRef: 'check-100' }),
