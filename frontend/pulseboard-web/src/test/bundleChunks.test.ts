@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { workbenchChunk } from '../../vite.config'
+import { workbenchChunk } from '../../build/chunks'
 
 describe('workbench production chunk boundaries', () => {
   it('isolates the measured chart engines on POSIX and Windows paths', () => {
