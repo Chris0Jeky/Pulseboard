@@ -26,6 +26,10 @@ export function buildEmbed(id, options = {}) {
   const config = { id, project: contractOnly, origin: project.origin, endpoint: '',
     scopePath: project.probe ? new URL(project.probe.url).pathname : '/',
     release: 'unattributed', route: 'home', clicks: [], ...options };
+  if (project.contextGlobal !== undefined) {
+    if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(project.contextGlobal)) throw new Error('Project context global must be a bounded identifier');
+    config.contextGlobal = project.contextGlobal;
+  }
   if (id === 'alibi') config.publicFlag = { global: 'ALIBI_CONFIG', key: 'standalone', expected: false };
   if (config.endpoint) {
     const u = new URL(config.endpoint);
@@ -36,7 +40,20 @@ export function buildEmbed(id, options = {}) {
   const contract = read('../src/contracts.mjs').split('export function validateBatch')[0].replace(/^export const MAX_(?:BYTES|BATCH) =.*\n/gm, '').replace(/^export /gm, '');
   const browser = read('../src/browser.mjs').replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
   const embed = read('./embed.mjs').replace(/^export /gm, '');
-  return assertArtifactShape(`/* SPDX-License-Identifier: GPL-3.0-only\n * Pulseboard Observatory 0.1.0. Generated; see observatory.lock.json.\n * Disabled until endpoint is configured. No dynamic/CDN dependency. */\n(function () {\n'use strict';\n${contract}\n${browser}\n${embed}\nconst config = ${json};\nfunction start() { globalThis.PulseboardUsage?.dispose(); globalThis.PulseboardUsage = mountObserver(config, createObserver); }\nif (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();\nglobalThis.addEventListener?.('pageshow', event => { if (event.persisted) start(); });\n})();\n`);
+  return assertArtifactShape(`/* SPDX-License-Identifier: GPL-3.0-only
+ * Pulseboard Observatory 0.1.0. Generated; see observatory.lock.json.
+ * Disabled until endpoint is configured. No dynamic/CDN dependency. */
+(function () {
+'use strict';
+${contract}
+${browser}
+${embed}
+const config = ${json};
+function start() { globalThis.PulseboardUsage?.dispose(); globalThis.PulseboardUsage = mountObserver(config, createObserver); }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
+globalThis.addEventListener?.('pageshow', event => { if (event.persisted) start(); });
+})();
+`);
 }
 const SOURCE = 'Chris0Jeky/Pulseboard:observatory';
 /** The lock is keyed by target so two installs in one repository do not clobber each other; the original single-entry shape migrates on read. */

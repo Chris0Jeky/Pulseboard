@@ -55,6 +55,8 @@ export async function summary(db, now = Date.now()) {
         budgetUsed: budgets.find(x => x.project === id)?.used || 0, budgetLimit: p.dailyLimit };
     }) };
 }
+/** Projects admitted while COLLECT_ENABLED is true: a comma-separated list in COLLECT_PROJECTS, empty means none. */
+export const collecting = env => String(env.COLLECT_PROJECTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 export async function handle(request, env) {
   const url = new URL(request.url);
   // Held outside the try so an unexpected failure after the origin match is still readable by the calling page.
@@ -93,7 +95,9 @@ export async function handle(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, ...cors,
       'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
     if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
-    if (env.COLLECT_ENABLED !== 'true') return json({ error: 'disabled' }, 503, cors);
+    // Two switches: the global one and a per-project allowlist, so a pilot never opens admission for every
+    // registered origin (Origin is forgeable; the budget of a project that has not opted in must stay untouched).
+    if (env.COLLECT_ENABLED !== 'true' || !collecting(env).includes(id)) return json({ error: 'disabled' }, 503, cors);
     if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers.get('content-type') || '')) return json({ error: 'media_type' }, 415, cors);
     let body;
     try { body = await readBounded(request); } catch { return json({ error: 'invalid_body' }, 400, cors); }

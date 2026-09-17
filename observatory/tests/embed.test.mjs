@@ -13,7 +13,7 @@ function element(tag) {
   return node;
 }
 /** A minimal DOM/storage stub: the facade is exercised for real, only the host page is fake. */
-function setup({ storage = new Map(), endpoint = 'https://collector.example/v1/collect/mdviewer', clicks = [], navigator = {} } = {}) {
+function setup({ storage = new Map(), endpoint = 'https://collector.example/v1/collect/mdviewer', clicks = [], navigator = {}, contextProvider, releases } = {}) {
   const created = [], calls = [], document = element('document');
   Object.assign(document, { readyState: 'complete', body: element('body'),
     createElement: tag => { const node = element(tag); created.push(node); return node; }, createTextNode: text => ({ text }) });
@@ -22,15 +22,18 @@ function setup({ storage = new Map(), endpoint = 'https://collector.example/v1/c
     localStorage: { getItem: k => (storage.has(k) ? storage.get(k) : null), setItem: (k, v) => storage.set(k, String(v)) },
     fetch: async (...args) => { calls.push(args); return new Response('{}', { status: 202 }); },
     setTimeout: () => 1, clearTimeout: () => {} });
+  if (contextProvider !== undefined) runtime.OBSERVATORY_CONTEXT = contextProvider;
   const p = projects.mdviewer;
-  const config = { id: 'mdviewer', project: { events: p.events, routes: p.routes, releases: p.releases, measurements: p.measurements },
-    origin: p.origin, endpoint, scopePath: '/', release: 'unattributed', route: 'home', clicks };
+  const config = { id: 'mdviewer', project: { events: p.events, routes: p.routes, releases: releases ?? p.releases, measurements: p.measurements },
+    origin: p.origin, endpoint, scopePath: '/', release: 'unattributed', route: 'home', clicks,
+    ...(contextProvider === undefined ? {} : { contextGlobal: 'OBSERVATORY_CONTEXT' }) };
   const facade = mountObserver(config, createObserver, runtime);
   return { facade, calls, storage, runtime, document, key: 'pulseboard:consent:v1:mdviewer:' + endpoint,
     checkbox: created.find(node => node.type === 'checkbox') };
 }
 const grant = async harness => { harness.checkbox.checked = true; harness.checkbox.emit('change'); await settle(); };
-const sentEvents = calls => calls.flatMap(call => JSON.parse(call[1].body).events.map(e => e.event));
+const sent = calls => calls.flatMap(call => JSON.parse(call[1].body).events);
+const sentEvents = calls => sent(calls).map(e => e.event);
 test('a visitor who has not consented is told nothing was sent, because nothing was', async () => {
   const harness = setup();
   assert.equal(harness.checkbox.checked, false);
@@ -51,6 +54,21 @@ test('granting persists the choice under the project and endpoint key and report
   await grant(harness);
   assert.deepEqual(sentEvents(harness.calls), ['page.view']);
   harness.facade.dispose();
+});
+test('host context supplies a bounded route and release for each event', async () => {
+  let context = { route: 'editor', release: '0.11.3' };
+  const harness = setup({ contextProvider: () => context, releases: ['unattributed', '0.11.3'] });
+  await grant(harness);
+  assert.deepEqual(sent(harness.calls).map(({ route, release }) => [route, release]), [['editor', '0.11.3']]);
+  context = { route: 'private', release: 'private-build' };
+  assert.equal(harness.facade.track('page.view'), true); await harness.facade.flush();
+  assert.deepEqual(sent(harness.calls).map(({ route, release }) => [route, release]), [['editor', '0.11.3'], ['home', 'unattributed']]);
+  harness.facade.dispose();
+});
+test('a throwing context provider fails closed to registered defaults', async () => {
+  const harness = setup({ contextProvider: () => { throw new Error('host context unavailable'); }, releases: ['unattributed', '0.11.3'] });
+  await grant(harness); const [event] = sent(harness.calls);
+  assert.equal(event.route, 'home'); assert.equal(event.release, 'unattributed'); harness.facade.dispose();
 });
 test('an expired choice grants nothing and an inflated expiry is capped at 90 days', async () => {
   const expired = setup({ storage: new Map([['pulseboard:consent:v1:mdviewer:https://collector.example/v1/collect/mdviewer', JSON.stringify({ allow: true, until: Date.now() - 1000 })]]) });

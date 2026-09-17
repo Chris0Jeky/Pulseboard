@@ -7,6 +7,21 @@ export function mountObserver(config, create, runtime = globalThis) {
   try { const u = new URL(config.endpoint); if (u.protocol !== 'https:' || u.search || u.hash || u.username || u.password) return null; } catch { return null; }
   if (config.publicFlag && runtime[config.publicFlag.global]?.[config.publicFlag.key] !== config.publicFlag.expected) return null;
   const observer = create(config, runtime);
+  function hostContext() {
+    if (!config.contextGlobal) return {};
+    try {
+      const provider = runtime[config.contextGlobal], value = typeof provider === 'function' ? provider() : provider;
+      if (!value || Object.getPrototypeOf(value) !== Object.prototype) return {};
+      return {
+        ...(config.project.routes.includes(value.route) ? { route: value.route } : {}),
+        ...(config.project.releases.includes(value.release) ? { release: value.release } : {}),
+      };
+    } catch { return {}; }
+  }
+  const track = (event, options = {}) => {
+  if (!observer.status().active) return observer.track(event, options);
+  return observer.track(event, { ...hostContext(), ...options });
+};
   const key = 'pulseboard:consent:v1:' + config.id + ':' + config.endpoint, CONSENT_MS = 90 * 86400000;
   let granted = false, overdue = false;
   // A stored expiry is never trusted past 90 days from now; a tampered or corrupt one cannot grant indefinite consent.
@@ -27,18 +42,18 @@ export function mountObserver(config, create, runtime = globalThis) {
     status.textContent = checkbox.checked ? 'Sharing is on. Untick to stop future collection.' : 'Sharing is off. The app works normally.';
     if (persist) { try { runtime.localStorage.setItem(key, JSON.stringify({ allow: checkbox.checked, until: Date.now() + CONSENT_MS })); } catch { status.textContent += ' This choice could not be saved.'; } }
     // One page view per page, on the first time sharing is on: re-ticking the box is not another visit.
-    if (checkbox.checked && !announced) { announced = true; observer.track('page.view'); void observer.flush(); }
+    if (checkbox.checked && !announced) { announced = true; track('page.view'); void observer.flush(); }
   }
   checkbox.addEventListener('change', () => apply(checkbox.checked, true));
   details.append(title, note, label, status); document.body.append(details); apply(granted, overdue);
-  const error = () => observer.track('app.error');
+  const error = () => track('app.error');
   const click = event => {
-    try { for (const item of config.clicks || []) { if (event.target?.closest?.(item.selector)) { observer.track(item.event); break; } } }
+    try { for (const item of config.clicks || []) { if (event.target?.closest?.(item.selector)) { track(item.event); break; } } }
     catch { /* A bad selector must never throw inside a listener on the host document. */ }
   };
   runtime.addEventListener('error', error); runtime.addEventListener('unhandledrejection', error); document.addEventListener('click', click);
   const dispose = () => { observer.dispose(); runtime.removeEventListener('error', error); runtime.removeEventListener('unhandledrejection', error); document.removeEventListener('click', click); details.remove(); };
   // A tracked click that navigates would otherwise be discarded by dispose(); hand the queue over first.
   runtime.addEventListener('pagehide', () => { observer.flushOnHide(); dispose(); }, { once: true });
-  return { track: observer.track, flush: observer.flush, flushOnHide: observer.flushOnHide, status: observer.status, dispose };
+  return { track, flush: observer.flush, flushOnHide: observer.flushOnHide, status: observer.status, dispose };
 }

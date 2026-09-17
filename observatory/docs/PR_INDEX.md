@@ -7,7 +7,7 @@ Rollout prepared on 10 September 2026. These are review branches, not merged dep
 | Pulseboard | https://github.com/Chris0Jeky/Pulseboard/pull/15 | Shared collector, dashboard, probes, SDK, installer, tests and documentation |
 | MDviewer | https://github.com/Chris0Jeky/MDviewer/pull/67 | Inactive public-site adapter; document privacy remains unchanged |
 | CommitAtlas | https://github.com/Chris0Jeky/CommitAtlas/pull/199 | Inactive web UI adapter; SVG traffic is not treated as unique people |
-| Alibi | https://github.com/Chris0Jeky/Alibi/pull/83 | Application-bundle adapter before hashing; small boot diagnostics and standalone privacy preserved |
+| Alibi | https://github.com/Chris0Jeky/Alibi/pull/83 | Application-bundle adapter before hashing; small boot diagnostics and standalone privacy preserved. **First pilot, activated 2026-09-10** (endpoint set, collector origin in CSP; `HOSTING.md`) |
 | Taskdeck | https://github.com/Chris0Jeky/Taskdeck/pull/2862 | Consent retry race fix, five regression tests, local-first integration boundary; no injected tracker |
 | developer-lens | https://github.com/Chris0Jeky/developer-lens/pull/329 | Synthetic showcase-only adapter; private/local builds excluded |
 | IdleHarbor | https://github.com/Chris0Jeky/IdleHarbor/pull/80 | Website-only adapter; native executable stays unchanged |

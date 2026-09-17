@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createObserver } from '../src/browser.mjs';
 import { projects } from '../src/projects.mjs';
-function setup(overrides = {}, response = async () => new Response('{}', { status: 202 })) {
+function setup(overrides = {}, response = async () => new Response('{}', { status: 202 }), config = {}) {
   const calls = [], timers = new Map(); let index = 0;
-  const runtime = { navigator: {}, location: { origin: projects.mdviewer.origin, protocol: 'https:' }, crypto, AbortController,
+  const project = config.project ?? projects.mdviewer, origin = config.origin ?? project.origin;
+  const runtime = { navigator: {}, location: { origin, protocol: 'https:' }, crypto, AbortController,
     fetch: async (...args) => { calls.push(args); return response(...args); },
     setTimeout: (fn, ms) => { const id = ++index; timers.set(id, { fn, ms }); return id; }, clearTimeout: id => timers.delete(id), ...overrides };
-  const client = createObserver({ project: projects.mdviewer, endpoint: 'https://collector.example/v1/collect/mdviewer', origin: projects.mdviewer.origin }, runtime);
+  const client = createObserver({ project, endpoint: 'https://collector.example/v1/collect/mdviewer', origin, ...config }, runtime);
   return { calls, timers, runtime, client };
 }
 test('nothing happens before consent', async () => {
@@ -20,6 +21,17 @@ test('transport omits cookies, referrer and redirects', async () => {
   const { client, calls } = setup(); client.setConsent(true); client.track('page.view'); await client.flush();
   const options = calls[0][1]; assert.equal(options.credentials, 'omit'); assert.equal(options.referrerPolicy, 'no-referrer'); assert.equal(options.redirect, 'error');
   assert.equal(JSON.parse(options.body).events[0].event, 'page.view'); assert.equal(client.status().sent, 1); client.dispose();
+});
+test('registered route and release overrides are accepted and bounded', async () => {
+  const project = { ...projects.mdviewer, releases: ['unattributed', '0.11.3'] };
+  const { client, calls } = setup({}, undefined, { project, route: 'home', release: 'unattributed' });
+  client.setConsent(true);
+  assert.equal(client.track('page.view', { route: 'editor', release: '0.11.3' }), true);
+  assert.equal(client.track('page.view', { route: 'private', release: '0.11.3' }), false);
+  assert.equal(client.track('page.view', { route: 'editor', release: 'private-build' }), false);
+  await client.flush();
+  const [event] = JSON.parse(calls[0][1].body).events;
+  assert.equal(event.route, 'editor'); assert.equal(event.release, '0.11.3'); assert.equal(client.status().dropped, 2); client.dispose();
 });
 test('raw data and arbitrary properties never leave the client', async () => {
   const { client, calls } = setup(); client.setConsent(true); assert.equal(client.track('page.view', { title: 'private document' }), false);

@@ -9,7 +9,7 @@ const event = (extra = {}) => ({ v: 1, id: crypto.randomUUID(), session: crypto.
   event: 'page.view', route: 'home', release: 'unattributed', ...extra });
 function db() { const value = openDatabase(); value.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8')); return value; }
 const request = (events, extra = {}) => new Request('https://collector.example/v1/collect/mdviewer', { method: 'POST', headers: { Origin: projects.mdviewer.origin, 'Content-Type': 'application/json', ...extra }, body: JSON.stringify({ events }) });
-const env = DB => ({ DB, COLLECT_ENABLED: 'true', READ_TOKEN: 'a'.repeat(64) });
+const env = DB => ({ DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'mdviewer', READ_TOKEN: 'a'.repeat(64) });
 const withDB = fn => async () => { const database = db(); try { await fn(database); } finally { database.close(); } };
 test('closed contract accepts only the documented envelope', () => { assert.equal(validateEvent(event(), projects.mdviewer), true); });
 for (const [name, extra] of Object.entries({ 'free text': { message: 'PRIVATE' }, url: { url: 'https://private.test/?token=SECRET' }, identity: { user: 'alice' }, route: { route: '/private/123' }, release: { release: 'email@example.com' }, event: { event: 'arbitrary.secret' }, version: { v: 2 }, uuid: { id: 'not-a-uuid' }, sequence: { seq: 0 }, value: { value: 1 }, infinity: { event: 'duration.ms', value: Infinity }, negative: { event: 'duration.ms', value: -1 } })) {
@@ -33,6 +33,14 @@ test('empty instance is unknown rather than healthy', withDB(async DB => {
   const d = await summary(DB); assert.ok(d.projects.every(p => p.sessions === 0 && p.monitor.state === 'unknown'));
 }));
 test('collector disabled by default', withDB(async DB => { assert.equal((await handle(request([event()]), { DB })).status, 503); }));
+test('the global switch alone admits nothing: a project must also be listed in COLLECT_PROJECTS', withDB(async DB => {
+  for (const list of [undefined, '', 'alibi', ' alibi , commitatlas ']) {
+    const r = await handle(request([event()]), { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: list });
+    assert.equal(r.status, 503); assert.equal(r.headers.get('Access-Control-Allow-Origin'), projects.mdviewer.origin);
+  }
+  assert.equal((await handle(request([event()]), { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi, mdviewer' })).status, 202);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
+}));
 test('valid batches persist and retries deduplicate IDs', withDB(async DB => {
   const e = event(); assert.equal((await handle(request([e]), env(DB))).status, 202);
   assert.equal((await handle(request([e]), env(DB))).status, 202);
@@ -130,7 +138,7 @@ test('refusals a browser must be able to read carry CORS and a retry hint', with
   assert.equal(overBudget.status, 429); assert.equal(overBudget.headers.get('Retry-After'), '3600');
   assert.equal(overBudget.headers.get('Access-Control-Allow-Origin'), projects.mdviewer.origin);
   // An unexpected server fault after the origin matched is readable too, instead of failing opaquely in the page.
-  const broken = await handle(request([event()]), { DB: { prepare() { throw new Error('database'); } }, COLLECT_ENABLED: 'true' });
+  const broken = await handle(request([event()]), { DB: { prepare() { throw new Error('database'); } }, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'mdviewer' });
   assert.equal(broken.status, 503); assert.equal(broken.headers.get('Access-Control-Allow-Origin'), projects.mdviewer.origin);
 }));
 test('liveness and readiness answer only GET and HEAD', withDB(async DB => {

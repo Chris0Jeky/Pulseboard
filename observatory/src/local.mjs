@@ -25,6 +25,7 @@ const portText = process.env.PORT || '8788';
 if (!/^\d+$/.test(portText) || Number(portText) < 1 || Number(portText) > 65535) throw new Error('PORT must be 1..65535');
 const port = Number(portText);
 const env = { DB, READ_TOKEN, COLLECT_ENABLED: process.env.COLLECT_ENABLED || 'false',
+  COLLECT_PROJECTS: process.env.COLLECT_PROJECTS || '',
   WATCH_READ_TOKEN, WATCH_ENABLED: process.env.WATCH_ENABLED || 'false',
   WATCH_SOURCES_JSON: process.env.WATCH_SOURCES_JSON || '[]',
   ASSETS: { async fetch(request) {
@@ -44,11 +45,12 @@ const server = createServer({ maxHeaderSize: 8192, requestTimeout: 10000, header
 });
 server.listen(port, '127.0.0.1', () => {
   console.log(`Pulseboard Desk: http://127.0.0.1:${port}`);
+  // Only a token this process generated is safe to print; one supplied by the operator stays where they put it.
   console.log(supplied ? 'Read token: using READ_TOKEN from the environment; it is not printed here.'
     : 'Read token (generated for this run; paste into the desk; not persisted): ' + READ_TOKEN);
   console.log(watchSupplied ? 'Watch read token: using WATCH_READ_TOKEN; it is not printed here.'
     : 'Watch read token (generated for this run; not persisted): ' + WATCH_READ_TOKEN);
-  console.log('Collection is ' + (env.COLLECT_ENABLED === 'true' ? 'enabled.' : 'disabled.'));
+  console.log('Collection is ' + (env.COLLECT_ENABLED === 'true' ? 'enabled for: ' + (env.COLLECT_PROJECTS || '(no project listed in COLLECT_PROJECTS)') : 'disabled.'));
   console.log('Security receipt ingestion is ' + (env.WATCH_ENABLED === 'true' ? 'enabled.' : 'disabled.'));
   console.log('Local runner never probes the public sites: there is no local probe command, and egress stays off. Cloudflare cron does the probing in a deployment.');
 });
