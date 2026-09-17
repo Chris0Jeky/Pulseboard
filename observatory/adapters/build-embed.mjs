@@ -3,6 +3,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { buildHostChecker, buildHostReadme, HOST_CHECKER, HOST_README } from './check-installed.mjs';
 import { projects } from '../src/projects.mjs';
 // Sources may be checked out with CRLF (core.autocrlf); the strip patterns below are anchored on bare newlines.
 const read = name => readFileSync(new URL(name, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
@@ -82,10 +83,31 @@ export function install(id, root, target, endpoint = '') {
   if (targetStat && (!targetStat.isFile() || !owned || owned.sha256 !== digest(readFileSync(full)))) throw new Error('Existing file has local edits or is unowned; refusing overwrite');
   // Nothing is written or checksummed until the artifact parses as a plain script and holds its published shape.
   const content = buildEmbed(id, { endpoint }); new vm.Script(content); assertArtifactShape(content);
+  const expectedHash = digest(content), checkerContent = buildHostChecker();
+  const inspectAuxiliary = (relative, label) => {
+    const candidate = path.resolve(base, relative);
+    let ancestor = path.dirname(candidate);
+    while (!lstatSync(ancestor, { throwIfNoEntry: false })) ancestor = path.dirname(ancestor);
+    const resolvedAncestor = realpathSync(ancestor);
+    if (resolvedAncestor !== base && !resolvedAncestor.startsWith(base + path.sep)) throw new Error(label + ' parent leaves repository');
+    const stat = lstatSync(candidate, { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink() || (stat && !stat.isFile())) throw new Error(label + ' must be a regular file');
+    return { candidate, stat };
+  };
+  const checker = inspectAuxiliary(HOST_CHECKER, 'Shared host checker');
+  if (checker.stat && readFileSync(checker.candidate, 'utf8') !== checkerContent) throw new Error('Shared host checker has local edits; move host-specific assertions to observatory/check.local.mjs, remove the old checker, and reinstall');
+  const readme = inspectAuxiliary(HOST_README, 'Observatory host README');
+  const previousReadme = buildHostReadme(Object.keys(lock.installs));
+  const manageReadme = !readme.stat || readFileSync(readme.candidate, 'utf8') === previousReadme;
+
   mkdirSync(path.dirname(full), { recursive: true }); writeFileSync(full, content);
-  lock.installs[key] = { project: id, sha256: digest(content) };
+  const writtenHash = digest(readFileSync(full));
+  if (writtenHash !== expectedHash) throw new Error('Generated artifact changed while writing; refusing lock update');
+  lock.installs[key] = { project: id, sha256: writtenHash };
+  mkdirSync(path.dirname(checker.candidate), { recursive: true }); writeFileSync(checker.candidate, checkerContent);
+  if (manageReadme) writeFileSync(readme.candidate, buildHostReadme(Object.keys(lock.installs)));
   writeFileSync(lockPath, JSON.stringify({ version: '0.1.0', source: SOURCE, installs: lock.installs }, null, 2) + '\n');
-  return { target, sha256: digest(content) };
+  return { target, sha256: writtenHash };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   const [id, root, target, endpoint = ''] = process.argv.slice(2);
