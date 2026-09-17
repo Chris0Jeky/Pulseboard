@@ -79,6 +79,10 @@ test('named puzzle attempts reconcile retries and preserve route boundaries', as
     releases: [{ release, attempts: 3, completed: 1, failed: 1, open: 1, retries: 1 }],
   }]);
   assert.ok(Array.isArray(alibi.operations[0].completion.interval));
+
+  const malformed = structuredClone(snapshot);
+  malformed.projects.find(project => project.id === 'alibi').operations[0].attempts = 4;
+  assert.throws(() => assertPortfolio(malformed), /operation/i);
 });
 
 test('small named-operation samples produce a synthetic review-only handoff', async t => {
