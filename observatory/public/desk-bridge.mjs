@@ -79,7 +79,7 @@ export function readLensProjection(input) {
 }
 /** Public export is an explicit projection, not serialization of the desk or an imported artifact. */
 export function makePublicPulse(snapshot, selected, now = Date.now()) {
-  requireValue(snapshot?.schema === 'pulseboard.portfolio/1' && ['demo', 'live'].includes(snapshot.mode), 'No supported snapshot');
+  requireValue(snapshot?.schema === 'pulseboard.portfolio/2' && ['demo', 'live'].includes(snapshot.mode), 'No supported snapshot');
   assertPortfolio({ ...snapshot, mode: 'live' });
   requireValue(Number.isSafeInteger(now) && Number.isSafeInteger(snapshot.generatedAt) && snapshot.generatedAt <= now && now - snapshot.generatedAt <= STALE_AFTER, 'Refresh before preparing a public pulse');
   list(selected, 16); unique(selected); requireValue(selected.length > 0, 'Select at least one project');
@@ -113,7 +113,7 @@ export async function readLimitedJson(response, maxBytes = 524288) {
 }
 /** Validate all fields consumed by the desk before replacing a last-good snapshot. */
 export function assertPortfolio(input) {
-  requireValue(plain(input) && input.schema === 'pulseboard.portfolio/1' && input.mode === 'live' && typeof input.collectionEnabled === 'boolean', 'Unexpected portfolio contract');
+  requireValue(plain(input) && input.schema === 'pulseboard.portfolio/2' && input.mode === 'live' && typeof input.collectionEnabled === 'boolean', 'Unexpected portfolio contract');
   const stamp = value => { requireValue(Number.isSafeInteger(value) && value >= 0 && value <= 8640000000000000, 'Invalid timestamp'); return value; };
   stamp(input.generatedAt); requireValue(plain(input.window), 'Missing window');
   const { start, end, days } = input.window;
@@ -122,7 +122,9 @@ export function assertPortfolio(input) {
   list(input.limitations, 16).forEach(value => boundedString(value, 500));
   const projects = list(input.projects, 64);
   for (const p of projects) {
-    requireValue(plain(p) && /^[a-z0-9-]{1,64}$/.test(boundedString(p.id, 64)) && typeof p.probeExpected === 'boolean', 'Invalid project');
+    requireValue(plain(p) && /^[a-z0-9-]{1,64}$/.test(boundedString(p.id, 64)) && typeof p.probeExpected === 'boolean'
+      && typeof p.collectionEligible === 'boolean' && typeof p.collectionAdmitted === 'boolean', 'Invalid project');
+    requireValue(!p.collectionAdmitted || input.collectionEnabled && p.collectionEligible, 'Invalid collection admission');
     boundedString(p.label, 160);
     requireValue(plain(p.monitor) && ['up', 'down', 'stale', 'unknown'].includes(p.monitor.state), 'Invalid monitor');
     if (p.monitor.checked !== null) stamp(p.monitor.checked);

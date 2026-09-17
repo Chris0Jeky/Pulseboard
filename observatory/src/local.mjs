@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from './sqlite.mjs';
 import { handle } from './worker.mjs';
+import { collectionAdmission } from './admission.mjs';
 import { assets } from './assets.mjs';
 mkdirSync(new URL('../.data/', import.meta.url), { recursive: true });
 const DB = openDatabase(fileURLToPath(new URL('../.data/observatory.sqlite', import.meta.url)));
@@ -22,6 +23,8 @@ const env = { DB, READ_TOKEN, COLLECT_ENABLED: process.env.COLLECT_ENABLED || 'f
     const [file, type] = entry;
     return new Response(readFileSync(new URL('../public/' + file, import.meta.url)), { headers: { 'Content-Type': type } });
   } } };
+const admission = collectionAdmission(env);
+if (!admission.valid) console.error('COLLECT_PROJECTS contains unknown or local-only ids: ' + admission.invalid.join(', ') + '. Collection fails closed and /readyz returns 503.');
 const server = createServer({ maxHeaderSize: 8192, requestTimeout: 10000, headersTimeout: 10000 }, async (req, res) => {
   try {
     const method = req.method || 'GET';
@@ -36,7 +39,7 @@ server.listen(port, '127.0.0.1', () => {
   // Only a token this process generated is safe to print; one supplied by the operator stays where they put it.
   console.log(supplied ? 'Read token: using READ_TOKEN from the environment; it is not printed here.'
     : 'Read token (generated for this run; paste into the desk; not persisted): ' + READ_TOKEN);
-  console.log('Collection is ' + (env.COLLECT_ENABLED === 'true' ? 'enabled for: ' + (env.COLLECT_PROJECTS || '(no project listed in COLLECT_PROJECTS)') : 'disabled.'));
+  console.log('Collection switch is ' + (admission.enabled ? 'enabled' : 'disabled') + '; admitted projects: ' + (admission.admitted.join(', ') || '(none)') + '.');
   console.log('Local runner never probes the public sites: there is no local probe command, and egress stays off. Cloudflare cron does the probing in a deployment.');
 });
 let closing = false;
