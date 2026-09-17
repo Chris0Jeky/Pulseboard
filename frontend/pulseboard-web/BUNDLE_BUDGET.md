@@ -1,65 +1,60 @@
 # Workbench frontend bundle budget
 
-Measured on 17 September 2026 with Node 22, npm 10, Vite 7.3.6 and the production PWA build.
+Measured on 2026-09-17 with Node 22, Vite 7.3.6 and the production PWA build.
+Sizes are minified bytes followed by gzip bytes. Hashed filenames change between builds.
 
-## Why this exists
+## Guardrails
 
-The workbench previously imported every route view eagerly. Opening the dashboard list therefore loaded the live-dashboard view, Vue ECharts, ECharts and ZRender before the visitor selected a dashboard. The production build emitted one 707 kB JavaScript entry chunk and Vite warned that it exceeded 500 kB.
+- entry JavaScript: at most **150,000 bytes**
+- every JavaScript chunk: at most **500,000 bytes**
+- dashboard, live-dashboard and feeds views must remain async route boundaries
+- ECharts and ZRender must remain separate measured chunks
+- chart chunks must not be module-preloaded by `index.html`
+- every application JavaScript/CSS asset and `registerSW.js` must remain named in the generated service worker precache
 
-This change uses route-level dynamic imports and deliberately isolates the stable framework and chart runtimes. It does not increase Vite's warning threshold or hide a large entry bundle behind a configuration exception.
+Run after a production build:
 
-## Before and after
-
-| Measurement | Before | After | Change |
-|---|---:|---:|---:|
-| Initial JavaScript, raw | 707,227 B | 111,445 B | -84.2% |
-| Initial JavaScript, gzip | 240,815 B | 43,734 B | -81.8% |
-| Largest JavaScript chunk | 707,093 B | 345,026 B | -51.2% |
-| Named async route boundaries | 0 | 3 | dashboard list, live dashboard, feeds |
-
-The initial set now consists of the small application entry, the Vue/Router/Pinia runtime and the service-worker registration helper. ECharts and ZRender load only with the live-dashboard route.
-
-## Resulting major chunks
-
-| Chunk | Raw | Gzip | Loading boundary |
-|---|---:|---:|---|
-| `vue-vendor` | 104,955 B | 40,894 B | initial framework runtime |
-| application entry | 6,356 B | 2,715 B | initial |
-| `echarts` | 345,026 B | 119,285 B | live-dashboard route |
-| `zrender` | 175,919 B | 58,559 B | live-dashboard route |
-| live-dashboard view | 37,713 B | 10,668 B | `/dashboards/:id` |
-| feeds view | 17,405 B | 4,924 B | `/feeds` |
-| dashboard-list view | 10,971 B | 3,378 B | `/dashboards` |
-| `vue-echarts` | 7,993 B | 3,561 B | live-dashboard route |
-
-Hashed filenames change between builds, so the executable checker measures generated output rather than relying on the names in this table.
-
-## Enforced budgets
-
-`npm run build:budget` runs after the production build and fails when:
-
-- JavaScript referenced directly by `index.html` exceeds 250,000 bytes raw in total;
-- any individual emitted JavaScript file exceeds 500,000 bytes raw;
-- `dist/sw.js` is missing; or
-- any emitted application JavaScript chunk is absent from the generated PWA precache manifest.
-
-These thresholds retain useful headroom over the measured result while preventing a return to the eager 707 kB entry bundle.
-
-## Offline and container evidence
-
-The split build generated 27 PWA precache entries covering every application JavaScript chunk. The larger number of files increased manifest overhead slightly, from 774.05 KiB to 777.97 KiB of precached assets, while keeping route chunks available offline.
-
-The same output was rebuilt successfully inside the Node 22 to nginx production container. The complete frontend dependency audit remained at zero vulnerabilities.
-
-## Verification commands
-
-```sh
-npm ci
-npx vitest run --maxWorkers=2
+```bash
 npm run build
 npm run build:budget
-docker build --tag pulseboard-frontend:bundle-ci .
-npm audit --audit-level=low
 ```
 
-The route regression test asserts that every named route remains behind an async component loader. The budget script is intentionally independent of hashed output names and prints raw and gzip evidence for review.
+The executable check lives in `scripts/check-bundle-budget.mjs` and runs in the frontend CI gate.
+It reports minified and gzip sizes before enforcing the limits.
+
+## Measurements
+
+| Stage | Asset | Minified | Gzip | Reading |
+|---|---|---:|---:|---|
+| Baseline | single entry | 707,093 B | 240,690 B | all routes and charts were eager |
+| Async routes only | entry | 111,042 B | 43,293 B | route code left the app shell |
+| Async routes only | live-dashboard route | 565,175 B | 191,721 B | ECharts still exceeded the chunk ceiling |
+| Final | entry | 111,119 B | 43,326 B | no static imports; chart stack remains lazy |
+| Final | live-dashboard route | 45,590 B | 14,109 B | includes `vue-echarts` and live UI code |
+| Final | ECharts | 345,034 B | 119,287 B | chart engine isolated by package boundary |
+| Final | ZRender | 175,919 B | 58,559 B | renderer isolated by package boundary |
+| Final | feeds route | 17,362 B | 4,901 B | loaded only on `/feeds` |
+| Final | dashboard-list route | 10,928 B | 3,350 B | loaded only on `/dashboards` |
+
+The final build generated 25 precache entries totalling 777.47 KiB. Splitting changes
+startup download, parse and execution boundaries; it does not materially reduce the complete
+offline application payload because route and chart chunks are deliberately still precached.
+
+## Boundary rationale
+
+The routes are the primary product boundary. A visitor opening the dashboard register or feeds
+page should not parse the live-dashboard editor and chart stack.
+
+Only `echarts` and `zrender` receive explicit Rollup chunk names. A trial that also separated
+Vue, Router, Pinia and `vue-echarts` produced attractive-looking small entry files but moved shared
+Vue runtime modules into a chart-adapter chunk. That made `index.html` preload the chart graph and
+silently defeated route laziness. Shared framework modules therefore remain under Rollup's normal
+ownership, while `vue-echarts` stays with the lazy live-dashboard route.
+
+Do not solve a future warning by increasing `chunkSizeWarningLimit`. Re-run the attribution
+measurement, identify the importing product boundary, and adjust the code or chunk ownership with
+a regression test and before/after evidence.
+
+Workbox's generated runtime file is loaded by the service worker and is not itself an entry in its
+own precache manifest. The budget checker verifies application assets separately to avoid treating
+that generated support file as missing product content.
