@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { openDatabase } from '../src/sqlite.mjs';
 import { projects } from '../src/projects.mjs';
 import { handle } from '../src/worker.mjs';
 import { readPortfolio } from '../src/portfolio.mjs';
 import { assertPortfolio } from '../public/desk-bridge.mjs';
 import { buildSignals, makeHandoff } from '../public/desk-model.mjs';
+import { buildEmbed } from '../adapters/build-embed.mjs';
 import { createAlibiJourneyReporter } from '../adapters/alibi-journey.mjs';
 
 const token = 'j'.repeat(64);
@@ -60,6 +62,18 @@ test('the host reporter emits only the closed journey vocabulary and advances on
     ['puzzle.completed', undefined],
   ]);
   assert.deepEqual(reporter.status(), { state: 'completed', attempts: 2, hints: 1 });
+});
+
+test('the generated Alibi artifact exposes the reporter only after the consent facade mounts', () => {
+  const alibi = buildEmbed('alibi', { endpoint: 'https://collector.example/v1/collect/alibi' });
+  const mdviewer = buildEmbed('mdviewer');
+  assert.doesNotThrow(() => new vm.Script(alibi));
+  assert.match(alibi, /globalThis\.AlibiPulseboardJourney/);
+  assert.match(alibi, /createAlibiJourneyReporter\(globalThis\.PulseboardUsage\)/);
+  assert.equal(mdviewer.includes('AlibiPulseboardJourney'), false);
+  for (const forbidden of ['puzzleAnswer', 'puzzleId', 'documentText', 'location.href']) {
+    assert.equal(alibi.includes(forbidden), false, `${forbidden} leaked into the artifact`);
+  }
 });
 
 test('denied tracking leaves the reporter idle and emits no follow-on journey claims', () => {
