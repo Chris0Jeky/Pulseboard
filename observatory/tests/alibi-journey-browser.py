@@ -28,12 +28,17 @@ def free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def wait_for(predicate: Callable[[], bool], message: str, timeout: float = 15.0) -> None:
+def wait_for(
+    predicate: Callable[[], bool],
+    message: str,
+    timeout: float = 15.0,
+    pause: Callable[[float], None] = time.sleep,
+) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
             return
-        time.sleep(0.05)
+        pause(0.05)
     raise AssertionError(message)
 
 
@@ -177,11 +182,13 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
             consent.wait_for(state="visible")
 
             assert page.evaluate("() => globalThis.PulseboardUsage.track('puzzle.started')") is False
-            time.sleep(0.2)
+            page.wait_for_timeout(200)
             assert posts == [], "pre-consent events must not reach the collector"
 
             consent.check()
-            wait_for(lambda: len(posts) == 1, "consented page view was not delivered")
+            # Sync Playwright handles routed requests only while it runs; time.sleep would starve the proxy.
+            pump = lambda seconds: page.wait_for_timeout(seconds * 1000)
+            wait_for(lambda: len(posts) == 1, "consented page view was not delivered", pause=pump)
 
             accepted = page.evaluate("""async () => {
               const track = event => globalThis.PulseboardUsage.track(event);
@@ -199,7 +206,7 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
               return results;
             }""")
             assert accepted == [True] * 7
-            wait_for(lambda: len(posts) == 2, "journey batch was not delivered")
+            wait_for(lambda: len(posts) == 2, "journey batch was not delivered", pause=pump)
 
             consent.uncheck()
             before_withdrawal = len(posts)
@@ -210,7 +217,7 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
               return accepted;
             }""")
             assert ignored is False
-            time.sleep(0.2)
+            page.wait_for_timeout(200)
             assert len(posts) == before_withdrawal, "post-withdrawal event reached the collector"
             browser.close()
 
