@@ -37,7 +37,8 @@ Use a unique random token of at least 32 characters and the secret command's sec
 Never put a production token in a command argument, source file, URL or PR. The live read token
 belongs in an operator-controlled secret store; the browser only keeps it in memory.
 
-On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
+The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
+before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
 `%LOCALAPPDATA%/Pulseboard/read-token.dpapi`. To copy it for **Connect data** without printing it,
 run this in PowerShell as the same Windows user, then clear the clipboard after connecting:
 
@@ -171,3 +172,16 @@ owner actions; no agent holds either.
    `failing` or `pending` with a run id and head SHA, and releases as `observed`. If every item reads
    `unavailable/network` on the hosted Worker only, the edge rejected the fetch option set: record it in #20
    and remove the secret; it can never read as a false pass.
+
+### First live reading, 2026-09-23
+
+- Worker version `1d071326-6c6d-4594-83a8-c5ea2d5865bb` deployed from `main` at `93b73ed` (previous
+  `a40b5c40…`, the rollback target). Schema and bindings unchanged; `/healthz` and `/readyz` 200,
+  `/v1/portfolio` and `/v1/github-evidence` 401 without the read token.
+- `GITHUB_EVIDENCE_TOKEN` set by the owner (fine-grained, `Chris0Jeky/Alibi` only, Actions and Contents read).
+- Authenticated `GET /v1/github-evidence?project=alibi`: `configuration: ready`, repository `observed`;
+  `check.yml` on `main` `passing` (run 35794927343, attempt 1, head `9a35ff1`); releases `observed`
+  (v0.11.4, v0.11.3, v0.11.2, v0.11.1, v0.11.0). No item read `unavailable/network`, so the edge accepts
+  the fetch option set.
+- The same portfolio read showed Alibi admitted with its probe `up` but zero events over 7 days: live Alibi
+  serves 0.11.5, which the closed release allowlist did not list (fixed by #71).
