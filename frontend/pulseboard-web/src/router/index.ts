@@ -3,9 +3,6 @@
  */
 
 import { createRouter, createWebHistory } from 'vue-router'
-import DashboardListView from '../views/DashboardListView.vue'
-import DashboardLiveView from '../views/DashboardLiveView.vue'
-import FeedsView from '../views/FeedsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -17,7 +14,7 @@ const router = createRouter({
     {
       path: '/dashboards',
       name: 'dashboards',
-      component: DashboardListView,
+      component: () => import('../views/DashboardListView.vue'),
       meta: {
         title: 'Dashboards - Pulseboard',
       },
@@ -25,7 +22,7 @@ const router = createRouter({
     {
       path: '/dashboards/:id',
       name: 'dashboard-live',
-      component: DashboardLiveView,
+      component: () => import('../views/DashboardLiveView.vue'),
       meta: {
         title: 'Dashboard - Pulseboard',
       },
@@ -33,7 +30,7 @@ const router = createRouter({
     {
       path: '/feeds',
       name: 'feeds',
-      component: FeedsView,
+      component: () => import('../views/FeedsView.vue'),
       meta: {
         title: 'Feeds - Pulseboard',
       },
