@@ -2,6 +2,8 @@ import { projects } from './projects.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { assets } from './assets.mjs';
+import { createGithubEvidence } from './github.mjs';
+import { githubMap } from './github-map.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
@@ -55,6 +57,15 @@ export async function summary(db, now = Date.now()) {
         budgetUsed: budgets.find(x => x.project === id)?.used || 0, budgetLimit: p.dailyLimit };
     }) };
 }
+let githubShared = null;
+/** One connector per isolate and token, so its ETag cache, refresh floor and rate-limit pause outlive one request.
+ *  Tests inject GITHUB_EVIDENCE. Without GITHUB_EVIDENCE_TOKEN nothing is requested and mapped items read unconfigured. */
+function githubEvidence(env) {
+  if (env.GITHUB_EVIDENCE) return env.GITHUB_EVIDENCE;
+  const token = typeof env.GITHUB_EVIDENCE_TOKEN === 'string' ? env.GITHUB_EVIDENCE_TOKEN : '';
+  if (githubShared?.token !== token) githubShared = { token, connector: createGithubEvidence({ map: githubMap, token: token || null }) };
+  return githubShared.connector;
+}
 /** Projects admitted while COLLECT_ENABLED is true: a comma-separated list in COLLECT_PROJECTS, empty means none. */
 export const collecting = env => String(env.COLLECT_PROJECTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 export async function handle(request, env) {
@@ -86,6 +97,13 @@ export async function handle(request, env) {
         return json({ error: 'window', allowedDays: WINDOWS }, 400);
       }
       return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: env.COLLECT_ENABLED === 'true' }));
+    }
+    // Read only on explicit desk action, never by the portfolio poll; its own contract keeps /v1/portfolio closed.
+    if (url.pathname === '/v1/github-evidence' && request.method === 'GET') {
+      if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const ids = url.searchParams.getAll('project');
+      if (ids.length !== 1 || [...url.searchParams.keys()].some(key => key !== 'project') || !Object.hasOwn(projects, ids[0])) return json({ error: 'project' }, 400);
+      return json(await githubEvidence(env).read(ids[0]));
     }
     const match = /^\/v1\/collect\/([a-z0-9-]+)$/.exec(url.pathname);
     if (!match) return json({ error: 'not_found' }, 404);

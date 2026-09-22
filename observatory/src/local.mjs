@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { openDatabase } from './sqlite.mjs';
 import { handle } from './worker.mjs';
 import { assets } from './assets.mjs';
+import { createGithubEvidence } from './github.mjs';
+import { githubMap } from './github-map.mjs';
 mkdirSync(new URL('../.data/', import.meta.url), { recursive: true });
 const DB = openDatabase(fileURLToPath(new URL('../.data/observatory.sqlite', import.meta.url)));
 DB.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
@@ -22,6 +24,9 @@ const env = { DB, READ_TOKEN, COLLECT_ENABLED: process.env.COLLECT_ENABLED || 'f
     const [file, type] = entry;
     return new Response(readFileSync(new URL('../public/' + file, import.meta.url)), { headers: { 'Content-Type': type } });
   } } };
+// GitHub egress exists only when the operator supplies a token, and only for repositories in the reviewed mapping.
+const githubToken = process.env.GITHUB_EVIDENCE_TOKEN || '';
+if (githubToken) env.GITHUB_EVIDENCE = createGithubEvidence({ map: githubMap, token: githubToken });
 const server = createServer({ maxHeaderSize: 8192, requestTimeout: 10000, headersTimeout: 10000 }, async (req, res) => {
   try {
     const method = req.method || 'GET';
@@ -37,6 +42,8 @@ server.listen(port, '127.0.0.1', () => {
   console.log(supplied ? 'Read token: using READ_TOKEN from the environment; it is not printed here.'
     : 'Read token (generated for this run; paste into the desk; not persisted): ' + READ_TOKEN);
   console.log('Collection is ' + (env.COLLECT_ENABLED === 'true' ? 'enabled for: ' + (env.COLLECT_PROJECTS || '(no project listed in COLLECT_PROJECTS)') : 'disabled.'));
+  console.log(githubToken ? `GitHub evidence: connector built from GITHUB_EVIDENCE_TOKEN (not printed); api.github.com is read only when the desk asks, for ${Object.keys(githubMap.projects).length} mapped project(s).`
+    : 'GitHub evidence: off (no GITHUB_EVIDENCE_TOKEN); mapped items read unconfigured and nothing is requested.');
   console.log('Local runner never probes the public sites: there is no local probe command, and egress stays off. Cloudflare cron does the probing in a deployment.');
 });
 let closing = false;
