@@ -3,10 +3,12 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { buildHostChecker, buildHostReadme, HOST_CHECKER, HOST_README } from './check-installed.mjs';
 import { projects } from '../src/projects.mjs';
 // Sources may be checked out with CRLF (core.autocrlf); the strip patterns below are anchored on bare newlines.
 const read = name => readFileSync(new URL(name, import.meta.url), 'utf8').replaceAll('\r\n', '\n');
 const digest = value => createHash('sha256').update(value).digest('hex');
+const normalise = value => String(value).replaceAll('\r\n', '\n');
 /** The artifact is a plain script: no module statements survive, and no server-only constant is published. */
 export function assertArtifactShape(content) {
   const leaked = content.split('\n').find(line => /^(?:import|export)\b/.test(line));
@@ -65,9 +67,18 @@ function readLock(lockPath, present) {
   if (typeof raw?.target === 'string') return { ...empty, installs: { [raw.target.split(/[\\/]/).join('/')]: { project: raw.project, sha256: raw.sha256 } } };
   return empty;
 }
+const RESERVED_INSTALL_TARGETS = [HOST_CHECKER, HOST_README, 'observatory/check.local.mjs', 'observatory.lock.json'];
+/** Windows normally resolves path aliases case-insensitively; reject every alias before any write occurs. */
+export function isReservedInstallTarget(target, base, platform = process.platform) {
+  const fold = value => platform === 'win32' ? value.toLowerCase() : value;
+  const key = fold(target.split(/[\\/]/).join('/'));
+  const full = fold(path.resolve(base, target));
+  return RESERVED_INSTALL_TARGETS.some(relative => fold(relative) === key || fold(path.resolve(base, relative)) === full);
+}
 export function install(id, root, target, endpoint = '') {
-  const base = realpathSync(root), full = path.resolve(base, target);
+  const base = realpathSync(root), full = path.resolve(base, target), key = target.split(/[\\/]/).join('/');
   if (path.isAbsolute(target) || !full.startsWith(base + path.sep) || target.split(/[\\/]/).includes('..')) throw new Error('Target must be a relative path inside the repository');
+  if (isReservedInstallTarget(target, base)) throw new Error('Target is reserved for Observatory installer metadata');
   // Do not follow symlink parents into another tree. lstat, never existsSync: a dangling symlink is still a symlink.
   let parent = path.dirname(full);
   while (!lstatSync(parent, { throwIfNoEntry: false })) parent = path.dirname(parent);
@@ -78,14 +89,40 @@ export function install(id, root, target, endpoint = '') {
   const lockPath = path.join(base, 'observatory.lock.json');
   const lockStat = lstatSync(lockPath, { throwIfNoEntry: false });
   if (full === lockPath || lockStat?.isSymbolicLink()) throw new Error('Refusing reserved or symlinked lock path');
-  const lock = readLock(lockPath, !!lockStat), key = target.split(/[\\/]/).join('/'), owned = lock.installs[key];
-  if (targetStat && (!targetStat.isFile() || !owned || owned.sha256 !== digest(readFileSync(full)))) throw new Error('Existing file has local edits or is unowned; refusing overwrite');
+  const lock = readLock(lockPath, !!lockStat), owned = lock.installs[key];
+  if (targetStat && (!targetStat.isFile() || !owned || owned.sha256 !== digest(normalise(readFileSync(full, 'utf8'))))) throw new Error('Existing file has local edits or is unowned; refusing overwrite');
   // Nothing is written or checksummed until the artifact parses as a plain script and holds its published shape.
   const content = buildEmbed(id, { endpoint }); new vm.Script(content); assertArtifactShape(content);
+  const expectedHash = digest(content), checkerContent = buildHostChecker();
+  const inspectAuxiliary = (relative, label) => {
+    const candidate = path.resolve(base, relative);
+    let logicalParent = path.dirname(candidate);
+    while (logicalParent !== base) {
+      if (lstatSync(logicalParent, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(label + ' auxiliary parent must not be a symlink');
+      logicalParent = path.dirname(logicalParent);
+    }
+    let ancestor = path.dirname(candidate);
+    while (!lstatSync(ancestor, { throwIfNoEntry: false })) ancestor = path.dirname(ancestor);
+    const resolvedAncestor = realpathSync(ancestor);
+    if (resolvedAncestor !== base && !resolvedAncestor.startsWith(base + path.sep)) throw new Error(label + ' parent leaves repository');
+    const stat = lstatSync(candidate, { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink() || (stat && !stat.isFile())) throw new Error(label + ' must be a regular file');
+    return { candidate, stat };
+  };
+  const checker = inspectAuxiliary(HOST_CHECKER, 'Shared host checker');
+  if (checker.stat && normalise(readFileSync(checker.candidate, 'utf8')) !== checkerContent) throw new Error('Shared host checker has local edits; move host-specific assertions to observatory/check.local.mjs, remove the old checker, and reinstall');
+  const readme = inspectAuxiliary(HOST_README, 'Observatory host README');
+  const previousReadme = buildHostReadme(Object.keys(lock.installs));
+  const manageReadme = !readme.stat || normalise(readFileSync(readme.candidate, 'utf8')) === previousReadme;
+
   mkdirSync(path.dirname(full), { recursive: true }); writeFileSync(full, content);
-  lock.installs[key] = { project: id, sha256: digest(content) };
+  const writtenHash = digest(readFileSync(full));
+  if (writtenHash !== expectedHash) throw new Error('Generated artifact changed while writing; refusing lock update');
+  lock.installs[key] = { project: id, sha256: writtenHash };
+  mkdirSync(path.dirname(checker.candidate), { recursive: true }); writeFileSync(checker.candidate, checkerContent);
+  if (manageReadme) writeFileSync(readme.candidate, buildHostReadme(Object.keys(lock.installs)));
   writeFileSync(lockPath, JSON.stringify({ version: '0.1.0', source: SOURCE, installs: lock.installs }, null, 2) + '\n');
-  return { target, sha256: digest(content) };
+  return { target, sha256: writtenHash };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   const [id, root, target, endpoint = ''] = process.argv.slice(2);
