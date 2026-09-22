@@ -212,7 +212,6 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDashboardsStore } from '../stores/dashboards'
-import { useUiStore } from '../stores/ui'
 import { useNotificationsStore } from '../stores/notifications'
 import { useDashboardWebSocket } from '../composables/useDashboardWebSocket'
 import ConnectionStatus from '../components/ConnectionStatus.vue'
@@ -225,14 +224,12 @@ import type { Panel, PanelOptions, PanelCreate, FeedDefinition } from '../types'
 
 const route = useRoute()
 const dashboardsStore = useDashboardsStore()
-const uiStore = useUiStore()
 const notifications = useNotificationsStore()
 
 const dashboardId = computed(() => route.params.id as string)
 const dashboard = computed(() => dashboardsStore.currentDashboard)
 const loading = computed(() => dashboardsStore.loading)
 const error = computed(() => dashboardsStore.error)
-const wsStatus = computed(() => uiStore.wsStatus)
 
 const { connect, disconnect, manualReconnect, reconnectAttempts } = useDashboardWebSocket(dashboardId.value)
 
