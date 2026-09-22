@@ -29,6 +29,6 @@ The encrypted operator read token is stored at `%LOCALAPPDATA%/Pulseboard/read-t
 
 Tracked debt that needs no owner input: #43 (the first unattended probe cron tick, pending behind Cloudflare
 incident sjs8s0q2x4hw, "Workers Cron Triggers degraded", open since 2026-09-09; until it lands every probe
-reads `unknown` or `stale` in the Desk), #13 (legacy quality gates), #14 (setuptools floor), #19 (the
-remaining query-budget and rollback evidence), #32/#33 (low findings) and the post-merge issues on the
-Desk delivery order (#18, #20–#24, #35).
+reads `unknown` or `stale` in the Desk), #19 (the remaining query-budget and rollback evidence), #32 (SDK
+delivery follow-ups from the Alibi pilot) and the post-merge issues on the Desk delivery order (#18, #20–#24,
+#35). #13, #14 and #33 closed on 2026-09-22.
