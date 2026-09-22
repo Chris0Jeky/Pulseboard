@@ -49,6 +49,59 @@ SQL still scans the selected window. This is not a high-volume analytics engine.
 session-level flow semantics. New consumers should use `/v1/portfolio`. Do not
 combine the two flow measures as if they shared a denominator.
 
+## GitHub development evidence
+
+`GET /v1/github-evidence?project=<id>` (issue #20, first slice) has its own closed
+contract, `pulseboard.github-evidence/1`, so `/v1/portfolio` is unchanged. It
+authenticates exactly like the portfolio read; a missing, repeated or unregistered
+project, or any other parameter, is a 400; responses are `no-store`. No table,
+migration or stored row is added. The desk requests it only when the operator
+presses "Read workflow evidence" in a project dossier, never in the poll, and the
+result never enters `buildSignals`, a handoff or a public pulse.
+
+The mapping (`src/github-map.mjs`, `pulseboard.github-map/1`) is reviewed source
+that names numeric repository and workflow ids; display names are checked, never
+matched. It ships empty: mapping a project is an owner decision (`HUMAN_TODO.md` q-9).
+`readGithubMap` refuses extra fields, unregistered projects, a workflow without an
+id, one (repository, workflow, branch) claimed twice, one repository id under two
+names, and more than 4 repositories, 4 workflows, 2 environments or 10 releases.
+
+`src/github.mjs` runs only when a server-side `GITHUB_EVIDENCE_TOKEN` is set (the
+local runner prints whether it built the connector; nothing sets it for the hosted
+Worker). Without one, mapped items read `unconfigured` and nothing is requested.
+Requests go only to `https://api.github.com/repositories/{id}/...` (repository,
+workflow runs for the mapped workflow and branch, the latest deployment and its
+status per mapped environment, recent releases) with `redirect: 'manual'` and
+`credentials: 'omit'`; a redirect, or a `Link` next page on another host, another
+repository or another endpoint, is refused. The token is sent only in the
+`Authorization` header and never enters a cache key, response, error or export.
+Before a hosted token is ever set, confirm on workerd that these fetch options are
+accepted (as was done for `redirect` on the probes); a rejected option would read
+every item as `unavailable/network`, never as a false pass.
+
+Each workflow, environment and release list reads one closed state (`unconfigured`,
+`missing`, `pending`, `passing`, `failing`, `inconclusive`, `stale`, `rate-limited`,
+`unavailable`, or `observed` for presence without a pass/fail meaning) plus a reason,
+`observedAt`, `sourceTime` and identity (workflow id, path, branch, run id and
+attempt, 40-hex head SHA; deployment id, SHA and environment). A run from another
+workflow or branch is discarded, and there is no repository-wide CI field. A
+renamed repository is flagged with `renamed: {mapped, observed}`. A reading older
+than six hours, dated in the future, or a failed refresh falling back to the cache
+is `stale`, with the reading moved to `lastKnown` and the current fields null, so it
+cannot render as current. 404 is `missing/not-found-or-no-access`; 401, a plain 403,
+a redirect, an oversized or malformed body and an exhausted request budget are
+`unavailable` with distinct reasons; a primary or secondary rate limit is
+`rate-limited` with `resetAt`, and no request is made until then.
+
+`deploymentLeads` marks a deployment in the 24 hours before an opened monitor, or
+inside a down monitor's window, as a `lead` that says "Temporal proximity, not a
+cause." The release notebook pins a frozen copy of the snapshot and the evidence
+with `desk-rules/1`, `github-evidence/1`, the mapping revision and a snapshot
+fingerprint; the operator must write what they suspect and an alternative check
+(bounded, URL and credential shapes refused) before a `pulseboard.release-note/1`
+JSON or Markdown file can be previewed and downloaded. The pin lives in tab memory
+only and is cleared on disconnect and on pagehide.
+
 ## Measurement choices
 
 - **Outcomes:** completed and failed event counts. Repeated attempts can appear
