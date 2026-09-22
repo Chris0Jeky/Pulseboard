@@ -37,8 +37,12 @@ function setup({ table = {}, repo, limits, cache, token = TOKEN, mapping } = {})
   return { gh, calls, clock, read: () => gh.read('alibi') };
 }
 const first = e => e.repositories[0];
-test('the shipped mapping is valid, reviewed and empty until the owner maps a project', () => {
-  assert.deepEqual(readGithubMap(githubMap).projects, {});
+test('the shipped mapping is valid, reviewed and maps only Alibi by numeric ids', () => {
+  const shipped = readGithubMap(githubMap);
+  assert.deepEqual(Object.keys(shipped.projects), ['alibi']);
+  assert.deepEqual(shipped.projects.alibi.map(r => [r.repositoryId, r.repository]), [[1360756863, 'Chris0Jeky/Alibi']]);
+  assert.deepEqual(shipped.projects.alibi[0].workflows, [{ workflowId: 352677495, path: '.github/workflows/check.yml', branch: 'main', role: 'ci' }]);
+  assert.deepEqual(shipped.projects.alibi[0].environments, []);
   assert.ok(Object.isFrozen(readGithubMap(map()).projects.alibi[0].workflows[0]));
 });
 test('mapping fails closed on extra fields, unknown projects, name-only workflows, double claims, renamed ids and bounds', () => {
@@ -234,7 +238,11 @@ test('the route authenticates before reading, rejects bad project parameters and
   try {
     const fallback = await handle(new Request('https://desk.test/v1/github-evidence?project=alibi', { headers: { authorization: `Bearer ${READ}` } }), { READ_TOKEN: READ });
     const e = await fallback.json();
-    assert.equal(fallback.status, 200); assert.equal(e.configuration, 'unmapped'); assert.deepEqual(e.repositories, []); assert.equal(egress, 0);
+    // The shipped mapping names Alibi, but with no server token every mapped item reads unconfigured and nothing leaves.
+    assert.equal(fallback.status, 200); assert.equal(e.configuration, 'no-token');
+    assert.deepEqual(e.repositories.map(r => [r.repositoryId, r.state, r.workflows[0].state]), [[1360756863, 'unconfigured', 'unconfigured']]);
+    const unmapped = await (await handle(new Request('https://desk.test/v1/github-evidence?project=mdviewer', { headers: { authorization: `Bearer ${READ}` } }), { READ_TOKEN: READ })).json();
+    assert.equal(unmapped.configuration, 'unmapped'); assert.deepEqual(unmapped.repositories, []); assert.equal(egress, 0);
   } finally { globalThis.fetch = original; }
   assert.ok(assets.has('/desk-release.mjs'));
 });

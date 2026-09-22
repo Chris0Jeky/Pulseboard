@@ -63,14 +63,15 @@ result never enters `buildSignals`, a handoff or a public pulse.
 
 The mapping (`src/github-map.mjs`, `pulseboard.github-map/1`) is reviewed source
 that names numeric repository and workflow ids; display names are checked, never
-matched. It ships empty: mapping a project is an owner decision (`HUMAN_TODO.md` q-9).
+matched. Mapping a project is an owner decision (`HUMAN_TODO.md` q-9); Alibi is mapped (its `check.yml`
+on `main` and its releases; no deployment environment, since Alibi publishes outside GitHub deployments).
 `readGithubMap` refuses extra fields, unregistered projects, a workflow without an
 id, one (repository, workflow, branch) claimed twice, one repository id under two
 names, and more than 4 repositories, 4 workflows, 2 environments or 10 releases.
 
 `src/github.mjs` runs only when a server-side `GITHUB_EVIDENCE_TOKEN` is set (the
-local runner prints whether it built the connector; nothing sets it for the hosted
-Worker). Without one, mapped items read `unconfigured` and nothing is requested.
+local runner prints whether it built the connector; the hosted Worker gets it only as a
+Wrangler secret, see `docs/HOSTING.md`). Without one, mapped items read `unconfigured` and nothing is requested.
 Requests go only to `https://api.github.com/repositories/{id}/...` (repository,
 workflow runs for the mapped workflow and branch, the latest deployment and its
 status per mapped environment, recent releases) with `redirect: 'manual'` (the
