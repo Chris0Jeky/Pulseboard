@@ -18,30 +18,27 @@ logger = logging.getLogger(__name__)
 @router.post("", response_model=PanelRead, status_code=status.HTTP_201_CREATED)
 def create_panel(dashboard_id: UUID, panel: PanelCreate, session: SessionDep) -> Panel:
     """Create a new panel on a dashboard."""
-    # Verify dashboard exists
     dashboard = session.get(Dashboard, dashboard_id)
     if not dashboard:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Dashboard not found"
         )
 
-    # Validate feed_ids_json
     try:
         json.loads(panel.feed_ids_json)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in feed_ids_json",
-        )
+        ) from exc
 
-    # Validate options_json
     try:
         json.loads(panel.options_json)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in options_json",
-        )
+        ) from exc
 
     db_panel = Panel.model_validate(panel, update={"dashboard_id": dashboard_id})
     session.add(db_panel)
@@ -61,28 +58,26 @@ def update_panel(
     if not panel or panel.dashboard_id != dashboard_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Panel not found")
 
-    # Validate JSONs if being updated
     update_data = panel_update.model_dump(exclude_unset=True)
 
     if "feed_ids_json" in update_data:
         try:
             json.loads(update_data["feed_ids_json"])
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid JSON in feed_ids_json",
-            )
+            ) from exc
 
     if "options_json" in update_data:
         try:
             json.loads(update_data["options_json"])
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid JSON in options_json",
-            )
+            ) from exc
 
-    # Update fields
     for field, value in update_data.items():
         setattr(panel, field, value)
 
@@ -107,7 +102,6 @@ def delete_panel(dashboard_id: UUID, panel_id: UUID, session: SessionDep) -> Non
     logger.info(f"Deleted panel {panel_id}")
 
 
-# Standalone panel route for convenience
 standalone_router = APIRouter(prefix="/panels", tags=["panels"])
 
 

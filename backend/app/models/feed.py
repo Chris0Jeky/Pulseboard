@@ -7,7 +7,8 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
-from sqlmodel import Column, DateTime, Field as SQLField, SQLModel, func
+from sqlmodel import Column, DateTime, SQLModel, func
+from sqlmodel import Field as SQLField
 
 
 class FeedDefinitionBase(SQLModel):

@@ -17,7 +17,6 @@ from app.models import (
     DashboardRead,
     DashboardReadWithPanels,
     DashboardUpdate,
-    Panel,
 )
 
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
