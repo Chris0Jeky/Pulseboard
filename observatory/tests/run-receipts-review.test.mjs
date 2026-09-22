@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { openDatabase } from '../src/sqlite.mjs';
 import { previewRunReceiptFile } from '../run-receipts/contracts.mjs';
-import { importRunReceiptFile } from '../run-receipts/store.mjs';
+import { importRunReceiptFile, readRunReceiptSummary } from '../run-receipts/store.mjs';
 
 const source = { kind: 'github-actions-file', id: 'overlapping-export' };
 const coverageStart = '2026-09-01T00:00:00.000Z';
@@ -80,6 +80,45 @@ test('successive overlapping exports keep unchanged receipt evidence idempotent'
     visibility: 'private',
   });
   assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM private_run_receipts').first()).n, 2);
+});
+
+test('a later complete export certifies receipts first stored from an incomplete export', async t => {
+  const DB = database(t);
+  const repeated = receipt({
+    id: 'gha-100-1',
+    run: '100',
+    startedAt: '2026-09-01T01:00:00.000Z',
+    endedAt: '2026-09-01T01:01:00.000Z',
+    value: 60,
+  });
+  const window = { project: 'commitatlas', start: Date.parse(coverageStart), end: Date.parse(firstEnd) };
+  const partial = envelope({ generatedAt: firstGenerated, end: firstEnd, receipts: [repeated] });
+  partial.coverage = { ...partial.coverage, complete: false, limitations: ['manual-export', 'partial-history'] };
+  await importRunReceiptFile(DB, JSON.stringify(partial), { now: Date.parse(firstGenerated) + 1 });
+  const before = await readRunReceiptSummary(DB, window);
+  assert.equal(before.coverage.complete, false);
+  assert.deepEqual(before.coverage.limitations, ['manual-export', 'partial-history']);
+
+  const complete = envelope({ generatedAt: secondGenerated, end: firstEnd, receipts: [repeated] });
+  assert.deepEqual(await importRunReceiptFile(DB, JSON.stringify(complete), { now: Date.parse(secondGenerated) + 1 }), {
+    received: 1,
+    imported: 0,
+    duplicates: 1,
+    visibility: 'private',
+  });
+  const after = await readRunReceiptSummary(DB, window);
+  assert.equal(after.coverage.complete, true);
+  assert.deepEqual(after.coverage.limitations, ['manual-export']);
+  assert.equal(after.generatedAt, Date.parse(secondGenerated));
+
+  // A still later incomplete export repeats the receipt but cannot withdraw the complete certification.
+  const regressed = envelope({ generatedAt: '2026-09-04T00:05:00.000Z', end: firstEnd, receipts: [repeated] });
+  regressed.coverage = { ...regressed.coverage, complete: false, limitations: ['partial-history'] };
+  await importRunReceiptFile(DB, JSON.stringify(regressed), { now: Date.parse('2026-09-04T00:05:00.000Z') + 1 });
+  const kept = await readRunReceiptSummary(DB, window);
+  assert.equal(kept.coverage.complete, true);
+  assert.equal(kept.generatedAt, Date.parse(secondGenerated));
+  assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM private_run_receipts').first()).n, 1);
 });
 
 test('preview refuses resource aggregates outside the safe integer range', () => {

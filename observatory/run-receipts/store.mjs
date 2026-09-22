@@ -76,28 +76,45 @@ const INSERT = `INSERT OR IGNORE INTO private_run_receipts (
   outcome_state, verification_ref, imported
 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
+// A repeated receipt can arrive in a later export with better coverage. Its evidence is immutable, but the
+// export metadata it carries moves forward: a complete export replaces an incomplete one, and among equals
+// the newer export wins. An incomplete later export never withdraws an earlier complete certification.
+const REFRESH_COVERAGE = `UPDATE private_run_receipts
+  SET generated=?, coverage_start=?, coverage_end=?, coverage_complete=?, coverage_limitations=?
+  WHERE receipt_key=? AND content_hash=?
+    AND ((?=1 AND coverage_complete=0) OR (coverage_complete=? AND generated<?))`;
+
+function refreshCoverage(parsed, item) {
+  const complete = parsed.coverage.complete ? 1 : 0;
+  return [parsed.generatedAt, parsed.coverage.start, parsed.coverage.end, complete,
+    JSON.stringify(parsed.coverage.limitations), item.receiptKey, item.contentHash, complete, complete, parsed.generatedAt];
+}
+
 export async function importRunReceiptFile(DB, text, { now = Date.now(), registry = projects } = {}) {
   requireValue(DB?.prepare && DB?.batch, 'A D1-compatible database is required');
   requireValue(Number.isSafeInteger(now) && now >= 0, 'Invalid import time');
   const parsed = parseRunReceiptFile(text, registry);
   requireValue(parsed.generatedAt <= now + 300_000, 'Run receipt file is future dated');
   const stored = parsed.receipts.map(receipt => storedReceipt(parsed, receipt, now));
-  const pending = [];
 
   // Validate every existing identity before writing anything. A repeated byte-equivalent receipt is
   // idempotent; the same source/run/attempt with changed evidence is a conflict, never an overwrite.
   for (const item of stored) {
     const existing = await DB.prepare('SELECT content_hash FROM private_run_receipts WHERE receipt_key=?')
       .bind(item.receiptKey).first();
-    if (existing) {
-      requireValue(existing.content_hash === item.contentHash, 'Conflicting run receipt identity');
-    } else pending.push(item);
+    if (existing) requireValue(existing.content_hash === item.contentHash, 'Conflicting run receipt identity');
   }
 
-  const results = pending.length
-    ? await DB.batch(pending.map(item => DB.prepare(INSERT).bind(...item.values)))
+  // Each insert is followed by its coverage refresh, so a racing importer that inserted the same receipt
+  // first still has its coverage reconciled; the refresh is a no-op on a row this batch just inserted.
+  const results = stored.length
+    ? await DB.batch(stored.flatMap(item => [
+      DB.prepare(INSERT).bind(...item.values),
+      DB.prepare(REFRESH_COVERAGE).bind(...refreshCoverage(parsed, item)),
+    ]))
     : [];
-  const imported = results.reduce((total, result) => safeAdd(total, Number(result.meta?.changes || 0), 'Imported receipt count'), 0);
+  const imported = results.filter((_, index) => index % 2 === 0)
+    .reduce((total, result) => safeAdd(total, Number(result.meta?.changes || 0), 'Imported receipt count'), 0);
   return {
     received: parsed.receipts.length,
     imported,

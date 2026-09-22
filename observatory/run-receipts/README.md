@@ -41,7 +41,7 @@ node run-receipts/file-adapter.mjs import \
   .data/private-run-receipts.sqlite
 ```
 
-The adapter creates only the tables in `run-receipts/schema.sql`. Import is idempotent by source/run/attempt identity. Re-importing identical evidence reports duplicates; changed evidence under an existing identity is rejected rather than overwritten. The full document is validated before any write.
+The adapter creates only the tables in `run-receipts/schema.sql`. Import is idempotent by source/run/attempt identity. Re-importing identical evidence reports duplicates; changed evidence under an existing identity is rejected rather than overwritten. A repeated receipt still moves its export coverage forward: a complete export replaces the coverage an incomplete one recorded, and among equals the newer export wins, so a later complete export can certify a window. A later incomplete export never withdraws an earlier complete certification. The full document is validated before any write.
 
 The sample is synthetic and incomplete. It exists to exercise the adapter, not to claim real CI activity or cost.
 
