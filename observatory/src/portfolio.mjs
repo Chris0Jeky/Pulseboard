@@ -9,6 +9,7 @@ const LIMITATIONS = [
   'Browser events are opt-in, client-reported and spoofable. Sessions are not people.',
   'Action outcomes count events. Retries and repeated attempts are not deduplicated operations.',
   'Paired flows match session, route and release, in sequence. They are not named-action funnels.',
+  'Named operations pair a registered start with the first registered terminal event before the next start. Open attempts may mean abandonment, withdrawal, outage or lost delivery.',
   'Probe success describes scheduled samples, not time-weighted uptime or a service-level objective.',
   'Release cohorts are descriptive and may differ in users, routes and exposure.',
   'No acquisition attribution, retention cohorts, production tracing or automatic remediation is inferred.',
@@ -19,11 +20,37 @@ export function limitations(projects = registry) {
   const bound = Object.values(projects).filter(p => p.probe?.binding).map(p => p.label);
   return bound.length ? [...LIMITATIONS, `${bound.join(' and ')} are probed through a service binding inside Cloudflare: an up reading proves the application answers, not that its public address does.`] : LIMITATIONS;
 }
+function operationDefinitions(projects) {
+  return Object.entries(projects).flatMap(([project, config]) => (config.operations || []).map(operation => ({ project, ...operation })));
+}
+function operationQuery(db, operation, start, end) {
+  return db.prepare(`WITH starts AS (
+    SELECT project,session,route,release,seq,
+      ROW_NUMBER() OVER (PARTITION BY project,session,route,release ORDER BY seq) AS ordinal,
+      LEAD(seq) OVER (PARTITION BY project,session,route,release ORDER BY seq) AS next_seq
+    FROM events WHERE project=? AND received>=? AND received<? AND event=?
+  ), resolved AS (
+    SELECT release,ordinal,(
+      SELECT b.event FROM events b
+      WHERE b.project=s.project AND b.session=s.session AND b.route=s.route AND b.release=s.release
+      AND b.event IN (?,?) AND b.seq>s.seq AND (s.next_seq IS NULL OR b.seq<s.next_seq)
+      AND b.received>=? AND b.received<? ORDER BY b.seq LIMIT 1
+    ) AS terminal FROM starts s
+  ) SELECT release,COUNT(*) AS attempts,
+    SUM(CASE WHEN terminal=? THEN 1 ELSE 0 END) AS completed,
+    SUM(CASE WHEN terminal=? THEN 1 ELSE 0 END) AS failed,
+    SUM(CASE WHEN terminal IS NULL THEN 1 ELSE 0 END) AS open,
+    SUM(CASE WHEN ordinal>1 THEN 1 ELSE 0 END) AS retries
+    FROM resolved GROUP BY release ORDER BY release`)
+    .bind(operation.project, start, end, operation.started, operation.completed, operation.failed,
+      start, end, operation.completed, operation.failed);
+}
 export async function readPortfolio(db, { days = 7, now = Date.now(), collectionEnabled = false, admittedProjects = [], projects = registry } = {}) {
   if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days || !Array.isArray(admittedProjects) || admittedProjects.some(id => typeof id !== 'string')) throw new RangeError('Unsupported window or admission');
   const admitted = new Set(admittedProjects);
   const start = now - days * DAY;
   const ranged = sql => db.prepare(sql).bind(start, now);
+  const operationDefs = operationDefinitions(projects);
   // D1 batches are transactional. The local D1 adapter supplies the same boundary.
   const rows = await db.batch([
     ranged(`SELECT project, event, release, COUNT(*) AS n, MAX(received) AS last
@@ -54,8 +81,10 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
     ) SELECT project,release,MAX(n) AS n,AVG(value) AS mean,
       MAX(CASE WHEN rank=CAST((n*95+99)/100 AS INTEGER) THEN value ELSE NULL END) AS p95
       FROM ranked GROUP BY project,release`),
+    ...operationDefs.map(operation => operationQuery(db, operation, start, now)),
   ]);
-  const [counts, sessions, daily, routes, probes, probeSamples, budgets, flows, timings] = rows.map(r => r.results);
+  const [counts, sessions, daily, routes, probes, probeSamples, budgets, flows, timings, ...operationRows] = rows.map(r => r.results);
+  const operationEvidence = operationDefs.map((operation, index) => ({ ...operation, rows: operationRows[index] || [] }));
   return { schema: 'pulseboard.portfolio/2', mode: 'live', generatedAt: now, collectionEnabled,
     window: { start, end: now, days, timezone: 'UTC' }, limitations: limitations(projects),
     projects: Object.entries(projects).map(([id, config]) => {
@@ -71,6 +100,20 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
         return { release, events: n(), completed: n('action.completed'), failed: n('action.failed'), errors: n('app.error'),
           last: Math.max(...selected.map(row => row.last)), duration: timing ? { n: timing.n, mean: timing.mean, p95: timing.p95, unit: 'ms', method: 'nearest-rank' } : null };
       }).sort((a, b) => b.last - a.last || a.release.localeCompare(b.release));
+      const operations = operationEvidence.filter(operation => operation.project === id).map(operation => {
+        const operationReleases = operation.rows.map(row => ({
+          release: row.release,
+          attempts: Number(row.attempts || 0),
+          completed: Number(row.completed || 0),
+          failed: Number(row.failed || 0),
+          open: Number(row.open || 0),
+          retries: Number(row.retries || 0),
+        }));
+        const sum = key => operationReleases.reduce((value, row) => value + row[key], 0);
+        const attempts = sum('attempts'), completed = sum('completed');
+        return { id: operation.id, version: operation.version, attempts, completed, failed: sum('failed'),
+          open: sum('open'), retries: sum('retries'), completion: fraction(completed, attempts), releases: operationReleases };
+      });
       const collectionEligible = Boolean(config.origin);
       return { id, label: config.label, origin: config.origin, probeExpected: Boolean(config.probe),
         collectionEligible, collectionAdmitted: collectionEnabled === true && collectionEligible && admitted.has(id),
@@ -81,7 +124,7 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
         totals: { events: total(), sessions: sessions.find(row => row.project === id)?.n || 0,
           completed: total('action.completed'), failed: total('action.failed'), errors: total('app.error'),
           last: events.length ? Math.max(...events.map(row => row.last)) : null },
-        flow: fraction(flow?.completed || 0, flow?.started || 0),
+        flow: fraction(flow?.completed || 0, flow?.started || 0), operations,
         daily: daily.filter(row => row.project === id).map(({ day, n }) => ({ day, n })),
         routes: routes.filter(row => row.project === id).map(({ route, n }) => ({ route, n })), releases,
         budget: { used: budgets.find(row => row.project === id)?.used || 0, limit: config.dailyLimit,

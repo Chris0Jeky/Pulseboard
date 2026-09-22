@@ -100,6 +100,28 @@ export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) 
       'At least 10% of reported action outcomes failed, with at least 20 outcomes. Retries may appear more than once.',
       { failed: p.totals.failed, outcomes, interval: wilson(p.totals.failed, outcomes), threshold: 0.1, minimum: MIN_OUTCOMES },
       'Compare release and route cohorts; check the hooks before drawing conclusions.');
+    for (const operation of p.operations || []) {
+      const evidence = { operation: operation.id, version: operation.version, attempts: operation.attempts,
+        completed: operation.completed, failed: operation.failed, open: operation.open, retries: operation.retries,
+        minimum: MIN_OUTCOMES };
+      if (p.collectionAdmitted && operation.attempts === 0) add(p, `operation.${operation.id}.no_evidence`, 'note',
+        `${p.label} has no ${operation.id} evidence`,
+        'No reported attempts is an unknown observation, not a healthy journey.', evidence,
+        'Exercise the consented journey and verify collector admission before interpreting this operation.');
+      else if (operation.attempts > 0 && operation.completed + operation.failed < MIN_OUTCOMES) add(p, `operation.${operation.id}.low_sample`, 'note',
+        `${p.label} ${operation.id} has too little evidence`,
+        // Gate on resolved attempts: many starts with few terminals (abandoned or unhooked) must not read as healthy.
+        `${operation.attempts} reported attempts, ${operation.completed + operation.failed} resolved, are too little evidence to assess journey health. Open attempts and retries remain separate facts.`, evidence,
+        `Collect at least ${MIN_OUTCOMES} resolved consented attempts, then inspect failures, open attempts and route/release cohorts.`);
+      else {
+        const resolved = operation.completed + operation.failed;
+        if (operation.failed / resolved >= 0.1) add(p, `operation.${operation.id}.failure`, 'warning',
+          `${p.label} ${operation.id} has a failure signal`,
+          'At least 10% of resolved reported attempts failed. This is descriptive client evidence, not a diagnosis.',
+          { ...evidence, interval: wilson(operation.failed, resolved), resolved, threshold: 0.1 },
+          'Inspect the host hook, release cohort and a real journey before forming a causal explanation.');
+      }
+    }
     const unattributed = p.releases.find(r => r.release === 'unattributed')?.events || 0;
     if (p.totals.events > 0 && unattributed / p.totals.events >= 0.5) add(p, 'release.unattributed', 'note', `${p.label} needs release labels`,
       'At least half of admitted events cannot be linked to a named release.', { unattributed, total: p.totals.events },
