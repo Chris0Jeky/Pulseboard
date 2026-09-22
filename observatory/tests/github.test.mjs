@@ -76,7 +76,7 @@ test('passing, failing, pending and inconclusive runs keep identity, source time
     assert.deepEqual(w.target, workflow());
     assert.deepEqual({ runId: w.evidence.runId, runAttempt: w.evidence.runAttempt, headSha: w.evidence.headSha }, { runId: 501, runAttempt: 2, headSha: sha('a') });
     for (const { href, init } of calls) {
-      assert.ok(href.startsWith('https://api.github.com/repositories/101')); assert.equal(init.redirect, 'manual'); assert.equal(init.credentials, 'omit');
+      assert.ok(href.startsWith('https://api.github.com/repositories/101')); assert.equal(init.redirect, 'manual'); assert.ok(!('credentials' in init));
       assert.equal(init.headers.Authorization, `Bearer ${TOKEN}`);
     }
   }

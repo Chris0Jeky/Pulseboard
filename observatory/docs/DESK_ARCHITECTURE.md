@@ -73,13 +73,12 @@ local runner prints whether it built the connector; nothing sets it for the host
 Worker). Without one, mapped items read `unconfigured` and nothing is requested.
 Requests go only to `https://api.github.com/repositories/{id}/...` (repository,
 workflow runs for the mapped workflow and branch, the latest deployment and its
-status per mapped environment, recent releases) with `redirect: 'manual'` and
-`credentials: 'omit'`; a redirect, or a `Link` next page on another host, another
-repository or another endpoint, is refused. The token is sent only in the
-`Authorization` header and never enters a cache key, response, error or export.
-Before a hosted token is ever set, confirm on workerd that these fetch options are
-accepted (as was done for `redirect` on the probes); a rejected option would read
-every item as `unavailable/network`, never as a false pass.
+status per mapped environment, recent releases) with `redirect: 'manual'` (the
+value workerd accepts, as measured for the probes). No `credentials` option is
+sent: a server fetch has no cookie jar, and workerd may reject the field, which
+would read every item as `unavailable/network`. A redirect, or a `Link` next page on
+another host, another repository or another endpoint, is refused. The token is sent
+only in the `Authorization` header and never enters a cache key, response, error or export.
 
 Each workflow, environment and release list reads one closed state (`unconfigured`,
 `missing`, `pending`, `passing`, `failing`, `inconclusive`, `stale`, `rate-limited`,

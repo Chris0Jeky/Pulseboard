@@ -123,7 +123,7 @@ export function createGithubEvidence({ map, token = null, fetch: send = globalTh
     ctx.used++;
     let response;
     try {
-      response = await send(url.href, { method: 'GET', redirect: 'manual', credentials: 'omit', signal: AbortSignal.timeout(bounds.timeoutMs),
+      response = await send(url.href, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(bounds.timeoutMs),
         headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28',
           'User-Agent': 'Pulseboard-Observatory/0.1 (+github-evidence)', ...(cached?.etag ? { 'If-None-Match': cached.etag } : {}) } });
     } catch { return { fail: { state: 'unavailable', reason: 'network' } }; }
