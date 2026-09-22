@@ -6,7 +6,7 @@ import json
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
 
 from app.api.deps import SessionDep
 from app.hub.hub import DataHub
@@ -14,7 +14,6 @@ from app.models import Dashboard
 
 logger = logging.getLogger(__name__)
 
-# This will be injected by the main app
 _hub: DataHub | None = None
 
 
@@ -40,22 +39,15 @@ async def websocket_dashboard(
     dashboard_id: UUID,
     session: SessionDep,
     hub: DataHub = Depends(get_hub),
-):
-    """
-    WebSocket endpoint for real-time dashboard updates.
-
-    Accepts connection, registers with DataHub, and keeps connection alive.
-    DataHub will send feed updates to this connection.
-    """
+) -> None:
+    """Stream real-time updates for one dashboard."""
     try:
-        # Verify dashboard exists
         dashboard = session.get(Dashboard, dashboard_id)
         if not dashboard:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
-        # Get feed IDs used by this dashboard
-        feed_ids = set()
+        feed_ids: set[UUID] = set()
         for panel in dashboard.panels:
             try:
                 panel_feed_ids = json.loads(panel.feed_ids_json)
@@ -67,36 +59,28 @@ async def websocket_dashboard(
             except json.JSONDecodeError:
                 logger.warning(f"Invalid feed_ids_json in panel {panel.id}")
 
-        # Accept connection
         await websocket.accept()
-
-        # Register with DataHub
         await hub.register_connection(dashboard_id, websocket, feed_ids)
 
         logger.info(
             f"WebSocket connected for dashboard {dashboard_id} with {len(feed_ids)} feeds"
         )
 
-        # Keep connection alive and handle incoming messages (if any)
         try:
             while True:
-                # Wait for messages (ping/pong or client messages)
                 data = await websocket.receive_text()
-
-                # Handle client messages if needed
                 try:
                     message = json.loads(data)
                     if message.get("type") == "ping":
                         await websocket.send_text(json.dumps({"type": "pong"}))
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid JSON from client: {data}")
-
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected for dashboard {dashboard_id}")
 
-    except Exception as e:
-        logger.error(f"WebSocket error for dashboard {dashboard_id}: {e}", exc_info=True)
-
+    except Exception as exc:
+        logger.error(
+            f"WebSocket error for dashboard {dashboard_id}: {exc}", exc_info=True
+        )
     finally:
-        # Unregister from DataHub
         await hub.unregister_connection(dashboard_id, websocket)

@@ -6,6 +6,7 @@ FeedManager, and mounts all routes.
 """
 
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
@@ -21,39 +22,29 @@ from app.feeds.manager import FeedManager
 from app.hub.hub import DataHub
 from app.ws import router as ws_router
 
-# Setup logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Global instances
 hub: DataHub | None = None
 feed_manager: FeedManager | None = None
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Lifespan context manager for startup and shutdown events.
-    """
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Initialize and stop the application-owned runtime services."""
     global hub, feed_manager
 
     logger.info("Starting Pulseboard application...")
 
-    # Create database tables
     create_db_and_tables()
     logger.info("Database initialized")
 
-    # Initialize DataHub
     hub = DataHub(history_window=timedelta(minutes=settings.history_window_minutes))
     logger.info("DataHub initialized")
 
-    # Set hub in WebSocket router
     ws_router.set_hub(hub)
-
-    # Initialize FeedManager
     feed_manager = FeedManager(hub)
 
-    # Load and start feeds
     with Session(engine) as session:
         await feed_manager.load_feeds(session)
 
@@ -61,7 +52,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
     logger.info("Shutting down application...")
 
     if feed_manager:
@@ -70,7 +60,6 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutdown complete")
 
 
-# Create FastAPI app
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
@@ -78,29 +67,28 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins if isinstance(settings.cors_origins, list) else [settings.cors_origins],
+    allow_origins=(
+        settings.cors_origins
+        if isinstance(settings.cors_origins, list)
+        else [settings.cors_origins]
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount API routes
 app.include_router(dashboards.router, prefix="/api")
 app.include_router(feeds.router, prefix="/api")
 app.include_router(panels.router, prefix="/api")
 app.include_router(panels.standalone_router, prefix="/api")
-
-# Mount WebSocket routes
 app.include_router(ws_router.router)
 
 
-# Health check endpoint
 @app.get("/health")
-def health_check():
-    """Health check endpoint."""
+def health_check() -> dict[str, str]:
+    """Return basic process health and version information."""
     return {
         "status": "ok",
         "app": settings.app_name,
@@ -109,8 +97,8 @@ def health_check():
 
 
 @app.get("/")
-def root():
-    """Root endpoint with API information."""
+def root() -> dict[str, str]:
+    """Return root API discovery information."""
     return {
         "app": settings.app_name,
         "version": settings.app_version,

@@ -6,7 +6,8 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
-from sqlmodel import Field as SQLField, Relationship, SQLModel
+from sqlmodel import Field as SQLField
+from sqlmodel import Relationship, SQLModel
 
 
 class PanelBase(SQLModel):
