@@ -156,3 +156,17 @@ test('a successful keepalive handover resets the failure streak like a normal su
   mode = 'fail'; client.track('page.view'); await client.flush();
   assert.equal(client.track('page.view'), true); assert.equal(client.status().failures, 3); client.dispose();
 });
+test('a handed-over batch counts once: sent if either attempt succeeds, dropped only when both fail', async () => {
+  for (const [keepaliveOk, originalOk, expected] of [[false, true, { sent: 1, dropped: 0 }], [true, false, { sent: 1, dropped: 0 }], [false, false, { sent: 0, dropped: 1 }]]) {
+    let answer;
+    const { client } = setup({}, (_url, options) => options.keepalive
+      ? Promise.resolve(new Response('{}', { status: keepaliveOk ? 202 : 503 }))
+      : new Promise((resolve, reject) => { answer = () => originalOk ? resolve(new Response('{}', { status: 202 })) : reject(new TypeError('offline')); }));
+    client.setConsent(true); client.track('page.view'); const pending = client.flush();
+    assert.equal(client.flushOnHide(), 1); await new Promise(resolve => setImmediate(resolve));
+    answer(); await pending;
+    const { sent, dropped, unknown } = client.status();
+    assert.deepEqual({ sent, dropped, unknown }, { ...expected, unknown: 0 }, JSON.stringify({ keepaliveOk, originalOk }));
+    client.dispose();
+  }
+});
