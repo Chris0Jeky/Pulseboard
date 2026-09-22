@@ -24,7 +24,7 @@ test('local runner exposes a bounded HTTP and process-lifecycle contract', async
   assert.match(suppliedBanner.join('\n'), /not printed/i);
   assert.match(suppliedBanner.join('\n'), /GitHub evidence: off \(no GITHUB_EVIDENCE_TOKEN\); mapped items read unconfigured and nothing is requested\./);
   assert.match(runnerBanner({ origin: 'http://127.0.0.1:8788', ...supplied, collectEnabled: false, collectProjects: '', githubEvidence: true }).join('\n'),
-    /GitHub evidence: connector built from GITHUB_EVIDENCE_TOKEN \(not printed\); api\.github\.com is read only when the desk asks, for 0 mapped project\(s\)\./);
+    /GitHub evidence: connector built from GITHUB_EVIDENCE_TOKEN \(not printed\); api\.github\.com is read only when the desk asks, for 1 mapped project\(s\)\./);
 
   assert.match(suppliedBanner.join('\n'), /Collection switch is disabled; admitted projects: \(none\)\./);
   const admitted = runnerBanner({ origin: 'http://127.0.0.1:8788', ...supplied, collectEnabled: true, collectProjects: ' alibi ' }).join('\n');

@@ -7,7 +7,7 @@
 | Observatory -> Desk | Authenticated aggregate API and browser client | Production rollout remains opt-in |
 | CommitAtlas -> Desk | Reader for existing native v2 `projects.json` | Automatic refresh and explicit repo-to-project mapping |
 | Developer Lens -> Desk | Strict reader for `pulseboard.lens-projection/1` | Native Lens exporter for this new contract |
-| GitHub -> Desk | Server-side connector for a reviewed numeric-id mapping, `pulseboard.github-evidence/1`, release notebook | An owner-approved mapping (q-9) and a server-side token; the shipped mapping is empty |
+| GitHub -> Desk | Server-side connector for a reviewed numeric-id mapping, `pulseboard.github-evidence/1`, release notebook | An owner-approved mapping (q-9: Alibi) and a server-side token |
 | Desk -> CommitAtlas / status card | Selected, expiring `pulseboard.public-pulse/1` export | Upstream renderer / consumer |
 | Desk -> Taskdeck / agent | Reviewed `pulseboard.handoff/1` JSON | Native task importer with preview, deduplication and approval |
 | Legacy feeds / OTel -> Desk | Architecture seam only | Bounded adapter implementation |

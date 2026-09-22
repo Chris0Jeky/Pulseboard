@@ -66,8 +66,10 @@ async def run(args):
             assert not any('/v1/github-evidence' in url for url in requests), 'GitHub evidence must not join the poll'
             await page.locator('.project-name button').filter(has_text='Alibi').click()
             await page.get_by_role('button', name='Read workflow evidence').click()
-            # The shipped mapping is empty: the real route answers unmapped and requests nothing from GitHub.
-            await expect(page.locator('#github-evidence')).to_contain_text('UNMAPPED')
+            # Alibi is mapped, but this runner has no GITHUB_EVIDENCE_TOKEN: the real route answers no-token,
+            # every mapped item reads unconfigured and nothing is requested from GitHub.
+            await expect(page.locator('#github-evidence')).to_contain_text('NO-TOKEN')
+            await expect(page.locator('#github-evidence')).to_contain_text('unconfigured · no-server-token')
             assert any('/v1/github-evidence?project=alibi' in url for url in requests)
             assert not any('api.github.com' in url for url in requests)
             await page.keyboard.press('Escape')
