@@ -183,7 +183,16 @@ export function createGithubEvidence({ map, token = null, fetch: send = globalTh
     const last = await reader(fromCache);
     return last.fail ? blank(target, live.fail.state, live.fail.reason, live.fail.resetAt ?? null) : stale(target, judge(last), live.fail.reason, live.fail.resetAt ?? null);
   }
-  async function read(projectId) {
+  // Overlapping reads of one project share a single refresh, so a second operator never sees the refresh floor's
+  // empty cache while the first read is still filling it.
+  const inflight = new Map();
+  function read(projectId) {
+    if (inflight.has(projectId)) return inflight.get(projectId);
+    const pending = readOnce(projectId).finally(() => inflight.delete(projectId));
+    inflight.set(projectId, pending);
+    return pending;
+  }
+  async function readOnce(projectId) {
     const now = clock(), repositories = Object.hasOwn(mapping.projects, projectId) ? mapping.projects[projectId] : null;
     const evidence = { schema: GITHUB_SCHEMA, mode: 'live', generatedAt: now, project: projectId, configuration: !repositories ? 'unmapped' : token ? 'ready' : 'no-token',
       mapping: { schema: mapping.schema, revision: mapping.revision, reviewedAt: mapping.reviewedAt }, rules: GITHUB_RULES, repositories: [], limitations: GITHUB_LIMITATIONS };

@@ -182,6 +182,15 @@ test('the request budget and the refresh floor bound egress per read', async () 
   const again = await s.read();
   assert.equal(s.calls.length, 3); assert.equal(first(again).workflows[0].state, 'passing');
 });
+test('overlapping reads on a cold connector share one refresh instead of reading the empty floor', async () => {
+  const { gh, calls } = setup();
+  const [a, b] = await Promise.all([gh.read('alibi'), gh.read('alibi')]);
+  assert.equal(a, b);
+  assert.equal(first(a).workflows[0].state, 'passing');
+  assert.equal(calls.length, 5);
+  const later = await gh.read('alibi');
+  assert.equal(first(later).workflows[0].state, 'passing'); assert.equal(calls.length, 5);
+});
 test('oversized bodies, non-hex SHAs and non-canonical times are rejected as malformed', async () => {
   for (const table of [{ [RUNS]: () => ({ workflow_runs: [run({ name: 'x'.repeat(5000) })] }) }, { [RUNS]: () => ({ workflow_runs: [run({ head_sha: 'A'.repeat(40) })] }) },
     { [RUNS]: () => ({ workflow_runs: [run({ head_sha: 'abc' })] }) }, { [RUNS]: () => ({ workflow_runs: [run({ updated_at: '2026-09-10T12:00:00.5Z' })] }) },

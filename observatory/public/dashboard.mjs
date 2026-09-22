@@ -155,6 +155,8 @@ function overview() {
       panel('The last few days', chart(ps), e('span', { class: 'mini-label' }, 'EVENT RECEIPTS'))), projectTable()];
 }
 function projectDetail(p) {
+  // The drawer, its deployment leads and any pin all read the snapshot it opened with, not a later poll.
+  state.drawerSnapshot = state.snapshot;
   const outcomes = p.totals.completed + p.totals.failed;
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, p.label), chip(p),
     e('div', { class: 'facts' }, ...[['Admitted events', count(p.totals.events)], ['Reported sessions', count(p.totals.sessions)],
@@ -187,7 +189,7 @@ function githubView(id) {
   return e('div', {}, e('p', { class: 'tiny muted' }, `${ev.mode === 'demo' ? 'SYNTHETIC · ' : ''}${ev.configuration.toUpperCase()} · mapping r${ev.mapping.revision} · read ${date(ev.generatedAt)} · ${ev.rules}`),
     rows.length ? e('div', { class: 'table-shell' }, table(['Repository', 'Evidence', 'State', 'Source time', 'Identity'], rows))
       : e('p', { class: 'muted' }, 'No reviewed repository mapping for this project. Nothing was requested from GitHub.'),
-    deploymentLeads(ev, state.snapshot).map(l => e('p', { class: l.kind === 'lead' ? 'notice' : 'tiny muted' }, `${l.kind.toUpperCase()} · ${l.environment} ${l.sha.slice(0, 7)} deployed ${date(l.deployedAt)}. ${l.text}`)),
+    deploymentLeads(ev, state.drawerSnapshot ?? state.snapshot).map(l => e('p', { class: l.kind === 'lead' ? 'notice' : 'tiny muted' }, `${l.kind.toUpperCase()} · ${l.environment} ${l.sha.slice(0, 7)} deployed ${date(l.deployedAt)}. ${l.text}`)),
     e('ul', { class: 'tiny muted' }, ev.limitations.map(text => e('li', {}, text))), read, rows.length ? button('Pin to release notebook', () => pinGithub(id)) : null);
 }
 async function readGithub(id) {
@@ -212,7 +214,7 @@ async function readGithub(id) {
 function pinGithub(id) {
   try {
     if (state.stale) throw new Error('Refresh the collector before pinning.');
-    state.pin = pinInvestigation(state.snapshot, state.github[id], id);
+    state.pin = pinInvestigation(state.drawerSnapshot ?? state.snapshot, state.github[id], id);
   } catch (error) { notify(error.message); return; }
   $('#suspected').value = ''; $('#alternative-check').value = '';
   $('#notebook-summary').textContent = `${state.pin.mode === 'demo' ? 'SYNTHETIC DEMO. ' : ''}Pinned ${date(state.pin.pinnedAt)} · snapshot ${state.pin.snapshot.fingerprint} · mapping r${state.pin.mapping.revision} · ${state.pin.leads.filter(l => l.kind === 'lead').length} deployment lead(s). The pinned copy does not change on refresh.`;
@@ -342,7 +344,7 @@ function render() {
 }
 function navigate(view) { if (!Object.hasOwn(views, view)) return; if (location.hash === '#' + view) { state.view = view; render(); } else location.hash = view; }
 function cancelRead() { state.epoch++; clearTimeout(state.timer); state.controller?.abort(); state.controller = null; state.busy = false; }
-function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
+function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.drawerSnapshot = null; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
 function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); }
 async function refresh() {
   if (!state.token) { if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } return; }
