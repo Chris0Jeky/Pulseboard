@@ -108,13 +108,14 @@ export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) 
         `${p.label} has no ${operation.id} evidence`,
         'No reported attempts is an unknown observation, not a healthy journey.', evidence,
         'Exercise the consented journey and verify collector admission before interpreting this operation.');
-      else if (operation.attempts > 0 && operation.attempts < MIN_OUTCOMES) add(p, `operation.${operation.id}.low_sample`, 'note',
+      else if (operation.attempts > 0 && operation.completed + operation.failed < MIN_OUTCOMES) add(p, `operation.${operation.id}.low_sample`, 'note',
         `${p.label} ${operation.id} has too little evidence`,
-        `${operation.attempts} reported attempts are too little evidence to assess journey health. Open attempts and retries remain separate facts.`, evidence,
-        `Collect at least ${MIN_OUTCOMES} consented attempts, then inspect failures, open attempts and route/release cohorts.`);
+        // Gate on resolved attempts: many starts with few terminals (abandoned or unhooked) must not read as healthy.
+        `${operation.attempts} reported attempts, ${operation.completed + operation.failed} resolved, are too little evidence to assess journey health. Open attempts and retries remain separate facts.`, evidence,
+        `Collect at least ${MIN_OUTCOMES} resolved consented attempts, then inspect failures, open attempts and route/release cohorts.`);
       else {
         const resolved = operation.completed + operation.failed;
-        if (resolved >= MIN_OUTCOMES && operation.failed / resolved >= 0.1) add(p, `operation.${operation.id}.failure`, 'warning',
+        if (operation.failed / resolved >= 0.1) add(p, `operation.${operation.id}.failure`, 'warning',
           `${p.label} ${operation.id} has a failure signal`,
           'At least 10% of resolved reported attempts failed. This is descriptive client evidence, not a diagnosis.',
           { ...evidence, interval: wilson(operation.failed, resolved), resolved, threshold: 0.1 },

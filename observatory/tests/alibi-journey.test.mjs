@@ -118,3 +118,21 @@ test('small named-operation samples produce a synthetic review-only handoff', as
   assert.match(handoff.observation, /too little evidence/i);
   assert.ok(handoff.boundaries.includes('No automatic task creation or execution.'));
 });
+
+test('many attempts with few resolved outcomes still read as too little evidence', async t => {
+  const DB = database(t);
+  const rows = [];
+  for (let i = 0; i < 25; i += 1) {
+    const hex = i.toString(16).padStart(2, '0');
+    const session = `eeeeeeee-eeee-4eee-8eee-eeeeeeeeee${hex}`;
+    rows.push(event({ id: `50000000-0000-4000-8000-0000000000${hex}`, session, seq: 1, name: 'puzzle.started', received: now - 3_000 }));
+    if (i === 0) rows.push(event({ id: '51000000-0000-4000-8000-000000000000', session, seq: 2, name: 'puzzle.completed', received: now - 2_000 }));
+  }
+  await insert(DB, rows);
+  const snapshot = await readPortfolio(DB, { now, projects, collectionEnabled: true, admittedProjects: ['alibi'] });
+  snapshot.mode = 'demo';
+  const signals = buildSignals(snapshot, now).filter(item => item.project === 'alibi' && item.rule.startsWith('operation.puzzle.solve.'));
+  assert.deepEqual(signals.map(item => item.rule), ['operation.puzzle.solve.low_sample']);
+  assert.equal(signals[0].evidence.attempts, 25);
+  assert.equal(signals[0].evidence.open, 24);
+});
