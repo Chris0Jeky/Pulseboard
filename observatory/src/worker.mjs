@@ -1,4 +1,5 @@
 import { projects } from './projects.mjs';
+import { collectionAdmission } from './admission.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { assets } from './assets.mjs';
@@ -29,7 +30,7 @@ async function authorized(request, secret) {
   for (let i = 0; i < aa.length; i++) mismatch |= aa[i] ^ bb[i];
   return mismatch === 0;
 }
-export async function summary(db, now = Date.now()) {
+export async function summary(db, now = Date.now(), admission = collectionAdmission({})) {
   const since = now - 7 * 86400000;
   const counts = (await db.prepare(`SELECT project, event, release, COUNT(*) AS n, MAX(received) AS last
     FROM events WHERE received >= ? GROUP BY project, event, release`).bind(since).all()).results;
@@ -44,10 +45,12 @@ export async function summary(db, now = Date.now()) {
       WHERE received>=? AND event='action.requested' GROUP BY project, session) a GROUP BY a.project`).bind(since, since).all()).results;
   const probes = (await db.prepare('SELECT * FROM probes').all()).results;
   const budgets = (await db.prepare('SELECT project, used FROM budget WHERE day=?').bind(new Date(now).toISOString().slice(0, 10)).all()).results;
-  return { generated: now, windowDays: 7, provenance: 'client-reported, opt-in; not verified people' + (Object.values(projects).some(p => p.probe?.binding) ? '; service-bound probes observe the application, not its public edge' : ''),
+  return { generated: now, windowDays: 7, collectionEnabled: admission.enabled, collectionConfigurationValid: admission.valid,
+    provenance: 'client-reported, opt-in; not verified people' + (Object.values(projects).some(p => p.probe?.binding) ? '; service-bound probes observe the application, not its public edge' : ''),
     projects: Object.entries(projects).map(([id, p]) => {
       const probe = probes.find(x => x.project === id), funnel = funnels.find(x => x.project === id);
       return { id, label: p.label, configuredOrigin: p.origin, probeExpected: !!p.probe,
+        collectionEligible: Boolean(p.origin), collectionAdmitted: admission.admitted.includes(id),
         monitor: probe ? { ...probe, state: monitorState(probe, now) } : { state: 'unknown' },
         counts: counts.filter(x => x.project === id), sessions: sessions.find(x => x.project === id)?.n || 0,
         daily: daily.filter(x => x.project === id),
@@ -55,8 +58,8 @@ export async function summary(db, now = Date.now()) {
         budgetUsed: budgets.find(x => x.project === id)?.used || 0, budgetLimit: p.dailyLimit };
     }) };
 }
-/** Projects admitted while COLLECT_ENABLED is true: a comma-separated list in COLLECT_PROJECTS, empty means none. */
-export const collecting = env => String(env.COLLECT_PROJECTS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+/** Projects admitted while COLLECT_ENABLED is true. Invalid or local-only ids fail the whole policy closed. */
+export const collecting = env => collectionAdmission(env).admitted;
 export async function handle(request, env) {
   const url = new URL(request.url);
   // Held outside the try so an unexpected failure after the origin match is still readable by the calling page.
@@ -73,11 +76,13 @@ export async function handle(request, env) {
     if (url.pathname === '/healthz' || url.pathname === '/readyz') {
       if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'method' }, 405, { Allow: 'GET, HEAD' });
       if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
-      return json({ ready: true, schema: await ready(env.DB) });
+      const schema = await ready(env.DB), admission = collectionAdmission(env);
+      const collection = { enabled: admission.enabled, configured: admission.configured, admitted: admission.admitted, invalid: admission.invalid };
+      return json({ ready: admission.valid, schema, collection }, admission.valid ? 200 : 503);
     }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
-      return json(await summary(env.DB));
+      return json(await summary(env.DB, Date.now(), collectionAdmission(env)));
     }
     if (url.pathname === '/v1/portfolio' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
@@ -85,7 +90,9 @@ export async function handle(request, env) {
       if (!/^(1|7|14)$/.test(value) || url.searchParams.getAll('days').length > 1 || !WINDOWS.includes(Number(value))) {
         return json({ error: 'window', allowedDays: WINDOWS }, 400);
       }
-      return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: env.COLLECT_ENABLED === 'true' }));
+      const admission = collectionAdmission(env);
+      if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
+      return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: admission.enabled, admittedProjects: admission.admitted }));
     }
     const match = /^\/v1\/collect\/([a-z0-9-]+)$/.exec(url.pathname);
     if (!match) return json({ error: 'not_found' }, 404);
@@ -97,7 +104,8 @@ export async function handle(request, env) {
     if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
     // Two switches: the global one and a per-project allowlist, so a pilot never opens admission for every
     // registered origin (Origin is forgeable; the budget of a project that has not opted in must stay untouched).
-    if (env.COLLECT_ENABLED !== 'true' || !collecting(env).includes(id)) return json({ error: 'disabled' }, 503, cors);
+    const admission = collectionAdmission(env);
+    if (!admission.valid || !admission.admitted.includes(id)) return json({ error: 'disabled' }, 503, cors);
     if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers.get('content-type') || '')) return json({ error: 'media_type' }, 415, cors);
     let body;
     try { body = await readBounded(request); } catch { return json({ error: 'invalid_body' }, 400, cors); }

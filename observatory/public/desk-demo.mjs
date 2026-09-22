@@ -34,7 +34,7 @@ export function makeDemo(scenario = 'release', { now = Date.now(), days = 7, pha
     const stale = scenario === 'blind' || (i === 6 && scenario === 'release');
     const down = scenario === 'release' && i === 0 && phase === 1;
     const checked = local ? null : end - (stale ? 95 : 3) * 60_000;
-    return { id, label, origin: null, probeExpected: !local,
+    return { id, label, origin: null, collectionEligible: !local, collectionAdmitted: !local, probeExpected: !local,
       monitor: { state: local ? 'unknown' : down ? 'down' : 'up', checked, opened: down ? end - 18 * 60_000 : null,
         status: down ? 503 : 200, duration: down ? 8100 : 80 + i * 23, failures: down ? 4 : 0, successes: down ? 0 : 8 },
       probeSamples: fraction(local ? 0 : down ? 190 : 201, local ? 0 : 201),
@@ -43,7 +43,7 @@ export function makeDemo(scenario = 'release', { now = Date.now(), days = 7, pha
       routes: empty ? [] : [{ route: 'home', n: Math.floor(n('events') * 0.3) }, { route: 'workspace', n: n('events') - Math.floor(n('events') * 0.3) }],
       releases, budget: { used: empty ? 0 : scenario === 'pressure' ? 2400 + i : Math.max(admittedToday, 280 + i * 47), limit: 2500, day: new Date(end).toISOString().slice(0, 10) } };
   });
-  return { schema: 'pulseboard.portfolio/1', mode: 'demo', generatedAt: end, collectionEnabled: true,
+  return { schema: 'pulseboard.portfolio/2', mode: 'demo', generatedAt: end, collectionEnabled: true,
     window: { start, end, days, timezone: 'UTC' }, projects,
     limitations: ['Every number in this scenario is invented. No production request is made.',
       'Sessions are client-reported, not verified people. Repeated action outcomes are possible.',

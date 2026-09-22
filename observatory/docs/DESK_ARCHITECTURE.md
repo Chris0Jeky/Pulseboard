@@ -32,10 +32,12 @@ header. Supported windows are exactly 1, 7 and 14 days. Duplicate, unsupported a
 non-canonical window values fail with 400. Authentication precedes database reads.
 Responses use `Cache-Control: no-store`; unauthenticated reads return 401.
 
-The schema identifier is `pulseboard.portfolio/1`. A response contains the UTC
+The schema identifier is `pulseboard.portfolio/2`. A response contains the UTC
 window, generation time, collection switch, explicit limitations, and configured
-projects with bounded event aggregates, route receipts, release cohorts, sampled
-probe outcomes, current probe state and today's admission budget. No raw event,
+projects with separate `collectionEligible` and `collectionAdmitted` flags alongside
+bounded event aggregates, route receipts, release cohorts, sampled probe outcomes,
+current probe state and today's admission budget. A zero event count for a registered
+but non-admitted project is therefore not presented as evidence of no traffic. No raw event,
 session or receipt identifier is returned. Projects without data remain present.
 
 The reader performs nine SELECTs in one D1-compatible transactional batch. Its

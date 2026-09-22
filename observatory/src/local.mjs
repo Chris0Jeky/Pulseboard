@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from './sqlite.mjs';
 import { handle } from './worker.mjs';
+import { collectionAdmission } from './admission.mjs';
 import { assets } from './assets.mjs';
 
 const SERVER_OPTIONS = { maxHeaderSize: 8192, requestTimeout: 10000, headersTimeout: 10000 };
@@ -22,12 +23,19 @@ export function resolveReadToken(env = process.env, random = randomBytes) {
   return { token, supplied };
 }
 
+function admissionLines(admission) {
+  return [
+    ...(admission.valid ? [] : ['COLLECT_PROJECTS contains unknown or local-only ids: ' + admission.invalid.join(', ') + '. Collection fails closed and /readyz returns 503.']),
+    'Collection switch is ' + (admission.enabled ? 'enabled' : 'disabled') + '; admitted projects: ' + (admission.admitted.join(', ') || '(none)') + '.',
+  ];
+}
+
 export function runnerBanner({ origin, token, supplied, collectEnabled, collectProjects }) {
   return [
     `Pulseboard Desk: ${origin}`,
     supplied ? 'Read token: using READ_TOKEN from the environment; it is not printed here.'
       : 'Read token (generated for this run; paste into the desk; not persisted): ' + token,
-    'Collection is ' + (collectEnabled ? 'enabled for: ' + (collectProjects || '(no project listed in COLLECT_PROJECTS)') : 'disabled.'),
+    ...admissionLines(collectionAdmission({ COLLECT_ENABLED: collectEnabled ? 'true' : 'false', COLLECT_PROJECTS: collectProjects })),
     'Local runner never probes the public sites: there is no local probe command, and egress stays off. Cloudflare cron does the probing in a deployment.',
   ];
 }

@@ -65,6 +65,15 @@ export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) 
     'Current readings are unknown. The remaining observations come from the last-good snapshot.',
     { generatedAt: snapshot.generatedAt, lastKnown: true }, 'Reconnect to the collector before treating any observation as current health.');
   for (const p of snapshot.projects) {
+    if (snapshot.collectionEnabled && p.collectionEligible && !p.collectionAdmitted) {
+      const retainedEvents = p.totals.events;
+      const detail = retainedEvents === 0
+        ? 'Its zero event count cannot be read as no traffic because this project is outside the active collection allowlist.'
+        : `${retainedEvents} retained events belong to the selected historical window; current browser collection is not admitted.`;
+      add(p, 'collection.not_admitted', 'note', `${p.label} is registered but not admitted`, detail,
+        { collectionEnabled: true, collectionEligible: true, collectionAdmitted: false, retainedEvents },
+        'Add the exact project id to COLLECT_PROJECTS after its rollout review, or keep the exclusion intentional.');
+    }
     const state = monitorState(p, now);
     const recordedDown = p.monitor?.state === 'down';
     const lastKnownDown = refreshFailed === true && recordedDown;
@@ -107,12 +116,14 @@ export function reviewState(signal, reviews, now = Date.now()) {
 /** `stale` means the last refresh failed: the snapshot below is last-good history, not a current reading. */
 export function makeBrief(snapshot, signals, stale = false) {
   const projects = snapshot.projects;
+  const eligible = projects.filter(project => project.collectionEligible).length;
+  const admitted = projects.filter(project => project.collectionAdmitted).length;
   const mode = snapshot.mode === 'demo' ? 'SYNTHETIC DEMO' : 'PRIVATE AGGREGATE SNAPSHOT';
   return [`# Pulseboard field note`, '', `${mode}. Generated ${new Date(snapshot.generatedAt).toISOString()}.`,
     ...(stale === true ? ['REFRESH FAILED. Last-good snapshot; current health unknown.'] : []),
     `Window: ${new Date(snapshot.window.start).toISOString()} to ${new Date(snapshot.window.end).toISOString()} (end exclusive).`,
     '', `${projects.length} projects. ${sum(projects, p => p.totals.sessions)} reported sessions, not verified people.`,
-    `Collection: ${snapshot.collectionEnabled ? 'enabled' : 'disabled'}. ${signals.length} rule observations.`, '',
+    `Collection switch: ${snapshot.collectionEnabled ? 'enabled' : 'disabled'}. Browser admission: ${admitted}/${eligible} eligible projects. ${signals.length} rule observations.`, '',
     ...signals.flatMap(s => [`## ${s.title}`, s.detail, `Evidence: ${JSON.stringify(s.evidence)}`, `Next check: ${s.next}`, '']),
     '## Reading limits', ...snapshot.limitations.map(x => `- ${x}`), '',
     'This is an operator note, not an instruction to merge, deploy, page anyone, or publish private data.', ''].join('\n');

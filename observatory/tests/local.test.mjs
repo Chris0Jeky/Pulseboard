@@ -23,6 +23,14 @@ test('local runner exposes a bounded HTTP and process-lifecycle contract', async
   assert.equal(suppliedBanner.join('\n').includes(suppliedToken), false);
   assert.match(suppliedBanner.join('\n'), /not printed/i);
 
+  assert.match(suppliedBanner.join('\n'), /Collection switch is disabled; admitted projects: \(none\)\./);
+  const admitted = runnerBanner({ origin: 'http://127.0.0.1:8788', ...supplied, collectEnabled: true, collectProjects: ' alibi ' }).join('\n');
+  assert.match(admitted, /Collection switch is enabled; admitted projects: alibi\./);
+  assert.doesNotMatch(admitted, /fails closed/);
+  const refused = runnerBanner({ origin: 'http://127.0.0.1:8788', ...supplied, collectEnabled: true, collectProjects: 'alibi,unknown-site' }).join('\n');
+  assert.match(refused, /unknown or local-only ids: unknown-site\. Collection fails closed/);
+  assert.match(refused, /admitted projects: \(none\)\./);
+
   const generated = resolveReadToken({}, size => Buffer.alloc(size, 7));
   assert.equal(generated.supplied, false);
   assert.equal(generated.token, '07'.repeat(32));
