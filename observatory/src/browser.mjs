@@ -20,7 +20,8 @@ export function createObserver(config, runtime = globalThis, onSelfRevoke = () =
   function clear() {
     epoch++; queue = []; session = ''; seq = 0;
     if (timer !== null) runtime.clearTimeout(timer);
-    timer = null; flight?.abort.abort();
+    // An abort we cause (disposal, revocation, re-consent) is not a failed request.
+    timer = null; if (flight) { flight.cancelled = true; flight.abort.abort(); }
   }
   function status() { return { active: consent && eligible(), queued: queue.length, requests, ...stats }; }
   function revoke() {
@@ -90,8 +91,7 @@ export function createObserver(config, runtime = globalThis, onSelfRevoke = () =
       // The request was issued; the collector may have admitted it. Unknown is not a failure and never trips the circuit.
       if (current.timedOut) settleBatch(current, 'unknown');
       else {
-        // A batch reissued on pagehide is aborted by dispose(); its keepalive attempt decides the outcome.
-        if (!current.handed) stats.failures++;
+        if (!current.cancelled) stats.failures++;
         // Deliberately at-most-once: failed batches are dropped, never revived on re-consent.
         settleBatch(current, 'failed');
       }
@@ -107,7 +107,7 @@ export function createObserver(config, runtime = globalThis, onSelfRevoke = () =
     const settle = () => { keepaliveBytes -= bytes; };
     try {
       post(body, { keepalive: true })?.then?.(
-        response => { settle(); settleBatch(record, response?.ok ? 'ok' : 'failed'); },
+        response => { settle(); if (!response?.ok) stats.failures++; settleBatch(record, response?.ok ? 'ok' : 'failed'); },
         () => { settle(); stats.failures++; settleBatch(record, 'failed'); });
     } catch { settle(); stats.failures++; settleBatch(record, 'failed'); }
     return true;

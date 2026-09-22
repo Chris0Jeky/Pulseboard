@@ -180,5 +180,14 @@ test('fully failed handovers count toward the circuit, once per batch', async ()
     assert.equal(client.flushOnHide(), 1); await pending; await new Promise(resolve => setImmediate(resolve));
   }
   assert.equal(client.status().dropped, 3); assert.equal(client.track('page.view'), false); assert.equal(calls.length, 6);
+  // Every definitively failed request is counted, the handed-over original and its non-2xx keepalive alike.
+  assert.equal(client.status().failures, 6);
   client.dispose();
+});
+test('aborts the observer causes itself are not failed requests', async () => {
+  const { client } = setup({}, hang);
+  client.setConsent(true); client.track('page.view'); const pending = client.flush();
+  client.dispose(); await pending;
+  const { failures, dropped, unknown } = client.status();
+  assert.deepEqual({ failures, dropped, unknown }, { failures: 0, dropped: 0, unknown: 0 });
 });
