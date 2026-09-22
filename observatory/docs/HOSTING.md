@@ -176,7 +176,7 @@ owner actions; no agent holds either.
 ### First live reading, 2026-09-23
 
 - Worker version `1d071326-6c6d-4594-83a8-c5ea2d5865bb` deployed from `main` at `93b73ed` (previous
-  `a40b5c40…`, the rollback target). Schema and bindings unchanged; `/healthz` and `/readyz` 200,
+  `a40b5c40…`, per `wrangler deployments list`). Schema and bindings unchanged; `/healthz` and `/readyz` 200,
   `/v1/portfolio` and `/v1/github-evidence` 401 without the read token.
 - `GITHUB_EVIDENCE_TOKEN` set by the owner (fine-grained, `Chris0Jeky/Alibi` only, Actions and Contents read).
 - Authenticated `GET /v1/github-evidence?project=alibi`: `configuration: ready`, repository `observed`;
@@ -184,7 +184,8 @@ owner actions; no agent holds either.
   (v0.11.4, v0.11.3, v0.11.2, v0.11.1, v0.11.0). No item read `unavailable/network`, so the edge accepts
   the fetch option set.
 - The same portfolio read showed Alibi admitted with its probe `up` but zero events over 7 days: live Alibi
-  serves 0.11.5, which the closed release allowlist did not list, so every event from the current release was
-  rejected. #71 added `0.11.5`; Worker version `d76f3d16-6a34-4b8c-bca1-ba47009b5701` deployed it from `main` at
+  serves 0.11.5 and its served artifact (`assets/observatory.742e8aa3bb5e.js`) lists `0.11.5`, so the client sent
+  `release: "0.11.5"`, which the closed release allowlist did not list: every consented event from the current
+  release was rejected. #71 added `0.11.5`; Worker version `d76f3d16-6a34-4b8c-bca1-ba47009b5701` deployed it from `main` at
   `60e7880` the same day (`/healthz`, `/readyz` 200; `/v1/portfolio` 401 unauthenticated). A consented
-  production event from 0.11.5 has not been observed yet.
+  production event from 0.11.5 has not been observed yet. Rollback from `d76f3d16` goes to `1d071326`.
