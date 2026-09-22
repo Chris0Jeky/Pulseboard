@@ -19,7 +19,7 @@ TOKEN = os.environ.get('READ_TOKEN', 'desk-browser-test-only-' + '0' * 40)
 
 def offline_html():
     html = (PUBLIC / 'index.html').read_text()
-    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'dashboard.mjs'])
+    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-network.mjs', 'desk-release.mjs', 'dashboard.mjs'])
     source = re.sub(r'^import .*?;\n', '', source, flags=re.M)
     source = re.sub(r'\bexport (?=(?:async )?(?:const|function|class))', '', source)
     html = html.replace('<link rel="stylesheet" href="/dashboard.css">', '<style>' + (PUBLIC / 'dashboard.css').read_text() + '</style>')
@@ -63,6 +63,16 @@ async def run(args):
             await expect(page.locator('#message')).to_contain_text('collection disabled')
             # Positive control: the recorder below can only prove an absence of /v1/ reads if it sees a real one here.
             assert any('/v1/portfolio' in url for url in requests), 'Request recording missed the authenticated read'
+            assert not any('/v1/github-evidence' in url for url in requests), 'GitHub evidence must not join the poll'
+            await page.locator('.project-name button').filter(has_text='Alibi').click()
+            await page.get_by_role('button', name='Read workflow evidence').click()
+            # Alibi is mapped, but this runner has no GITHUB_EVIDENCE_TOKEN: the real route answers no-token,
+            # every mapped item reads unconfigured and nothing is requested from GitHub.
+            await expect(page.locator('#github-evidence')).to_contain_text('NO-TOKEN')
+            await expect(page.locator('#github-evidence')).to_contain_text('unconfigured · no-server-token')
+            assert any('/v1/github-evidence?project=alibi' in url for url in requests)
+            assert not any('api.github.com' in url for url in requests)
+            await page.keyboard.press('Escape')
             await page.locator('#disconnect').click()
             results.append('real HTTP assets, protected API and SQLite connection')
         demo_mark = len(requests)
@@ -74,8 +84,22 @@ async def run(args):
         await page.locator('.project-name button').filter(has_text='Alibi').click()
         await expect(page.locator('#detail-dialog')).to_be_visible()
         await expect(page.locator('#detail')).to_contain_text('Paired flow')
+        await expect(page.locator('#github-evidence')).to_contain_text('Not read')
+        await page.get_by_role('button', name='Read workflow evidence').click()
+        await expect(page.locator('#github-evidence')).to_contain_text('SYNTHETIC')
+        await expect(page.locator('#github-evidence .notice')).to_contain_text('Temporal proximity, not a cause.')
+        await page.get_by_role('button', name='Pin to release notebook').click()
+        await expect(page.locator('#notebook-dialog')).to_be_visible()
+        await page.locator('#suspected').fill('The deploy may have caused the probe failures.')
+        await page.locator('#notebook button[value=md]').click()
+        # Both fields are required: the browser keeps the notebook open instead of writing a half note.
+        await expect(page.locator('#notebook-dialog')).to_be_visible()
+        await page.locator('#alternative-check').fill('Check the hosting status page and the probe target first.')
+        await page.locator('#notebook button[value=md]').click()
+        await expect(page.locator('#export-preview')).to_contain_text('a lead, not proof')
+        await expect(page.locator('#export-warning')).to_contain_text('SYNTHETIC DEMO.')
         await page.keyboard.press('Escape')
-        results.append('demo, search and evidence drawer')
+        results.append('demo, search, evidence drawer and synthetic GitHub notebook')
         await page.locator('[data-view=releases]').click()
         await expect(page.locator('#page-title')).to_have_text('Release lab.')
         await expect(page.locator('#view')).to_contain_text('percentage points')
@@ -148,10 +172,14 @@ async def run(args):
         assert 'example-builder' not in await page.locator('#view').text_content()
         # Deterministic response fault injection. This does not claim real production failures.
         await page.evaluate('''fixture => {
-          window.deskTestFixture = fixture; window.deskTestStatus = 200; window.deskTestDelay = 0; window.deskTestBad = false;
-          window.fetch = async () => { const code = window.deskTestStatus, delay = window.deskTestDelay;
+          window.deskTestFixture = fixture; window.deskTestStatus = 200; window.deskTestDelay = 0; window.deskTestBad = false; window.deskTestCalls = 0;
+          window.fetch = async (_url, init = {}) => { const code = window.deskTestStatus, delay = window.deskTestDelay;
+            window.deskTestCalls += 1;
             const payload = window.deskTestBad ? {schema:'bad'} : structuredClone(window.deskTestFixture);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(resolve, delay);
+              init.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); }, {once:true});
+            });
             return new Response(JSON.stringify(payload), {status:code, headers:{'Content-Type':'application/json'}});
           };
         }''', fixture())
@@ -169,9 +197,61 @@ async def run(args):
         # A failed refresh must not launder a last-known failure into an unremarkable "stale probe" chip.
         assert await page.locator('#view .state-chip.down').count() == 1
         await expect(page.locator('#view .state-chip.down')).to_contain_text('last known')
+        assert await page.locator('#view .state-chip.down.last-known').count() == 1
         assert await page.locator('#view .state-chip.stale').count() > 0
         await expect(page.locator('#view')).to_contain_text('Alibi')
-        results.append('failed refresh keeps last-good evidence, including a last-known probe failure')
+        await page.locator('[data-view=signals]').click()
+        await expect(page.locator('#view')).to_contain_text('The latest refresh failed')
+        await expect(page.locator('#view')).to_contain_text('last-known')
+        await page.locator('[data-view=overview]').click()
+        await page.set_viewport_size({'width': 390, 'height': 900})
+        assert await page.evaluate('document.documentElement.scrollWidth') <= 390
+        await page.set_viewport_size({'width': 1440, 'height': 1100})
+        results.append('failed refresh qualifies inbox evidence and visually marks the last-known failure')
+
+        await page.evaluate('window.deskTestStatus = 200; window.deskTestBad = false; window.deskTestDelay = 0')
+        await page.locator('#refresh').click()
+        await expect(page.locator('#mode')).to_have_text('CONNECTED')
+        calls_before_hide = await page.evaluate('window.deskTestCalls')
+        emulation = await page.evaluate('''() => {
+          let hidden = false;
+          Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+          Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => hidden ? 'hidden' : 'visible' });
+          window.deskTestSetVisibility = value => {
+            hidden = Boolean(value);
+            document.dispatchEvent(new Event('visibilitychange'));
+            return { hidden: document.hidden, state: document.visibilityState };
+          };
+          return window.deskTestSetVisibility(true);
+        }''')
+        assert emulation == {'hidden': True, 'state': 'hidden'}
+        await page.evaluate("document.querySelector('#refresh').click()")
+        await page.wait_for_timeout(150)
+        assert await page.evaluate('window.deskTestCalls') == calls_before_hide
+        visible = await page.evaluate('window.deskTestSetVisibility(false)')
+        assert visible == {'hidden': False, 'state': 'visible'}
+        resumed = calls_before_hide
+        for _ in range(40):
+            resumed = await page.evaluate('window.deskTestCalls')
+            if resumed > calls_before_hide:
+                break
+            await page.wait_for_timeout(50)
+        assert resumed > calls_before_hide
+        await expect(page.locator('#refresh')).to_be_enabled()
+        results.append('hidden visibility suppresses reads and becoming visible resumes one')
+
+        await page.evaluate('window.deskTestDelay = 11000')
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await page.locator('#refresh').click()
+        await expect(page.locator('#mode')).to_have_text('STALE SNAPSHOT', timeout=12500)
+        elapsed = loop.time() - started
+        assert 9 <= elapsed < 12.5, elapsed
+        await page.evaluate('window.deskTestDelay = 0')
+        await page.locator('#refresh').click()
+        await expect(page.locator('#mode')).to_have_text('CONNECTED')
+        results.append('hung reads abort at the ten-second boundary')
+
         await page.evaluate('window.deskTestStatus = 200; window.deskTestBad = true')
         await page.locator('#refresh').click()
         await expect(page.locator('#mode')).to_have_text('STALE SNAPSHOT')

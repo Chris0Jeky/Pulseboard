@@ -50,3 +50,22 @@ export function makeDemo(scenario = 'release', { now = Date.now(), days = 7, pha
       'Probe samples are not time-weighted uptime. Release differences do not establish causality.',
       'Taskdeck remains local-first. No private board, task or repository content is collected.'] };
 }
+/** SYNTHETIC GitHub evidence for the demo drawer. Invented ids and hashes; it never reaches a server or a live snapshot. */
+export function makeGithubDemo(snapshot, project) {
+  const at = snapshot.generatedAt, opened = snapshot.projects.find(p => p.id === project)?.monitor.opened, deployedAt = (opened ?? at - 5 * 3600_000) - 42 * 60_000;
+  const read = (target, state, reason, sourceTime, evidence) => ({ target, state, reason, observedAt: at, sourceTime, evidence, resetAt: null, truncated: false, lastKnown: null });
+  const failed = read({ workflowId: 12, path: '.github/workflows/e2e.yml', branch: 'main', role: 'ci' }, 'failing', 'failure', at - 9 * 3600_000,
+    { runId: 902, runAttempt: 2, headSha: '0d15ea5e'.repeat(5), status: 'completed', conclusion: 'failure' });
+  return { schema: 'pulseboard.github-evidence/1', mode: 'demo', generatedAt: at, project, configuration: 'ready',
+    mapping: { schema: 'pulseboard.github-map/1', revision: 1, reviewedAt: '2026-09-10' }, rules: 'github-evidence/1',
+    repositories: [{ repositoryId: 1, repository: `example/${project}`, renamed: null, state: 'observed', reason: 'read', observedAt: at,
+      workflows: [read({ workflowId: 11, path: '.github/workflows/ci.yml', branch: 'main', role: 'ci' }, 'passing', 'success', deployedAt - 6 * 60_000,
+        { runId: 901, runAttempt: 1, headSha: 'c0ffee00'.repeat(5), status: 'completed', conclusion: 'success' }),
+        { ...failed, state: 'stale', reason: 'old-observation', observedAt: null, sourceTime: null, evidence: null,
+          lastKnown: { state: failed.state, reason: failed.reason, observedAt: at - 8 * 3600_000, sourceTime: failed.sourceTime, evidence: failed.evidence } }],
+      environments: [read({ name: 'production' }, 'passing', 'success', deployedAt + 90_000,
+        { deploymentId: 77, sha: 'c0ffee00'.repeat(5), environment: 'production', createdAt: deployedAt, status: 'success' })],
+      releases: read({ max: 3 }, 'observed', 'listed', deployedAt - 60_000, { releases: [{ id: 5, tag: '0.6.1', prerelease: false, publishedAt: deployedAt - 60_000 }] }) }],
+    limitations: ['SYNTHETIC. Every repository, run, deployment and release here is invented. No request reached GitHub.',
+      'Temporal proximity is not a cause. Stale readings are last-known history, never current state.'] };
+}

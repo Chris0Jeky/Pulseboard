@@ -1,23 +1,31 @@
-import fs from 'fs'
-import path from 'path'
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
 
-const tailwindDir = path.resolve('node_modules', 'tailwindcss')
-const themePath = path.join(tailwindDir, 'theme.css')
-const preflightPath = path.join(tailwindDir, 'preflight.css')
-const utilitiesPath = path.join(tailwindDir, 'utilities.css')
+const root = process.cwd()
+const cliPath = path.resolve(root, 'node_modules', 'tailwindcss', 'lib', 'cli.js')
+const inputPath = path.resolve(root, 'src', 'tailwind.input.css')
+const outputPath = path.resolve(root, 'src', 'tailwind.generated.css')
 
-function transformThemeCss(css) {
-  return css.replace('@theme default {', ':root {')
+for (const [label, file] of [
+  ['Tailwind CLI', cliPath],
+  ['Tailwind input stylesheet', inputPath],
+]) {
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    throw new Error(`${label} is missing: ${file}`)
+  }
 }
 
-function build() {
-  const themeCss = transformThemeCss(fs.readFileSync(themePath, 'utf8'))
-  const preflightCss = fs.readFileSync(preflightPath, 'utf8')
-  const utilitiesCss = fs.readFileSync(utilitiesPath, 'utf8')
+const result = spawnSync(
+  process.execPath,
+  [cliPath, '-i', inputPath, '-o', outputPath],
+  { cwd: root, stdio: 'inherit' },
+)
 
-  const output = `${themeCss}\n${preflightCss}\n${utilitiesCss}`
-  fs.writeFileSync(path.resolve('src', 'tailwind.generated.css'), output)
-  console.log('Generated src/tailwind.generated.css')
+if (result.error) throw result.error
+if (result.status !== 0) process.exit(result.status ?? 1)
+if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
+  throw new Error('Tailwind generated an empty stylesheet')
 }
 
-build()
+console.log('Generated src/tailwind.generated.css with the installed Tailwind 3 CLI')

@@ -2,7 +2,7 @@
 API dependencies for dependency injection.
 """
 
-from typing import Annotated, Generator
+from typing import Annotated
 
 from fastapi import Depends
 from sqlmodel import Session

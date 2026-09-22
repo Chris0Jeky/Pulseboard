@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath, URL } from 'node:url'
+import { workbenchChunk } from './config/chunks'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -86,6 +87,11 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: workbenchChunk,
+      },
+    },
   },
   test: {
     globals: true,

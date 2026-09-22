@@ -8,6 +8,7 @@
     "dev": "vite",
     "build:css": "node scripts/build-tailwind-css.js",
     "build": "npm run build:css && vue-tsc -b && vite build",
+    "build:budget": "node scripts/check-bundle-budget.mjs",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -25,7 +26,7 @@
     "@types/node": "^24.10.0",
     "@vite-pwa/assets-generator": "^1.0.2",
     "@vitejs/plugin-vue": "^6.0.1",
-    "@vitest/ui": "^4.0.10",
+    "@vitest/ui": "^5.0.1",
     "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.8.1",
     "autoprefixer": "^10.4.22",
@@ -36,7 +37,7 @@
     "typescript": "~5.9.3",
     "vite": "^7.2.2",
     "vite-plugin-pwa": "^1.1.0",
-    "vitest": "^4.0.10",
+    "vitest": "^5.0.1",
     "vue-tsc": "^3.1.3"
   }
 }

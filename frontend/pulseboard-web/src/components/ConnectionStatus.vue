@@ -80,10 +80,12 @@
 import { computed, ref } from 'vue'
 import { useUiStore } from '../stores/ui'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   onReconnect?: () => void
   reconnectAttempts?: number
-}>()
+}>(), {
+  reconnectAttempts: 0,
+})
 
 const uiStore = useUiStore()
 const showDetails = ref(false)

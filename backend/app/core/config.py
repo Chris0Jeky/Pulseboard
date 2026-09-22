@@ -4,7 +4,7 @@ Core configuration module for Pulseboard.
 Uses pydantic-settings to load configuration from environment variables.
 """
 
-from typing import Any, Dict, List
+import json
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,21 +29,30 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./pulseboard.db"
 
     # CORS settings
-    cors_origins: List[str] | str = ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176", "http://localhost:3000"]
+    cors_origins: list[str] | str = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+        "http://localhost:3000",
+    ]
 
     @field_validator("cors_origins", mode="before")
     @classmethod
-    def parse_cors_origins(cls, v: Any) -> List[str] | str:
-        """Parse CORS origins from string or list."""
-        if isinstance(v, str):
-            # Handle JSON array string
-            if v.startswith("["):
-                import json
-
-                return json.loads(v)
-            # Handle comma-separated string
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    def parse_cors_origins(cls, value: object) -> list[str] | str:
+        """Parse CORS origins from a JSON array, comma-separated string, or list."""
+        if isinstance(value, str):
+            if value.startswith("["):
+                parsed: object = json.loads(value)
+                if isinstance(parsed, list) and all(
+                    isinstance(origin, str) for origin in parsed
+                ):
+                    return parsed
+                raise ValueError("CORS origins JSON must be an array of strings")
+            return [origin.strip() for origin in value.split(",")]
+        if isinstance(value, list) and all(isinstance(origin, str) for origin in value):
+            return value
+        raise ValueError("CORS origins must be a string or list of strings")
 
     # Data Hub settings
     history_window_minutes: int = 10

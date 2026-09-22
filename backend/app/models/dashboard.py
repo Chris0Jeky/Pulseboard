@@ -7,7 +7,8 @@ from typing import List, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
-from sqlmodel import Column, DateTime, Field as SQLField, Relationship, SQLModel, func
+from sqlmodel import Column, DateTime, Relationship, SQLModel, func
+from sqlmodel import Field as SQLField
 
 
 class DashboardBase(SQLModel):

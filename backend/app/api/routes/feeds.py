@@ -4,16 +4,18 @@ Feed API routes.
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from sqlmodel import select
 
 from app.api.deps import SessionDep
 from app.feeds import FEED_METADATA, FEED_TYPES, get_feed_class
+from app.hub.hub import DataHub
 from app.models import FeedCreate, FeedDefinition, FeedRead, FeedUpdate
-from sqlmodel import select
 
 router = APIRouter(prefix="/feeds", tags=["feeds"])
 logger = logging.getLogger(__name__)
@@ -59,21 +61,19 @@ def list_feed_types() -> List[FeedTypeInfo]:
 @router.post("", response_model=FeedRead, status_code=status.HTTP_201_CREATED)
 def create_feed(feed: FeedCreate, session: SessionDep) -> FeedDefinition:
     """Create a new feed definition."""
-    # Validate feed type
     if not get_feed_class(feed.type):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown feed type: {feed.type}",
         )
 
-    # Validate config JSON
     try:
         json.loads(feed.config_json)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in config_json",
-        )
+        ) from exc
 
     db_feed = FeedDefinition.model_validate(feed)
     session.add(db_feed)
@@ -101,26 +101,22 @@ def update_feed(feed_id: UUID, feed_update: FeedUpdate, session: SessionDep) -> 
     if not feed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
 
-    # Validate feed type if being updated
     update_data = feed_update.model_dump(exclude_unset=True)
-    if "type" in update_data:
-        if not get_feed_class(update_data["type"]):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown feed type: {update_data['type']}",
-            )
+    if "type" in update_data and not get_feed_class(update_data["type"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown feed type: {update_data['type']}",
+        )
 
-    # Validate config JSON if being updated
     if "config_json" in update_data:
         try:
             json.loads(update_data["config_json"])
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid JSON in config_json",
-            )
+            ) from exc
 
-    # Update fields
     for field, value in update_data.items():
         setattr(feed, field, value)
 
@@ -156,15 +152,11 @@ class FeedTestResult(BaseModel):
 
 @router.post("/{feed_id}/test", response_model=FeedTestResult)
 async def test_feed(feed_id: UUID, session: SessionDep) -> FeedTestResult:
-    """Test a feed by fetching data once."""
-    import asyncio
-    from datetime import datetime, timezone
-
+    """Test a feed by fetching data once without publishing to live dashboards."""
     feed = session.get(FeedDefinition, feed_id)
     if not feed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
 
-    # Get feed class
     feed_class = get_feed_class(feed.type)
     if not feed_class:
         raise HTTPException(
@@ -172,18 +164,16 @@ async def test_feed(feed_id: UUID, session: SessionDep) -> FeedTestResult:
             detail=f"Unknown feed type: {feed.type}",
         )
 
-    # Parse config
     try:
         config = json.loads(feed.config_json)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in config_json",
-        )
+        ) from exc
 
-    # Instantiate and test feed
     try:
-        feed_instance = feed_class(feed_id=feed.id, config=config, hub=None)
+        feed_instance = feed_class(feed_id=feed.id, config=config, hub=DataHub())
         data = await feed_instance.fetch_data()
 
         return FeedTestResult(
@@ -192,11 +182,11 @@ async def test_feed(feed_id: UUID, session: SessionDep) -> FeedTestResult:
             error=None,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
-    except Exception as e:
-        logger.error(f"Feed test failed for {feed_id}: {e}")
+    except Exception as exc:
+        logger.error(f"Feed test failed for {feed_id}: {exc}")
         return FeedTestResult(
             success=False,
             data=None,
-            error=str(e),
+            error=str(exc),
             timestamp=datetime.now(timezone.utc).isoformat(),
         )

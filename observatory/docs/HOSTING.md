@@ -150,3 +150,24 @@ account-wide usage still apply; consult the official [Workers pricing](https://d
 and [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) before activation.
 The OAuth token used here cannot read account subscriptions (403), so account plan identity
 and spending notifications require the owner's dashboard check.
+
+## GitHub evidence token (q-9, decided 2026-09-22)
+
+The owner chose Alibi as the first mapped project and approved a token. The mapping ships in
+`src/github-map.mjs` (revision 2: repository `1360756863`, workflow `352677495` = `.github/workflows/check.yml`
+on `main`, the latest 5 releases, no deployment environment). Creating the token and setting the secret are
+owner actions; no agent holds either.
+
+1. Create a fine-grained personal access token: resource owner `Chris0Jeky`, repository access "Only select
+   repositories" with `Alibi` alone, permissions **Actions: read** and **Contents: read** (Metadata: read is
+   added automatically), and a short expiry (90 days or less). Nothing else.
+2. Local Desk: export `GITHUB_EVIDENCE_TOKEN` in the foreground shell before `node src/local.mjs`. The banner
+   says whether the connector was built; the token is never printed.
+3. Hosted Desk: the Worker deployed on 2026-09-10 predates `/v1/github-evidence`, so deploy current `main`
+   first (`npx wrangler deploy --dry-run`, then `npx wrangler deploy`), then run
+   `npx wrangler secret put GITHUB_EVIDENCE_TOKEN` and paste the token at the prompt (never on the command
+   line). Rotate with the same command; remove with `npx wrangler secret delete GITHUB_EVIDENCE_TOKEN`.
+4. Check: open the Alibi dossier, press **Read workflow evidence**. Expect the `check.yml` row as `passing`,
+   `failing` or `pending` with a run id and head SHA, and releases as `observed`. If every item reads
+   `unavailable/network` on the hosted Worker only, the edge rejected the fetch option set: record it in #20
+   and remove the secret; it can never read as a false pass.
