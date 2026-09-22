@@ -47,7 +47,7 @@ Use denominators from the same instrumented population. Do not divide opted-in c
 
 ## Budgets and data lifecycle
 
-At default settings each registered public project admits at most 1,000 event attempts per UTC day. Batches contain at most 20 events and 16 KiB. The SDK holds at most 100 events, permits 120 requests per mounted page, and opens its failure circuit after three failures. These are defensive product limits, not a billing guarantee or anti-abuse service.
+At default settings each registered public project admits at most 1,000 event attempts per UTC day. Batches contain at most 20 events and 16 KiB. The SDK holds at most 100 events, permits 120 requests per mounted page, and opens its failure circuit after three failures. A timed-out request is an unknown outcome, not a failure, and does not count toward the circuit. These are defensive product limits, not a billing guarantee or anti-abuse service.
 
 Admission and event writes share a D1 batch transaction. A random receipt is written only if the reservation succeeds; each insert checks that exact receipt. This avoids the common bug where a rejected reservation is followed by unconditional inserts. Duplicate event IDs still spend admission budget, intentionally conservative. Events expire after 14 days and probe history after 30 days. No longer-lived rollup silently preserves deleted raw data.
 
