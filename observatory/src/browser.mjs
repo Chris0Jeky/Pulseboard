@@ -61,7 +61,8 @@ export function createObserver(config, runtime = globalThis, onSelfRevoke = () =
     headers: { 'Content-Type': 'application/json' }, body, ...extra });
   const encode = batch => JSON.stringify({ events: batch });
   // One outcome per batch however many attempts carry it: sent on the first success; otherwise unknown if an
-  // attempt timed out after it was issued, or dropped, once every attempt has settled.
+  // attempt timed out after it was issued, or dropped, once every attempt has settled. A dropped batch is one
+  // genuine failure for the circuit; a batch from an earlier generation (disposal, re-consent) counts for nothing.
   function settleBatch(record, outcome) {
     if (record.done) return;
     const counted = record.generation === epoch;
@@ -69,7 +70,9 @@ export function createObserver(config, runtime = globalThis, onSelfRevoke = () =
     if (outcome === 'unknown') record.unknown = true;
     if (--record.attempts > 0) return;
     record.done = true;
-    if (counted) stats[record.unknown ? 'unknown' : 'dropped'] += record.batch.length;
+    if (!counted) return;
+    if (record.unknown) stats.unknown += record.batch.length;
+    else { stats.dropped += record.batch.length; failures++; }
   }
   async function flush() {
     if (!eligible()) { revoke(); return; }
@@ -88,7 +91,7 @@ export function createObserver(config, runtime = globalThis, onSelfRevoke = () =
       if (current.timedOut) settleBatch(current, 'unknown');
       else {
         // A batch reissued on pagehide is aborted by dispose(); its keepalive attempt decides the outcome.
-        if (!current.handed) { stats.failures++; if (generation === epoch) failures++; }
+        if (!current.handed) stats.failures++;
         // Deliberately at-most-once: failed batches are dropped, never revived on re-consent.
         settleBatch(current, 'failed');
       }

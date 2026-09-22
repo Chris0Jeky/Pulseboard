@@ -170,3 +170,15 @@ test('a handed-over batch counts once: sent if either attempt succeeds, dropped 
     client.dispose();
   }
 });
+test('fully failed handovers count toward the circuit, once per batch', async () => {
+  const { client, calls } = setup({}, (_url, options) => options.keepalive
+    ? Promise.resolve(new Response('{}', { status: 503 })) : Promise.reject(new TypeError('offline')));
+  client.setConsent(true);
+  for (let i = 0; i < 3; i++) {
+    client.track('page.view'); const pending = client.flush();
+    // A persisted (bfcache) pagehide hands the in-flight batch over; both attempts then fail.
+    assert.equal(client.flushOnHide(), 1); await pending; await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.equal(client.status().dropped, 3); assert.equal(client.track('page.view'), false); assert.equal(calls.length, 6);
+  client.dispose();
+});
