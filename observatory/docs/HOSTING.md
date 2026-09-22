@@ -188,4 +188,17 @@ owner actions; no agent holds either.
   `release: "0.11.5"`, which the closed release allowlist did not list: every consented event from the current
   release was rejected. #71 added `0.11.5`; Worker version `d76f3d16-6a34-4b8c-bca1-ba47009b5701` deployed it from `main` at
   `60e7880` the same day (`/healthz`, `/readyz` 200; `/v1/portfolio` 401 unauthenticated). A consented
-  production event from 0.11.5 has not been observed yet. Rollback from `d76f3d16` goes to `1d071326`.
+  production event from 0.11.5 has not been observed yet.
+
+### `puzzle.failed` admitted, 2026-09-23 (q-11)
+
+- #63 merged as `f53420b`: Alibi registers `puzzle.failed` and the named operation `puzzle.solve` v1.
+- Admission gate on a preview Worker (`pulseboard-observatory-preview`, scratch D1, version `3554a37b…`): one Alibi
+  batch with the registered `Origin`, release `0.11.5`, route `puzzle` and `puzzle.started`, `hint.requested`,
+  `puzzle.failed`, `puzzle.started`, `puzzle.completed` → 202; an unregistered event name → 400 `contract`; an
+  unregistered release → 400 `contract`. The preview was deleted afterwards (`/healthz` 404).
+- Production Worker version `eda4e81d-70f2-4731-95ce-f8be1362315f` deployed from `f53420b`; bindings unchanged
+  (`COLLECT_ENABLED` `"true"`, `COLLECT_PROJECTS` `"alibi"`). `/healthz`, `/readyz` 200; `/v1/portfolio` 401
+  unauthenticated and 200 with the read token, where Alibi carries `puzzle.solve` v1 with zero attempts, so the
+  operation query runs on the production database. Rollback goes to `d76f3d16…`.
+- Alibi does not emit `puzzle.failed` until its host artifact is regenerated (Chris0Jeky/Alibi#183).
