@@ -22,19 +22,19 @@ adapter of this file; `WORKBENCH.md` is the legacy runtime's user README.
 | Seam | Command from the repo root | Measured 2026-09-10 |
 |---|---|---|
 | `backend/**` | `cd backend && ../venv/Scripts/python -m pytest -q -p no:cacheprovider` | 67 passed, 9 s |
-| backend lint/types | `cd backend && ../venv/Scripts/python -m ruff check app` and `-m mypy app` | 19 and 9 errors, pre-existing (#13) |
-| `frontend/**` | `cd frontend/pulseboard-web && npx vitest run --maxWorkers=2` | 56 passed, 2 failed, pre-existing (#13), 17 s |
-| frontend build | `cd frontend/pulseboard-web && npm run build` | fails: Tailwind `theme.css` missing (#13) |
-| `observatory/**` | `cd observatory && npm test` | 157 passed, under 1 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
-| Desk browser | once: `python -m venv .browser-venv && .browser-venv/Scripts/pip install playwright==1.57.0 && .browser-venv/Scripts/playwright install chromium`; then, with `READ_TOKEN` exported in the foreground shell, `cd observatory && node src/local.mjs` in one shell and `cd observatory && ../.browser-venv/Scripts/python tests/desk-browser.py --origin http://127.0.0.1:8788` in another | 13 checks passed; `kill` does not stop node.exe here, free port 8788 via PowerShell `Stop-Process` |
+| backend lint/types | `cd backend && ../venv/Scripts/python -m ruff check app` and `-m mypy app` | clean since #58 (2026-09-22, Linux, Python 3.11) |
+| `frontend/**` | `cd frontend/pulseboard-web && npx vitest run --maxWorkers=2` | 64 passed, 4 s; `npm audit --audit-level=low` 0 findings (#57, #59; 2026-09-22) |
+| frontend build | `cd frontend/pulseboard-web && npm run build && npm run build:budget` | passes, budget verified (#57, #61; 2026-09-22) |
+| `observatory/**` | `cd observatory && npm test` | 205 passed, under 2 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
+| Desk browser | once: `python -m venv .browser-venv && .browser-venv/Scripts/pip install playwright==1.57.0 && .browser-venv/Scripts/playwright install chromium`; then, with `READ_TOKEN` exported in the foreground shell, `cd observatory && node src/local.mjs` in one shell and `cd observatory && ../.browser-venv/Scripts/python tests/desk-browser.py --origin http://127.0.0.1:8788` in another | 15 checks passed; `kill` does not stop node.exe here, free port 8788 via PowerShell `Stop-Process` |
 | Desk hosted | `cd observatory && npx wrangler deploy --dry-run`; admission gate on a preview: `npx wrangler deploy --env preview` then `node tests/hosted-admission.mjs --origin <preview> --project mdviewer --events 1 --expect 202 --repeat` (delete the preview after) | 2026-09-10: 202/202, one event row; 429 on both budget branches |
 | docs and harness | `git diff --check` (working tree) and `git diff --check origin/main...HEAD` (review range; `--cached` for staged); `python <agent-harness>/harness.py audit .` | clean |
 
-The red gates above are tracked debt (#13 lint/types/tests/build, #14 setuptools floor). A change
-that touches a seam must not move its numbers the wrong way, and a green Desk run never closes
-#13 or #14. CI: `observatory.yml` (Node 22, `npm test`) and `desk-browser.yml` (Playwright against
-the real server) run on PRs and `main` pushes that touch `observatory/**`; `collector-canary.yml`
-checks the hosted collector twice an hour from GitHub's runners; nothing runs for the workbench. `main` has no branch protection (measured 2026-09-10). Squash merge is disabled
+Every gate above was green on `main` on 2026-09-22 (#13 and #14 closed by #50, #57, #58, #59, #61). A change
+that touches a seam must not move its numbers the wrong way. CI: `observatory.yml` (Node 22, `npm test`) and
+`desk-browser.yml` (Playwright against the real server) run on PRs and `main` pushes that touch `observatory/**`;
+`workbench-backend.yml`, `workbench-frontend.yml` and `python-package.yml` gate the workbench and packaging;
+`collector-canary.yml` checks the hosted collector twice an hour from GitHub's runners. `main` has no branch protection (measured 2026-09-10). Squash merge is disabled
 repo-side; merge with a merge commit.
 
 ## Map
@@ -64,7 +64,7 @@ measurement or data boundary. Prefer a tested vertical slice to scaffolding.
 - `observatory/` is `eol=lf` by `.gitattributes`; the rest of the tree is not, so builders that read
   sources must normalise line endings (the embed builder does since #15).
 - Paths above are Windows (`venv/Scripts/python`); on Linux or macOS, including Codex cloud, use `venv/bin/python`.
-- `npm ci` in the frontend reports 27 audit findings (#13); triage individually, never `audit fix --force`.
+- The frontend audit is clean since #59 and CI enforces it; triage any new finding individually, never `audit fix --force`.
 - `STATUS.md`, `DEMO_GUIDE.md`, `IMPROVEMENT_PROPOSALS.md` and `UI_IMPROVEMENTS.md` describe the
   2025-11 workbench and are history, not verification.
 

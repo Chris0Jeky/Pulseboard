@@ -43,7 +43,7 @@ export function compareReleases(baseline, candidate) {
     reason: supported ? 'Descriptive difference in reported outcomes. Different users, routes and time periods can explain it.'
       : `At least ${MIN_OUTCOMES} reported outcomes per cohort are required. This is a display guard, not a significance test.` };
 }
-function fingerprint(value) {
+export function fingerprint(value) {
   let hash = 2166136261;
   for (const c of JSON.stringify(value)) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
   return (hash >>> 0).toString(16);

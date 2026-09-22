@@ -8,6 +8,8 @@ import { openDatabase } from './sqlite.mjs';
 import { handle } from './worker.mjs';
 import { collectionAdmission } from './admission.mjs';
 import { assets } from './assets.mjs';
+import { createGithubEvidence } from './github.mjs';
+import { githubMap } from './github-map.mjs';
 
 const SERVER_OPTIONS = { maxHeaderSize: 8192, requestTimeout: 10000, headersTimeout: 10000 };
 
@@ -30,12 +32,14 @@ function admissionLines(admission) {
   ];
 }
 
-export function runnerBanner({ origin, token, supplied, collectEnabled, collectProjects }) {
+export function runnerBanner({ origin, token, supplied, collectEnabled, collectProjects, githubEvidence = false }) {
   return [
     `Pulseboard Desk: ${origin}`,
     supplied ? 'Read token: using READ_TOKEN from the environment; it is not printed here.'
       : 'Read token (generated for this run; paste into the desk; not persisted): ' + token,
     ...admissionLines(collectionAdmission({ COLLECT_ENABLED: collectEnabled ? 'true' : 'false', COLLECT_PROJECTS: collectProjects })),
+    githubEvidence ? `GitHub evidence: connector built from GITHUB_EVIDENCE_TOKEN (not printed); api.github.com is read only when the desk asks, for ${Object.keys(githubMap.projects).length} mapped project(s).`
+      : 'GitHub evidence: off (no GITHUB_EVIDENCE_TOKEN); mapped items read unconfigured and nothing is requested.',
     'Local runner never probes the public sites: there is no local probe command, and egress stays off. Cloudflare cron does the probing in a deployment.',
   ];
 }
@@ -65,13 +69,14 @@ export async function startLocalRunner({
   COLLECT_ENABLED = 'false',
   COLLECT_PROJECTS = '',
   ASSETS = localAssets(),
+  GITHUB_EVIDENCE = null,
   requestHandler = handle,
 } = {}) {
   if (!Number.isSafeInteger(port) || port < 0 || port > 65535) throw new RangeError('port must be 0..65535');
   if (!DB) throw new TypeError('DB is required');
   if (typeof requestHandler !== 'function') throw new TypeError('requestHandler is required');
 
-  const env = { DB, READ_TOKEN, COLLECT_ENABLED, COLLECT_PROJECTS, ASSETS };
+  const env = { DB, READ_TOKEN, COLLECT_ENABLED, COLLECT_PROJECTS, ASSETS, ...(GITHUB_EVIDENCE ? { GITHUB_EVIDENCE } : {}) };
   let origin = null;
   const server = createServer(SERVER_OPTIONS, async (req, res) => {
     try {
@@ -145,6 +150,9 @@ export async function main(envVars = process.env, logger = console) {
     const port = parsePort(envVars.PORT || '8788');
     const collectEnabled = envVars.COLLECT_ENABLED === 'true';
     const collectProjects = envVars.COLLECT_PROJECTS || '';
+    // GitHub egress exists only when the operator supplies a token, and only for repositories in the reviewed mapping.
+    const githubToken = envVars.GITHUB_EVIDENCE_TOKEN || '';
+    const GITHUB_EVIDENCE = githubToken ? createGithubEvidence({ map: githubMap, token: githubToken }) : null;
     const runner = await startLocalRunner({
       port,
       host: '127.0.0.1',
@@ -152,8 +160,9 @@ export async function main(envVars = process.env, logger = console) {
       READ_TOKEN: token,
       COLLECT_ENABLED: collectEnabled ? 'true' : 'false',
       COLLECT_PROJECTS: collectProjects,
+      GITHUB_EVIDENCE,
     });
-    for (const line of runnerBanner({ origin: runner.origin, token, supplied, collectEnabled, collectProjects })) logger.log(line);
+    for (const line of runnerBanner({ origin: runner.origin, token, supplied, collectEnabled, collectProjects, githubEvidence: !!GITHUB_EVIDENCE })) logger.log(line);
     const close = onceAsync(async () => { await runner.close(); DB.close(); });
     installShutdownHooks({ processLike: process, close });
     return { ...runner, close };

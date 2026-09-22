@@ -1,24 +1,24 @@
 /** Bounded, local-only ecosystem adapters. Imported claims are not authenticated evidence. */
 import { monitorState, STALE_AFTER } from './desk-model.mjs';
 export const BRIDGE_MAX_BYTES = 262144;
-const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
-const requireValue = (condition, message) => { if (!condition) throw new TypeError(message); };
-const boundedString = (value, max = 160) => {
+export const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+export const requireValue = (condition, message) => { if (!condition) throw new TypeError(message); };
+export const boundedString = (value, max = 160) => {
   requireValue(typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value), 'Invalid bounded text');
   return value;
 };
 const integer = value => { requireValue(Number.isSafeInteger(value) && value >= 0, 'Invalid count'); return value; };
-const isoTime = value => {
+export const isoTime = value => {
   boundedString(value, 32);
   requireValue(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(value) && Number.isFinite(Date.parse(value)), 'Invalid UTC timestamp');
   const stamp = Date.parse(value);
   requireValue(new Date(stamp).toISOString() === value.replace(/(?<!\.\d{3})Z$/, '.000Z'), 'Non-canonical UTC timestamp');
   return stamp;
 };
-const exactKeys = (value, keys) => requireValue(plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key)), 'Unexpected projection fields');
-const list = (value, max) => { requireValue(Array.isArray(value) && value.length <= max, 'Array limit'); return value; };
-const unique = values => requireValue(new Set(values).size === values.length, 'Duplicate identity');
-const safeFindingText = value => {
+export const exactKeys = (value, keys) => requireValue(plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key)), 'Unexpected projection fields');
+export const list = (value, max) => { requireValue(Array.isArray(value) && value.length <= max, 'Array limit'); return value; };
+export const unique = values => requireValue(new Set(values).size === values.length, 'Duplicate identity');
+export const safeFindingText = value => {
   boundedString(value, 500);
   requireValue(!/(?:https?:\/\/|github_pat_|gh[pousr]_[A-Za-z0-9]|sk-[A-Za-z0-9]|[A-Za-z]:[\\/]|\/(?:Users|home)\/)/.test(value), 'Projection contains a URL, path or credential-shaped text');
   return value;
