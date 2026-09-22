@@ -184,4 +184,7 @@ owner actions; no agent holds either.
   (v0.11.4, v0.11.3, v0.11.2, v0.11.1, v0.11.0). No item read `unavailable/network`, so the edge accepts
   the fetch option set.
 - The same portfolio read showed Alibi admitted with its probe `up` but zero events over 7 days: live Alibi
-  serves 0.11.5, which the closed release allowlist did not list (fixed by #71).
+  serves 0.11.5, which the closed release allowlist did not list, so every event from the current release was
+  rejected. #71 added `0.11.5`; Worker version `d76f3d16-6a34-4b8c-bca1-ba47009b5701` deployed it from `main` at
+  `60e7880` the same day (`/healthz`, `/readyz` 200; `/v1/portfolio` 401 unauthenticated). A consented
+  production event from 0.11.5 has not been observed yet.
