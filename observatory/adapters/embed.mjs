@@ -27,11 +27,11 @@ export function mountObserver(config, create, runtime = globalThis) {
     return result;
   };
   const key = 'pulseboard:consent:v1:' + config.id + ':' + config.endpoint, CONSENT_MS = 90 * 86400000;
-  let granted = false, overdue = false;
+  let granted = false, overdue = false, until = 0;
   // A stored expiry is never trusted past 90 days from now; a tampered or corrupt one cannot grant indefinite consent.
   try {
     const stored = JSON.parse(runtime.localStorage.getItem(key) || 'null'), cap = Date.now() + CONSENT_MS;
-    const until = Number.isFinite(stored?.until) ? Math.min(stored.until, cap) : 0;
+    until = Number.isFinite(stored?.until) ? Math.min(stored.until, cap) : 0;
     granted = stored?.allow === true && until > Date.now(); overdue = granted && stored.until > cap;
   } catch { /* Session choice still works without storage. */ }
   const details = document.createElement('details'); details.id = 'pulseboard-usage-sharing';
@@ -64,10 +64,12 @@ export function mountObserver(config, create, runtime = globalThis) {
       return false;
     }
     const preferred = value === true;
-    const active = observer.setConsent(preferred);
+    // The observer re-checks this deadline before every send, so a tab alive past it stops without a reload.
+    if (persist) until = Date.now() + CONSENT_MS;
+    const active = observer.setConsent(preferred, until);
     if (persist) {
       try {
-        runtime.localStorage.setItem(key, JSON.stringify({ allow: preferred, until: Date.now() + CONSENT_MS }));
+        runtime.localStorage.setItem(key, JSON.stringify({ allow: preferred, until }));
         storageWarning = false;
       } catch { storageWarning = true; }
     }
