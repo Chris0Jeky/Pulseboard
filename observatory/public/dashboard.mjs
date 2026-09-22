@@ -156,7 +156,7 @@ function overview() {
 }
 function projectDetail(p) {
   // The drawer, its deployment leads and any pin all read the snapshot it opened with, not a later poll.
-  state.drawerSnapshot = state.snapshot;
+  state.drawerSnapshot = state.snapshot; state.drawerStale = state.stale;
   const outcomes = p.totals.completed + p.totals.failed;
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, p.label), chip(p),
     e('div', { class: 'facts' }, ...[['Admitted events', count(p.totals.events)], ['Reported sessions', count(p.totals.sessions)],
@@ -213,7 +213,8 @@ async function readGithub(id) {
 }
 function pinGithub(id) {
   try {
-    if (state.stale) throw new Error('Refresh the collector before pinning.');
+    // A drawer opened on a failed refresh keeps that marker even if a later poll succeeds.
+    if (state.drawerSnapshot ? state.drawerStale : state.stale) throw new Error('Refresh the collector and reopen the project before pinning.');
     state.pin = pinInvestigation(state.drawerSnapshot ?? state.snapshot, state.github[id], id);
   } catch (error) { notify(error.message); return; }
   $('#suspected').value = ''; $('#alternative-check').value = '';
@@ -344,7 +345,7 @@ function render() {
 }
 function navigate(view) { if (!Object.hasOwn(views, view)) return; if (location.hash === '#' + view) { state.view = view; render(); } else location.hash = view; }
 function cancelRead() { state.epoch++; clearTimeout(state.timer); state.controller?.abort(); state.controller = null; state.busy = false; }
-function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.drawerSnapshot = null; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
+function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.drawerSnapshot = null; state.drawerStale = false; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
 function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); }
 async function refresh() {
   if (!state.token) { if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } return; }
