@@ -1,13 +1,14 @@
 import { DAY, sum, count, percent, fraction, monitorState, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff } from './desk-model.mjs';
-import { makeDemo, SCENARIOS } from './desk-demo.mjs';
+import { makeDemo, makeGithubDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
+import { assertGithubEvidence, deploymentLeads, pinInvestigation, makeReleaseNote, releaseNoteMarkdown } from './desk-release.mjs';
 
 const $ = selector => document.querySelector(selector);
 /** One visible-tab poll interval, named once: it sets the collector read multiplier documented in docs/ENGINEERING.md. */
 const REFRESH_MS = 30_000;
 const state = { snapshot: null, token: '', days: 7, scenario: 'release', phase: 1, query: '', sort: 'attention',
   view: 'overview', reviewed: false, reviews: {}, releaseProject: '', baseline: '', candidate: '',
-  stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [] };
+  stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null };
 const views = {
   overview: ['The desk.', 'A clear place to see what needs you.'],
   signals: ['Signal inbox.', 'Observations you can inspect, park, or turn into a next step.'],
@@ -158,8 +159,56 @@ function projectDetail(p) {
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Route receipts'), e('div', { class: 'table-shell' }, table(['Allowed route', 'Events'], p.routes.map(r => [r.route, count(r.n)])))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Release cohorts'), e('div', { class: 'table-shell' }, table(['Release', 'Outcomes', 'Failures', 'p95 duration'], p.releases.map(r => [r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · n=${r.duration.n}` : 'No samples']))),
       button('Open release comparison →', () => { state.releaseProject = p.id; state.baseline = ''; state.candidate = ''; $('#detail-dialog').close(); navigate('releases'); })),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'Development evidence (GitHub)'), e('div', { id: 'github-evidence', 'data-project': p.id }, githubView(p.id))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Reading limits'), e('ul', {}, state.snapshot.limitations.map(text => e('li', {}, text)))));
   showDialog('#detail-dialog');
+}
+const githubClass = { passing: 'up', observed: 'up', failing: 'down', stale: 'stale', 'rate-limited': 'stale' };
+function githubRow(repository, kind, name, item) {
+  const v = item.state === 'stale' ? item.lastKnown : item, x = v.evidence;
+  const identity = x?.runId ? `run ${x.runId} #${x.runAttempt} · ${x.headSha.slice(0, 7)}` : x?.sha ? `deployment ${x.deploymentId} · ${x.sha.slice(0, 7)}` : x?.releases ? x.releases.map(r => r.tag).join(', ') : 'No identity';
+  return [repository, `${kind}: ${name}`, e('span', { class: `state-chip ${githubClass[item.state] || 'unknown'}` }, `${item.state} · ${item.reason}`),
+    item.state === 'stale' ? `last known ${v.state} · ${date(v.sourceTime)}` : date(item.sourceTime), identity];
+}
+/** Filled only by the button: never by the poll, never into signals or a public pulse. */
+function githubView(id) {
+  const ev = state.github[id], read = button('Read workflow evidence', () => readGithub(id), 'primary');
+  if (!ev) return e('div', {}, e('p', { class: 'muted' }, 'Not read. Workflow, deployment and release evidence loads only when you ask, and stays out of signals and public exports.'), read);
+  const rows = ev.repositories.flatMap(r => { const name = r.repository + (r.renamed ? ` (now ${r.renamed.observed})` : '');
+    return [...r.workflows.map(i => githubRow(name, 'Workflow', `${i.target.path} @ ${i.target.branch}`, i)), ...r.environments.map(i => githubRow(name, 'Deployment', i.target.name, i)), githubRow(name, 'Releases', `latest ${r.releases.target.max}`, r.releases)]; });
+  return e('div', {}, e('p', { class: 'tiny muted' }, `${ev.mode === 'demo' ? 'SYNTHETIC · ' : ''}${ev.configuration.toUpperCase()} · mapping r${ev.mapping.revision} · read ${date(ev.generatedAt)} · ${ev.rules}`),
+    rows.length ? e('div', { class: 'table-shell' }, table(['Repository', 'Evidence', 'State', 'Source time', 'Identity'], rows))
+      : e('p', { class: 'muted' }, 'No reviewed repository mapping for this project. Nothing was requested from GitHub.'),
+    deploymentLeads(ev, state.snapshot).map(l => e('p', { class: l.kind === 'lead' ? 'notice' : 'tiny muted' }, `${l.kind.toUpperCase()} · ${l.environment} ${l.sha.slice(0, 7)} deployed ${date(l.deployedAt)}. ${l.text}`)),
+    e('ul', { class: 'tiny muted' }, ev.limitations.map(text => e('li', {}, text))), read, rows.length ? button('Pin to release notebook', () => pinGithub(id)) : null);
+}
+async function readGithub(id) {
+  const epoch = state.epoch;
+  try {
+    let ev;
+    if (state.snapshot?.mode === 'demo') ev = makeGithubDemo(state.snapshot, id);
+    else {
+      if (!state.token) throw new Error('Connect the collector first.');
+      const response = await fetch(`/v1/github-evidence?project=${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${state.token}` }, cache: 'no-store', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(90_000) });
+      if (epoch !== state.epoch) return;
+      if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return; }
+      if (!response.ok) throw new Error('GitHub evidence is unavailable.');
+      ev = await readLimitedJson(response, 65536);
+    }
+    if (epoch !== state.epoch) return;
+    assertGithubEvidence(ev); if (ev.project !== id) throw new Error('Unexpected GitHub evidence project');
+    state.github[id] = ev;
+    const view = $('#github-evidence'); if (view?.dataset.project === id) view.replaceChildren(githubView(id));
+  } catch (error) { if (epoch === state.epoch) notify(error.message || 'Could not read GitHub evidence.'); }
+}
+function pinGithub(id) {
+  try {
+    if (state.stale) throw new Error('Refresh the collector before pinning.');
+    state.pin = pinInvestigation(state.snapshot, state.github[id], id);
+  } catch (error) { notify(error.message); return; }
+  $('#suspected').value = ''; $('#alternative-check').value = '';
+  $('#notebook-summary').textContent = `${state.pin.mode === 'demo' ? 'SYNTHETIC DEMO. ' : ''}Pinned ${date(state.pin.pinnedAt)} · snapshot ${state.pin.snapshot.fingerprint} · mapping r${state.pin.mapping.revision} · ${state.pin.leads.filter(l => l.kind === 'lead').length} deployment lead(s). The pinned copy does not change on refresh.`;
+  $('#detail-dialog').close(); showDialog('#notebook-dialog');
 }
 function inbox() {
   const ss = signals().filter(s => state.reviewed || reviewState(s, state.reviews) === 'open');
@@ -285,7 +334,7 @@ function render() {
 }
 function navigate(view) { if (!Object.hasOwn(views, view)) return; if (location.hash === '#' + view) { state.view = view; render(); } else location.hash = view; }
 function cancelRead() { state.epoch++; clearTimeout(state.timer); state.controller?.abort(); state.controller = null; state.busy = false; }
-function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
+function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
 function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); }
 async function refresh() {
   if (!state.token) { if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } return; }
@@ -326,6 +375,15 @@ $('#export-confirm').addEventListener('change', () => { $('#download-export').di
 $('#accept-import').addEventListener('click', () => { if (!state.pendingImport) return; state.imported[state.pendingImport.kind] = state.pendingImport; state.pendingImport = null; $('#import-preview').textContent = ''; $('#import-dialog').close(); render(); notify('Reviewed context kept in this tab only.'); });
 $('#import-dialog').addEventListener('close', () => { state.pendingImport = null; $('#import-preview').textContent = ''; });
 $('#export-dialog').addEventListener('close', () => { state.export = null; $('#export-preview').textContent = ''; $('#export-confirm').checked = false; $('#download-export').disabled = true; });
+$('#notebook').addEventListener('submit', event => {
+  event.preventDefault();
+  try {
+    const note = makeReleaseNote(state.pin, { suspected: $('#suspected').value, alternativeCheck: $('#alternative-check').value }), markdown = event.submitter?.value === 'md';
+    $('#notebook-dialog').close();
+    preview(markdown ? releaseNoteMarkdown(note) : JSON.stringify(note, null, 2), `pulseboard-${note.mode}-release-note.${markdown ? 'md' : 'json'}`, markdown ? 'text/markdown' : 'application/json');
+    $('#export-warning').textContent = `${note.mode === 'demo' ? 'SYNTHETIC DEMO. ' : 'PRIVATE RELEASE NOTE. '}A lead, not proof. Review the complete file below. Nothing is uploaded.`;
+  } catch (error) { notify(error.message); }
+});
 $('#download-export').addEventListener('click', () => {
   if (!state.export || !$('#export-confirm').checked) return;
   const { text, name, type } = state.export, url = URL.createObjectURL(new Blob([text], { type }));

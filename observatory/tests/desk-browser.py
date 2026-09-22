@@ -19,7 +19,7 @@ TOKEN = os.environ.get('READ_TOKEN', 'desk-browser-test-only-' + '0' * 40)
 
 def offline_html():
     html = (PUBLIC / 'index.html').read_text()
-    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'dashboard.mjs'])
+    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-release.mjs', 'dashboard.mjs'])
     source = re.sub(r'^import .*?;\n', '', source, flags=re.M)
     source = re.sub(r'\bexport (?=(?:async )?(?:const|function|class))', '', source)
     html = html.replace('<link rel="stylesheet" href="/dashboard.css">', '<style>' + (PUBLIC / 'dashboard.css').read_text() + '</style>')
@@ -63,6 +63,14 @@ async def run(args):
             await expect(page.locator('#message')).to_contain_text('collection disabled')
             # Positive control: the recorder below can only prove an absence of /v1/ reads if it sees a real one here.
             assert any('/v1/portfolio' in url for url in requests), 'Request recording missed the authenticated read'
+            assert not any('/v1/github-evidence' in url for url in requests), 'GitHub evidence must not join the poll'
+            await page.locator('.project-name button').filter(has_text='Alibi').click()
+            await page.get_by_role('button', name='Read workflow evidence').click()
+            # The shipped mapping is empty: the real route answers unmapped and requests nothing from GitHub.
+            await expect(page.locator('#github-evidence')).to_contain_text('UNMAPPED')
+            assert any('/v1/github-evidence?project=alibi' in url for url in requests)
+            assert not any('api.github.com' in url for url in requests)
+            await page.keyboard.press('Escape')
             await page.locator('#disconnect').click()
             results.append('real HTTP assets, protected API and SQLite connection')
         demo_mark = len(requests)
@@ -74,8 +82,22 @@ async def run(args):
         await page.locator('.project-name button').filter(has_text='Alibi').click()
         await expect(page.locator('#detail-dialog')).to_be_visible()
         await expect(page.locator('#detail')).to_contain_text('Paired flow')
+        await expect(page.locator('#github-evidence')).to_contain_text('Not read')
+        await page.get_by_role('button', name='Read workflow evidence').click()
+        await expect(page.locator('#github-evidence')).to_contain_text('SYNTHETIC')
+        await expect(page.locator('#github-evidence .notice')).to_contain_text('Temporal proximity, not a cause.')
+        await page.get_by_role('button', name='Pin to release notebook').click()
+        await expect(page.locator('#notebook-dialog')).to_be_visible()
+        await page.locator('#suspected').fill('The deploy may have caused the probe failures.')
+        await page.locator('#notebook button[value=md]').click()
+        # Both fields are required: the browser keeps the notebook open instead of writing a half note.
+        await expect(page.locator('#notebook-dialog')).to_be_visible()
+        await page.locator('#alternative-check').fill('Check the hosting status page and the probe target first.')
+        await page.locator('#notebook button[value=md]').click()
+        await expect(page.locator('#export-preview')).to_contain_text('a lead, not proof')
+        await expect(page.locator('#export-warning')).to_contain_text('SYNTHETIC DEMO.')
         await page.keyboard.press('Escape')
-        results.append('demo, search and evidence drawer')
+        results.append('demo, search, evidence drawer and synthetic GitHub notebook')
         await page.locator('[data-view=releases]').click()
         await expect(page.locator('#page-title')).to_have_text('Release lab.')
         await expect(page.locator('#view')).to_contain_text('percentage points')
