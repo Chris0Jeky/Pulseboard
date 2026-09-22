@@ -61,6 +61,10 @@ export const useLiveDataStore = defineStore('liveData', () => {
     history.value = {}
   }
 
+  // Preserve the original public action name while keeping the more explicit alias
+  // used by newer call sites and tests.
+  const clear = clearAll
+
   return {
     // State
     latest,
@@ -72,6 +76,7 @@ export const useLiveDataStore = defineStore('liveData', () => {
     getLatest,
     getHistory,
     clearFeedData,
+    clear,
     clearAll,
   }
 })

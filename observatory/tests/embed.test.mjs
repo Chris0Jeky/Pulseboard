@@ -29,7 +29,8 @@ function setup({ storage = new Map(), endpoint = 'https://collector.example/v1/c
     ...(contextProvider === undefined ? {} : { contextGlobal: 'OBSERVATORY_CONTEXT' }) };
   const facade = mountObserver(config, createObserver, runtime);
   return { facade, calls, storage, runtime, document, key: 'pulseboard:consent:v1:mdviewer:' + endpoint,
-    checkbox: created.find(node => node.type === 'checkbox') };
+    checkbox: created.find(node => node.type === 'checkbox'),
+    status: created.find(node => node.attributes.role === 'status') };
 }
 const grant = async harness => { harness.checkbox.checked = true; harness.checkbox.emit('change'); await settle(); };
 const sent = calls => calls.flatMap(call => JSON.parse(call[1].body).events);
@@ -113,6 +114,28 @@ test('a tracked click that navigates away is handed over on pagehide', async () 
   assert.equal(harness.calls[1][1].keepalive, true);
   assert.equal(harness.calls[1][1].credentials, 'omit');
   assert.equal(harness.facade.status().active, false);
+});
+test('a runtime GPC revocation repaints the visible consent state after track', async () => {
+  const harness = setup(); await grant(harness);
+  assert.equal(harness.checkbox.checked, true); assert.match(harness.status.textContent, /Sharing is on/);
+  assert.equal(JSON.parse(harness.storage.get(harness.key)).allow, true);
+  harness.runtime.navigator.globalPrivacyControl = true;
+  assert.equal(harness.facade.track('page.view'), false);
+  assert.equal(harness.facade.status().active, false); assert.equal(harness.checkbox.checked, false);
+  assert.match(harness.status.textContent, /browser privacy setting/i);
+  // A browser-level override does not rewrite the visitor's stored choice; it only wins while present.
+  assert.equal(JSON.parse(harness.storage.get(harness.key)).allow, true);
+  harness.facade.dispose();
+});
+test('flush repaints consent after a mid-session do-not-track signal drops queued work', async () => {
+  const harness = setup(); await grant(harness);
+  assert.equal(harness.facade.track('export.print_requested'), true);
+  harness.runtime.navigator.doNotTrack = '1';
+  await harness.facade.flush();
+  assert.equal(harness.facade.status().active, false); assert.equal(harness.checkbox.checked, false);
+  assert.match(harness.status.textContent, /browser privacy setting/i);
+  assert.deepEqual(sentEvents(harness.calls), ['page.view']);
+  harness.facade.dispose();
 });
 test('privacy signals keep the control from mounting at all', () => {
   assert.equal(setup({ navigator: { globalPrivacyControl: true } }).facade, null);

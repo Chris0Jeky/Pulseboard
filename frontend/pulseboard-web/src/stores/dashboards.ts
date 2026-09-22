@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Dashboard } from '../types'
+import type { Dashboard, DashboardUpdate } from '../types'
 import apiClient from '../api/client'
 import { useNotificationsStore } from './notifications'
 
@@ -68,6 +68,35 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     }
   }
 
+  async function updateDashboard(id: string, data: DashboardUpdate) {
+    loading.value = true
+    error.value = null
+
+    try {
+      const updated = await apiClient.updateDashboard(id, data)
+      const preserveDetails = (existing: Dashboard | null | undefined): Dashboard =>
+        existing?.panels === undefined
+          ? updated
+          : { ...existing, ...updated, panels: existing.panels }
+      const index = dashboards.value.findIndex((dashboard) => dashboard.id === id)
+      if (index >= 0) {
+        dashboards.value[index] = preserveDetails(dashboards.value[index])
+      }
+      if (currentDashboard.value?.id === id) {
+        currentDashboard.value = preserveDetails(currentDashboard.value)
+      }
+      notifications.success(`Dashboard "${updated.name}" updated successfully`)
+      return currentDashboard.value?.id === id ? currentDashboard.value : updated
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to update dashboard'
+      notifications.error(error.value)
+      console.error('Error updating dashboard:', e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function deleteDashboard(id: string) {
     loading.value = true
     error.value = null
@@ -109,8 +138,12 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         await apiClient.createPanel(clonedDashboard.id, {
           title: panel.title,
           type: panel.type,
-          config_json: panel.config_json,
-          position: panel.position,
+          feed_ids_json: panel.feed_ids_json,
+          options_json: panel.options_json,
+          position_x: panel.position_x,
+          position_y: panel.position_y,
+          width: panel.width,
+          height: panel.height,
         })
       }
 
@@ -146,6 +179,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     fetchDashboards,
     fetchDashboard,
     createDashboard,
+    updateDashboard,
     deleteDashboard,
     cloneDashboard,
     clearCurrentDashboard,

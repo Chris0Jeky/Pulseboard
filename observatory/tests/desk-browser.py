@@ -19,7 +19,7 @@ TOKEN = os.environ.get('READ_TOKEN', 'desk-browser-test-only-' + '0' * 40)
 
 def offline_html():
     html = (PUBLIC / 'index.html').read_text()
-    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-release.mjs', 'dashboard.mjs'])
+    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-network.mjs', 'desk-release.mjs', 'dashboard.mjs'])
     source = re.sub(r'^import .*?;\n', '', source, flags=re.M)
     source = re.sub(r'\bexport (?=(?:async )?(?:const|function|class))', '', source)
     html = html.replace('<link rel="stylesheet" href="/dashboard.css">', '<style>' + (PUBLIC / 'dashboard.css').read_text() + '</style>')
@@ -170,10 +170,14 @@ async def run(args):
         assert 'example-builder' not in await page.locator('#view').text_content()
         # Deterministic response fault injection. This does not claim real production failures.
         await page.evaluate('''fixture => {
-          window.deskTestFixture = fixture; window.deskTestStatus = 200; window.deskTestDelay = 0; window.deskTestBad = false;
-          window.fetch = async () => { const code = window.deskTestStatus, delay = window.deskTestDelay;
+          window.deskTestFixture = fixture; window.deskTestStatus = 200; window.deskTestDelay = 0; window.deskTestBad = false; window.deskTestCalls = 0;
+          window.fetch = async (_url, init = {}) => { const code = window.deskTestStatus, delay = window.deskTestDelay;
+            window.deskTestCalls += 1;
             const payload = window.deskTestBad ? {schema:'bad'} : structuredClone(window.deskTestFixture);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(resolve, delay);
+              init.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); }, {once:true});
+            });
             return new Response(JSON.stringify(payload), {status:code, headers:{'Content-Type':'application/json'}});
           };
         }''', fixture())
@@ -191,9 +195,61 @@ async def run(args):
         # A failed refresh must not launder a last-known failure into an unremarkable "stale probe" chip.
         assert await page.locator('#view .state-chip.down').count() == 1
         await expect(page.locator('#view .state-chip.down')).to_contain_text('last known')
+        assert await page.locator('#view .state-chip.down.last-known').count() == 1
         assert await page.locator('#view .state-chip.stale').count() > 0
         await expect(page.locator('#view')).to_contain_text('Alibi')
-        results.append('failed refresh keeps last-good evidence, including a last-known probe failure')
+        await page.locator('[data-view=signals]').click()
+        await expect(page.locator('#view')).to_contain_text('The latest refresh failed')
+        await expect(page.locator('#view')).to_contain_text('last-known')
+        await page.locator('[data-view=overview]').click()
+        await page.set_viewport_size({'width': 390, 'height': 900})
+        assert await page.evaluate('document.documentElement.scrollWidth') <= 390
+        await page.set_viewport_size({'width': 1440, 'height': 1100})
+        results.append('failed refresh qualifies inbox evidence and visually marks the last-known failure')
+
+        await page.evaluate('window.deskTestStatus = 200; window.deskTestBad = false; window.deskTestDelay = 0')
+        await page.locator('#refresh').click()
+        await expect(page.locator('#mode')).to_have_text('CONNECTED')
+        calls_before_hide = await page.evaluate('window.deskTestCalls')
+        emulation = await page.evaluate('''() => {
+          let hidden = false;
+          Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+          Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => hidden ? 'hidden' : 'visible' });
+          window.deskTestSetVisibility = value => {
+            hidden = Boolean(value);
+            document.dispatchEvent(new Event('visibilitychange'));
+            return { hidden: document.hidden, state: document.visibilityState };
+          };
+          return window.deskTestSetVisibility(true);
+        }''')
+        assert emulation == {'hidden': True, 'state': 'hidden'}
+        await page.evaluate("document.querySelector('#refresh').click()")
+        await page.wait_for_timeout(150)
+        assert await page.evaluate('window.deskTestCalls') == calls_before_hide
+        visible = await page.evaluate('window.deskTestSetVisibility(false)')
+        assert visible == {'hidden': False, 'state': 'visible'}
+        resumed = calls_before_hide
+        for _ in range(40):
+            resumed = await page.evaluate('window.deskTestCalls')
+            if resumed > calls_before_hide:
+                break
+            await page.wait_for_timeout(50)
+        assert resumed > calls_before_hide
+        await expect(page.locator('#refresh')).to_be_enabled()
+        results.append('hidden visibility suppresses reads and becoming visible resumes one')
+
+        await page.evaluate('window.deskTestDelay = 11000')
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await page.locator('#refresh').click()
+        await expect(page.locator('#mode')).to_have_text('STALE SNAPSHOT', timeout=12500)
+        elapsed = loop.time() - started
+        assert 9 <= elapsed < 12.5, elapsed
+        await page.evaluate('window.deskTestDelay = 0')
+        await page.locator('#refresh').click()
+        await expect(page.locator('#mode')).to_have_text('CONNECTED')
+        results.append('hung reads abort at the ten-second boundary')
+
         await page.evaluate('window.deskTestStatus = 200; window.deskTestBad = true')
         await page.locator('#refresh').click()
         await expect(page.locator('#mode')).to_have_text('STALE SNAPSHOT')

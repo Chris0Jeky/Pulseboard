@@ -23,6 +23,15 @@ export function monitorState(project, now) {
   if (project.monitor.checked > now || now - project.monitor.checked > STALE_AFTER) return 'stale';
   return ['up', 'down', 'unknown'].includes(project.monitor.state) ? project.monitor.state : 'unknown';
 }
+/** Keep recorded state and reading freshness separate while a live refresh is unavailable. */
+export function monitorDisplay(project, now, refreshFailed = false) {
+  const freshness = monitorState(project, now);
+  if (refreshFailed && project.probeExpected) {
+    if (project.monitor?.state === 'down') return { state: 'down', freshness, lastKnown: true };
+    return { state: 'stale', freshness, lastKnown: false };
+  }
+  return { state: freshness, freshness, lastKnown: false };
+}
 export function compareReleases(baseline, candidate) {
   if (!baseline || !candidate || baseline.release === candidate.release || [baseline.release, candidate.release].includes('unattributed')) {
     return { supported: false, reason: 'Choose two different, attributed release cohorts.', delta: null };
@@ -40,7 +49,7 @@ export function fingerprint(value) {
   return (hash >>> 0).toString(16);
 }
 /** Rules surface inspectable observations, never diagnoses or automated changes. */
-export function buildSignals(snapshot, now = Date.now()) {
+export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) {
   const signals = [];
   const add = (project, rule, severity, title, detail, evidence, next) => {
     const id = `${project?.id || 'portfolio'}:${rule}`;
@@ -52,12 +61,32 @@ export function buildSignals(snapshot, now = Date.now()) {
     'Finish the rollout checks before explicitly enabling collection.');
   if (now - snapshot.generatedAt > STALE_AFTER || snapshot.generatedAt > now) add(null, 'snapshot.stale', 'warning', 'This snapshot needs a fresh reading',
     'Keep its observations as history, not current health.', { generatedAt: snapshot.generatedAt }, 'Reconnect to the collector or import a newer snapshot.');
+  if (refreshFailed === true) add(null, 'snapshot.refresh_failed', 'warning', 'The latest refresh failed',
+    'Current readings are unknown. The remaining observations come from the last-good snapshot.',
+    { generatedAt: snapshot.generatedAt, lastKnown: true }, 'Reconnect to the collector before treating any observation as current health.');
   for (const p of snapshot.projects) {
+    if (snapshot.collectionEnabled && p.collectionEligible && !p.collectionAdmitted) {
+      const retainedEvents = p.totals.events;
+      const detail = retainedEvents === 0
+        ? 'Its zero event count cannot be read as no traffic because this project is outside the active collection allowlist.'
+        : `${retainedEvents} retained events belong to the selected historical window; current browser collection is not admitted.`;
+      add(p, 'collection.not_admitted', 'note', `${p.label} is registered but not admitted`, detail,
+        { collectionEnabled: true, collectionEligible: true, collectionAdmitted: false, retainedEvents },
+        'Add the exact project id to COLLECT_PROJECTS after its rollout review, or keep the exclusion intentional.');
+    }
     const state = monitorState(p, now);
-    if (state === 'down') add(p, 'monitor.down', 'critical', `${p.label} failed its synthetic check`,
-      'The configured path failed the monitor hysteresis. This does not prove every user journey is down.',
-      { state, checked: p.monitor.checked, failures: p.monitor.failures, status: p.monitor.status },
-      'Check the configured probe, then the latest deployment and a real product journey.');
+    const recordedDown = p.monitor?.state === 'down';
+    const lastKnownDown = refreshFailed === true && recordedDown;
+    if (state === 'down' || lastKnownDown) {
+      const lastKnown = refreshFailed === true;
+      add(p, 'monitor.down', 'critical', lastKnown ? `${p.label} last-known probe failure` : `${p.label} failed its synthetic check`,
+        lastKnown ? 'The last successful snapshot contained a failed probe. Its age is qualified separately; the current reading is unknown.'
+          : 'The configured path failed the monitor hysteresis. This does not prove every user journey is down.',
+        { state: p.monitor.state, freshness: state, checked: p.monitor.checked, failures: p.monitor.failures, status: p.monitor.status,
+          ...(lastKnown ? { lastKnown: true } : {}) },
+        lastKnown ? 'Refresh the desk, then check the configured probe, latest deployment and a real product journey.'
+          : 'Check the configured probe, then the latest deployment and a real product journey.');
+    }
     if (state === 'stale') add(p, 'monitor.stale', 'warning', `${p.label} has an old probe reading`,
       'No current availability claim is possible.', { checked: p.monitor.checked }, 'Check the probe schedule and collector readiness.');
     if (state === 'unknown') add(p, 'monitor.unknown', 'note', `${p.label} is waiting for probe evidence`,
@@ -87,12 +116,14 @@ export function reviewState(signal, reviews, now = Date.now()) {
 /** `stale` means the last refresh failed: the snapshot below is last-good history, not a current reading. */
 export function makeBrief(snapshot, signals, stale = false) {
   const projects = snapshot.projects;
+  const eligible = projects.filter(project => project.collectionEligible).length;
+  const admitted = projects.filter(project => project.collectionAdmitted).length;
   const mode = snapshot.mode === 'demo' ? 'SYNTHETIC DEMO' : 'PRIVATE AGGREGATE SNAPSHOT';
   return [`# Pulseboard field note`, '', `${mode}. Generated ${new Date(snapshot.generatedAt).toISOString()}.`,
     ...(stale === true ? ['REFRESH FAILED. Last-good snapshot; current health unknown.'] : []),
     `Window: ${new Date(snapshot.window.start).toISOString()} to ${new Date(snapshot.window.end).toISOString()} (end exclusive).`,
     '', `${projects.length} projects. ${sum(projects, p => p.totals.sessions)} reported sessions, not verified people.`,
-    `Collection: ${snapshot.collectionEnabled ? 'enabled' : 'disabled'}. ${signals.length} rule observations.`, '',
+    `Collection switch: ${snapshot.collectionEnabled ? 'enabled' : 'disabled'}. Browser admission: ${admitted}/${eligible} eligible projects. ${signals.length} rule observations.`, '',
     ...signals.flatMap(s => [`## ${s.title}`, s.detail, `Evidence: ${JSON.stringify(s.evidence)}`, `Next check: ${s.next}`, '']),
     '## Reading limits', ...snapshot.limitations.map(x => `- ${x}`), '',
     'This is an operator note, not an instruction to merge, deploy, page anyone, or publish private data.', ''].join('\n');

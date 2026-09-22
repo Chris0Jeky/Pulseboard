@@ -19,8 +19,9 @@ export function limitations(projects = registry) {
   const bound = Object.values(projects).filter(p => p.probe?.binding).map(p => p.label);
   return bound.length ? [...LIMITATIONS, `${bound.join(' and ')} are probed through a service binding inside Cloudflare: an up reading proves the application answers, not that its public address does.`] : LIMITATIONS;
 }
-export async function readPortfolio(db, { days = 7, now = Date.now(), collectionEnabled = false, projects = registry } = {}) {
-  if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days) throw new RangeError('Unsupported window');
+export async function readPortfolio(db, { days = 7, now = Date.now(), collectionEnabled = false, admittedProjects = [], projects = registry } = {}) {
+  if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days || !Array.isArray(admittedProjects) || admittedProjects.some(id => typeof id !== 'string')) throw new RangeError('Unsupported window or admission');
+  const admitted = new Set(admittedProjects);
   const start = now - days * DAY;
   const ranged = sql => db.prepare(sql).bind(start, now);
   // D1 batches are transactional. The local D1 adapter supplies the same boundary.
@@ -55,7 +56,7 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
       FROM ranked GROUP BY project,release`),
   ]);
   const [counts, sessions, daily, routes, probes, probeSamples, budgets, flows, timings] = rows.map(r => r.results);
-  return { schema: 'pulseboard.portfolio/1', mode: 'live', generatedAt: now, collectionEnabled,
+  return { schema: 'pulseboard.portfolio/2', mode: 'live', generatedAt: now, collectionEnabled,
     window: { start, end: now, days, timezone: 'UTC' }, limitations: limitations(projects),
     projects: Object.entries(projects).map(([id, config]) => {
       const events = counts.filter(row => row.project === id);
@@ -70,7 +71,9 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
         return { release, events: n(), completed: n('action.completed'), failed: n('action.failed'), errors: n('app.error'),
           last: Math.max(...selected.map(row => row.last)), duration: timing ? { n: timing.n, mean: timing.mean, p95: timing.p95, unit: 'ms', method: 'nearest-rank' } : null };
       }).sort((a, b) => b.last - a.last || a.release.localeCompare(b.release));
+      const collectionEligible = Boolean(config.origin);
       return { id, label: config.label, origin: config.origin, probeExpected: Boolean(config.probe),
+        collectionEligible, collectionAdmitted: collectionEnabled === true && collectionEligible && admitted.has(id),
         monitor: probe ? { state: monitorState(probe, now),
           checked: probe.checked, opened: probe.opened, status: probe.status, duration: probe.duration,
           failures: probe.failures, successes: probe.successes } : { state: 'unknown', checked: null },
