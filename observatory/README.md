@@ -62,6 +62,8 @@ node adapters/build-embed.mjs mdviewer /path/to/MDviewer public/observatory.js
 node adapters/build-embed.mjs mdviewer /path/to/MDviewer public/observatory.js https://YOUR-WORKER/v1/collect/mdviewer
 ```
 
+The installer also writes the shared `observatory/check.mjs` and, when no host notes exist, a small `observatory/README.md` with exact `text eol=lf` `.gitattributes` rules. Run `node observatory/check.mjs` in host CI. It verifies every target-keyed or legacy lock entry, accepts checkout-only CRLF conversion, and rejects actual byte drift or malformed generated scripts. Put Alibi-style activation gates and other product policy in an optional `observatory/check.local.mjs` default export. An existing hand-written checker is never overwritten: move its host-specific assertions to the local module, remove the old shared logic, and regenerate once.
+
 Include the generated **local** script in the public surface after the application entry. For Vite, place it under `public/` and use the app's base URL. For React server layouts, a deferred same-origin script works. For custom/offline builds, include the source in the existing hashed build input rather than mutating artifacts after the service-worker manifest is generated. No dynamic CDN, package publication or runtime import from another repository is required.
 
 The generated script has an empty endpoint until explicitly activated. Only then does it show a native **Usage sharing** control. Consent is per project and collector endpoint, expires after 90 days, and can be withdrawn at any time. There is no persistent analytics identifier. Reconfiguring the destination requires fresh consent.
