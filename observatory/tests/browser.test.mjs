@@ -81,4 +81,59 @@ test('a hidden page sends nothing without consent, and drains more than one batc
 });
 test('dispose never flushes', async () => {
   const { client, calls, timers } = setup(); client.setConsent(true); client.track('page.view'); client.dispose(); await client.flush(); assert.equal(calls.length, 0); assert.equal(timers.size, 0);
+});const hang = (_url, options) => new Promise((_resolve, reject) => {
+  options.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+});
+const lastTimer = timers => [...timers.entries()].at(-1);
+test('a consent deadline passing mid-session stops the next flush and fails closed', async t => {
+  const { client, calls } = setup(); const start = Date.now();
+  assert.equal(client.setConsent(true, start + 1000), true); assert.equal(client.track('page.view'), true);
+  t.mock.method(Date, 'now', () => start + 1001);
+  await client.flush(); assert.equal(calls.length, 0);
+  assert.equal(client.status().active, false); assert.equal(client.status().queued, 0); assert.equal(client.track('page.view'), false);
+  assert.equal(client.setConsent(true, Number.NaN), false); client.dispose();
+});
+test('a batch in flight at pagehide is reissued once with keepalive and the same ids', async () => {
+  let admit; const original = new Promise(resolve => { admit = resolve; });
+  const { client, calls } = setup({}, (_url, options) => options.keepalive ? Promise.resolve(new Response('{}', { status: 202 })) : original);
+  client.setConsent(true); client.track('page.view'); const pending = client.flush(); client.track('action.requested');
+  assert.equal(client.flushOnHide(), 2); assert.equal(calls.length, 3);
+  const ids = call => JSON.parse(call[1].body).events.map(event => event.id);
+  assert.deepEqual(ids(calls[1]), ids(calls[0])); assert.equal(calls[1][1].keepalive, true); assert.equal(calls[1][1].credentials, 'omit');
+  assert.equal(calls[1][1].signal, undefined); assert.equal(JSON.parse(calls[2][1].body).events[0].event, 'action.requested');
+  assert.equal(client.flushOnHide(), 0); assert.equal(calls.length, 3);
+  // A bfcache pagehide keeps the original request alive; its late acknowledgment must not count the batch twice.
+  admit(new Response('{}', { status: 202 })); await pending; await new Promise(resolve => setImmediate(resolve));
+  const { sent, dropped, failures, unknown } = client.status(); assert.deepEqual({ sent, dropped, failures, unknown }, { sent: 2, dropped: 0, failures: 0, unknown: 0 });
+  client.dispose();
+});
+test('keepalive handover prefers the in-flight batch and stays within 64 KiB', async () => {
+  const project = { ...projects.mdviewer, releases: ['unattributed', 'r'.repeat(1700)] };
+  const { client, calls } = setup({}, hang, { project, release: 'r'.repeat(1700) });
+  client.setConsent(true); for (let i = 0; i < 20; i++) client.track('page.view'); const pending = client.flush();
+  for (let i = 0; i < 20; i++) client.track('page.view');
+  assert.equal(client.flushOnHide(), 20); assert.equal(calls.length, 2); assert.equal(client.status().queued, 20);
+  assert.equal(calls[1][1].body, calls[0][1].body);
+  const bytes = calls.filter(call => call[1].keepalive).reduce((sum, call) => sum + new TextEncoder().encode(call[1].body).byteLength, 0);
+  assert.ok(bytes > 32768 && bytes <= 65536, String(bytes)); client.dispose(); await pending;
+});
+test('a slow admitted request is unknown, not failed, and never opens the circuit', async () => {
+  const { client, calls, timers } = setup({}, hang); client.setConsent(true);
+  for (let i = 0; i < 4; i++) {
+    client.track('page.view'); const pending = client.flush(); const [id, timer] = lastTimer(timers);
+    assert.equal(timer.ms, i === 0 ? 10000 : 5000); timers.delete(id); timer.fn(); await pending;
+  }
+  const { sent, dropped, failures, unknown } = client.status();
+  assert.deepEqual({ sent, dropped, failures, unknown }, { sent: 0, dropped: 0, failures: 0, unknown: 4 });
+  assert.equal(calls.length, 4); assert.equal(client.track('page.view'), true); client.dispose();
+});
+test('three genuine failures still open the circuit after timeouts', async () => {
+  let offline = false;
+  const { client, calls, timers } = setup({}, async (url, options) => { if (offline) throw new TypeError('offline'); return hang(url, options); });
+  client.setConsent(true);
+  for (let i = 0; i < 2; i++) { client.track('page.view'); const pending = client.flush(); const [id, timer] = lastTimer(timers); timers.delete(id); timer.fn(); await pending; }
+  offline = true;
+  for (let i = 0; i < 3; i++) { assert.equal(client.track('page.view'), true); await client.flush(); }
+  assert.equal(client.track('page.view'), false); assert.equal(calls.length, 5);
+  assert.equal(client.status().failures, 3); assert.equal(client.status().unknown, 2); client.dispose();
 });
