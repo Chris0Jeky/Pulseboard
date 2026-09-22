@@ -91,7 +91,10 @@ test('a consent deadline passing mid-session stops the next flush and fails clos
   t.mock.method(Date, 'now', () => start + 1001);
   await client.flush(); assert.equal(calls.length, 0);
   assert.equal(client.status().active, false); assert.equal(client.status().queued, 0); assert.equal(client.track('page.view'), false);
-  assert.equal(client.setConsent(true, Number.NaN), false); client.dispose();
+  assert.equal(client.setConsent(true, Number.NaN), false);
+  // A coercible string or null is not a deadline: it refuses consent rather than coercing to a future time.
+  assert.equal(client.setConsent(true, String(start + 86400000)), false); assert.equal(client.setConsent(true, null), false);
+  client.dispose();
 });
 test('a batch in flight at pagehide is reissued once with keepalive and the same ids', async () => {
   let admit; const original = new Promise(resolve => { admit = resolve; });
@@ -136,4 +139,20 @@ test('three genuine failures still open the circuit after timeouts', async () =>
   for (let i = 0; i < 3; i++) { assert.equal(client.track('page.view'), true); await client.flush(); }
   assert.equal(client.track('page.view'), false); assert.equal(calls.length, 5);
   assert.equal(client.status().failures, 3); assert.equal(client.status().unknown, 2); client.dispose();
+});
+test('a successful keepalive handover resets the failure streak like a normal success', async () => {
+  let mode = 'fail', admit;
+  const { client } = setup({}, async (_url, options) => {
+    if (options.keepalive) return new Response('{}', { status: 202 });
+    if (mode === 'fail') throw new TypeError('offline');
+    return new Promise(resolve => { admit = resolve; });
+  });
+  client.setConsent(true);
+  for (let i = 0; i < 2; i++) { client.track('page.view'); await client.flush(); }
+  mode = 'hang'; client.track('page.view'); const pending = client.flush();
+  assert.equal(client.flushOnHide(), 1); await new Promise(resolve => setImmediate(resolve));
+  admit(new Response('{}', { status: 202 })); await pending;
+  // A bfcache restore: one more failure must not open the breaker after the delivered handover.
+  mode = 'fail'; client.track('page.view'); await client.flush();
+  assert.equal(client.track('page.view'), true); assert.equal(client.status().failures, 3); client.dispose();
 });

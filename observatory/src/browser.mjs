@@ -37,7 +37,9 @@ export function createObserver(config, runtime = globalThis, onSelfRevoke = () =
   }
   /** until: optional consent deadline in epoch ms, re-checked before every send; an invalid one fails closed. */
   function setConsent(value, until = Infinity) {
-    clear(); deadline = until; consent = value === true && eligible(); failures = 0;
+    // Only a number (or the omitted default) is a deadline; a coercible string or NaN refuses consent.
+    clear(); deadline = typeof until === 'number' && !Number.isNaN(until) ? until : -Infinity;
+    consent = value === true && eligible(); failures = 0;
     // Request budget does not reset on consent toggles.
     if (consent) session = runtime.crypto.randomUUID();
     return consent;
@@ -92,7 +94,7 @@ export function createObserver(config, runtime = globalThis, onSelfRevoke = () =
     const settle = () => { keepaliveBytes -= bytes; };
     try {
       post(body, { keepalive: true })?.then?.(
-        response => { settle(); if (generation === epoch) { if (response?.ok) stats.sent += batch.length; else stats.dropped += batch.length; } },
+        response => { settle(); if (generation === epoch) { if (response?.ok) { stats.sent += batch.length; failures = 0; } else stats.dropped += batch.length; } },
         () => { settle(); stats.failures++; if (generation === epoch) stats.dropped += batch.length; });
     } catch { settle(); stats.failures++; stats.dropped += batch.length; }
     return true;
