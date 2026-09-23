@@ -201,4 +201,7 @@ owner actions; no agent holds either.
   (`COLLECT_ENABLED` `"true"`, `COLLECT_PROJECTS` `"alibi"`). `/healthz`, `/readyz` 200; `/v1/portfolio` 401
   unauthenticated and 200 with the read token, where Alibi carries `puzzle.solve` v1 with zero attempts, so the
   operation query runs on the production database. Rollback goes to `d76f3d16…`.
-- Alibi does not emit `puzzle.failed` until its host artifact is regenerated (Chris0Jeky/Alibi#183).
+- Alibi's host artifact was regenerated with `puzzle.failed` and journey hooks (Chris0Jeky/Alibi#183, merged
+  `a3b48da`) and deployed to `alibi-after-hours-preview` as Worker version `3d83bc77…`: the served
+  `assets/observatory.1e4e10824d07.js` lists `puzzle.failed` and `0.11.5`, and 291/291 public files match the
+  build. No consented production journey event has been observed yet.
