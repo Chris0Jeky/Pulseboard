@@ -95,7 +95,12 @@ class DataHub:
 
         # Send to all connections of relevant dashboards
         for dashboard_id in relevant_dashboards:
-            await self._send_to_dashboard(dashboard_id, message_json)
+            try:
+                await self._send_to_dashboard(dashboard_id, message_json)
+            except Exception:
+                self.logger.exception(
+                    f"Failed to broadcast to dashboard {dashboard_id}"
+                )
 
     async def _send_to_dashboard(self, dashboard_id: UUID, message: str) -> None:
         """
@@ -105,10 +110,10 @@ class DataHub:
             dashboard_id: Dashboard identifier
             message: JSON message to send
         """
-        connections = self.connections.get(dashboard_id, [])
+        snapshot = list(self.connections.get(dashboard_id, []))
         disconnected = []
 
-        for websocket in connections:
+        for websocket in snapshot:
             try:
                 await websocket.send_text(message)
             except Exception as e:
@@ -117,9 +122,11 @@ class DataHub:
                 )
                 disconnected.append(websocket)
 
-        # Remove disconnected websockets
+        # Remove failed websockets if still present. The list may have changed
+        # while awaiting sends, so re-resolve it via unregister_connection,
+        # which also cleans up dashboards left with no connections.
         for ws in disconnected:
-            connections.remove(ws)
+            await self.unregister_connection(dashboard_id, ws)
 
     async def register_connection(
         self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]

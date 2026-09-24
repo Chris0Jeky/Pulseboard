@@ -19,6 +19,41 @@ def hub():
     return DataHub(history_window=timedelta(minutes=10))
 
 
+class _FakeWebSocket:
+    """Small fake websocket that records sent messages."""
+
+    def __init__(self):
+        self.messages = []
+
+    async def send_text(self, message):
+        self.messages.append(message)
+
+
+class _FailingFakeWebSocket(_FakeWebSocket):
+    """Fake websocket whose send_text always raises."""
+
+    def __init__(self, error=None):
+        super().__init__()
+        self.error = error if error is not None else Exception("Connection closed")
+
+    async def send_text(self, message):
+        raise self.error
+
+
+class _UnregisterOnSendFakeWebSocket(_FakeWebSocket):
+    """Fake websocket that unregisters another connection while sending."""
+
+    def __init__(self, hub, dashboard_id, target):
+        super().__init__()
+        self._hub = hub
+        self._dashboard_id = dashboard_id
+        self._target = target
+
+    async def send_text(self, message):
+        await self._hub.unregister_connection(self._dashboard_id, self._target)
+        await super().send_text(message)
+
+
 class TestDataHub:
     """Tests for DataHub."""
 
@@ -224,6 +259,66 @@ class TestDataHub:
         # Working connection should still be there and have received the event
         assert ws_working in hub.connections[dashboard_id]
         assert ws_working.send_text.call_count == 1
+
+    async def test_broadcast_survives_disconnect_during_send(self, hub: DataHub):
+        """A disconnect mid-broadcast must not break delivery to others."""
+        feed_id = uuid4()
+        dashboard1_id = uuid4()
+        dashboard2_id = uuid4()
+
+        ws_a = _FailingFakeWebSocket(Exception("client gone"))
+        ws_b = _UnregisterOnSendFakeWebSocket(hub, dashboard1_id, ws_a)
+        ws_c = _FakeWebSocket()
+        ws_d2 = _FakeWebSocket()
+
+        hub.connections[dashboard1_id].extend([ws_a, ws_b, ws_c])
+        hub.dashboard_feeds[dashboard1_id].add(feed_id)
+        hub.connections[dashboard2_id].append(ws_d2)
+        hub.dashboard_feeds[dashboard2_id].add(feed_id)
+
+        # Must not raise.
+        await hub.publish_feed_event(feed_id, {"v": 1})
+
+        assert len(ws_c.messages) == 1
+        assert len(ws_d2.messages) == 1
+        assert ws_a not in hub.connections[dashboard1_id]
+
+    async def test_broadcast_failed_send_is_removed_once(self, hub: DataHub):
+        """A failed send removes the connection once; later publishes are clean."""
+        feed_id = uuid4()
+        dashboard_id = uuid4()
+
+        ws_broken = _FailingFakeWebSocket(Exception("Connection closed"))
+        ws_working = _FakeWebSocket()
+
+        hub.connections[dashboard_id].extend([ws_broken, ws_working])
+        hub.dashboard_feeds[dashboard_id].add(feed_id)
+
+        await hub.publish_feed_event(feed_id, {"value": 1})
+
+        assert hub.connections[dashboard_id] == [ws_working]
+
+        await hub.publish_feed_event(feed_id, {"value": 2})
+
+        assert hub.connections[dashboard_id] == [ws_working]
+        assert len(ws_working.messages) == 2
+
+    async def test_broadcast_last_failed_connection_cleans_up_dashboard(
+        self, hub: DataHub
+    ):
+        """The last failing connection removes the dashboard entries."""
+        feed_id = uuid4()
+        dashboard_id = uuid4()
+
+        ws_broken = _FailingFakeWebSocket(Exception("Connection closed"))
+
+        hub.connections[dashboard_id].append(ws_broken)
+        hub.dashboard_feeds[dashboard_id].add(feed_id)
+
+        await hub.publish_feed_event(feed_id, {"value": 1})
+
+        assert dashboard_id not in hub.connections
+        assert dashboard_id not in hub.dashboard_feeds
 
     async def test_clear_feed_data(self, hub: DataHub):
         """Test clearing all data for a feed."""
