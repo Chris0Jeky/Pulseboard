@@ -4,6 +4,7 @@ Dashboard API routes.
 
 import json
 import logging
+from collections.abc import Iterable
 from typing import List
 from uuid import UUID
 
@@ -17,10 +18,34 @@ from app.models import (
     DashboardRead,
     DashboardReadWithPanels,
     DashboardUpdate,
+    Panel,
 )
 
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
 logger = logging.getLogger(__name__)
+
+
+def collect_feed_ids(panels: Iterable[Panel]) -> set[UUID]:
+    """Collect valid feed UUIDs from panels, skipping bad stored rows."""
+    feed_ids: set[UUID] = set()
+    for panel in panels:
+        try:
+            panel_feed_ids = json.loads(panel.feed_ids_json)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Invalid feed_ids_json in panel {panel.id}")
+            continue
+        if not isinstance(panel_feed_ids, list):
+            logger.warning(f"Invalid feed_ids_json in panel {panel.id}")
+            continue
+        for feed_id_str in panel_feed_ids:
+            if not isinstance(feed_id_str, str):
+                logger.warning(f"Invalid feed ID in panel {panel.id}: {feed_id_str}")
+                continue
+            try:
+                feed_ids.add(UUID(feed_id_str))
+            except (ValueError, AttributeError, TypeError):
+                logger.warning(f"Invalid feed ID in panel {panel.id}: {feed_id_str}")
+    return feed_ids
 
 
 @router.get("", response_model=List[DashboardRead])
@@ -108,17 +133,4 @@ def get_dashboard_feed_ids(dashboard_id: UUID, session: SessionDep) -> List[UUID
             status_code=status.HTTP_404_NOT_FOUND, detail="Dashboard not found"
         )
 
-    # Collect all feed IDs from panels
-    feed_ids = set()
-    for panel in dashboard.panels:
-        try:
-            panel_feed_ids = json.loads(panel.feed_ids_json)
-            for feed_id_str in panel_feed_ids:
-                try:
-                    feed_ids.add(UUID(feed_id_str))
-                except ValueError:
-                    logger.warning(f"Invalid feed ID in panel {panel.id}: {feed_id_str}")
-        except json.JSONDecodeError:
-            logger.warning(f"Invalid feed_ids_json in panel {panel.id}")
-
-    return list(feed_ids)
+    return list(collect_feed_ids(dashboard.panels))

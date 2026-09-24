@@ -11,6 +11,7 @@ from sqlmodel import Session, create_engine, select
 from sqlmodel.pool import StaticPool
 
 from app.api.deps import get_session
+from app.api.routes.dashboards import collect_feed_ids
 from app.db.base import SQLModel
 from app.main import app
 from app.models import Dashboard, FeedDefinition, Panel
@@ -202,6 +203,68 @@ class TestDashboardAPI:
         assert len(data) == 2
         assert str(feed_id1) in data
         assert str(feed_id2) in data
+
+
+    def test_get_dashboard_feed_ids_ignores_bad_stored_rows(
+        self, client: TestClient, session: Session
+    ):
+        """GET feed-ids must skip bad stored rows and return only the good UUID."""
+        dashboard = Dashboard(name="Bad Rows Dashboard")
+        good_feed_id = uuid4()
+        dashboard.panels.append(
+            Panel(
+                type="stat",
+                title="Good Panel",
+                feed_ids_json=json.dumps([str(good_feed_id)]),
+                position_x=0,
+                position_y=0,
+            )
+        )
+        for index, bad_value in enumerate(["5", "[1]", '"x"', "[null]"]):
+            dashboard.panels.append(
+                Panel(
+                    type="stat",
+                    title=f"Bad Panel {index}",
+                    feed_ids_json=bad_value,
+                    position_x=index + 1,
+                    position_y=0,
+                )
+            )
+        session.add(dashboard)
+        session.commit()
+
+        response = client.get(f"/api/dashboards/{dashboard.id}/feed-ids")
+
+        assert response.status_code == 200
+        assert response.json() == [str(good_feed_id)]
+
+    def test_collect_feed_ids_ignores_bad_stored_rows(self, session: Session):
+        """collect_feed_ids must skip bad stored rows without raising."""
+        dashboard = Dashboard(name="Bad Rows Unit")
+        good_feed_id = uuid4()
+        dashboard.panels.append(
+            Panel(
+                type="stat",
+                title="Good Panel",
+                feed_ids_json=json.dumps([str(good_feed_id)]),
+                position_x=0,
+                position_y=0,
+            )
+        )
+        for index, bad_value in enumerate(["5", "[1]", '"x"', "[null]"]):
+            dashboard.panels.append(
+                Panel(
+                    type="stat",
+                    title=f"Bad Panel {index}",
+                    feed_ids_json=bad_value,
+                    position_x=index + 1,
+                    position_y=0,
+                )
+            )
+        session.add(dashboard)
+        session.commit()
+
+        assert collect_feed_ids(dashboard.panels) == {good_feed_id}
 
 
 class TestFeedAPI:
@@ -631,6 +694,37 @@ class TestPanelAPI:
         )
         session.refresh(panel)
         assert panel.feed_ids_json == original
+
+
+    def test_cross_dashboard_panel_guard(
+        self, client: TestClient, session: Session
+    ):
+        """A panel of dashboard B addressed under dashboard A must 404."""
+        dashboard_a = Dashboard(name="Dashboard A")
+        dashboard_b = Dashboard(name="Dashboard B")
+        panel = Panel(type="stat", title="Original", position_x=0, position_y=0)
+        dashboard_b.panels.append(panel)
+        session.add(dashboard_a)
+        session.add(dashboard_b)
+        session.commit()
+        session.refresh(panel)
+
+        response = client.patch(
+            f"/api/dashboards/{dashboard_a.id}/panels/{panel.id}",
+            json={"title": "Hacked"},
+        )
+
+        assert response.status_code == 404
+        session.refresh(panel)
+        assert panel.title == "Original"
+        assert panel.dashboard_id == dashboard_b.id
+
+        response = client.delete(
+            f"/api/dashboards/{dashboard_a.id}/panels/{panel.id}"
+        )
+
+        assert response.status_code == 404
+        assert session.get(Panel, panel.id) is not None
 
 
 class FakeFeedManager:
