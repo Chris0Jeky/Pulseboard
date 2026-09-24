@@ -74,9 +74,9 @@ class BaseFeed(ABC):
             self.logger.error(
                 f"Invalid interval_sec {raw_interval!r} for feed {self.feed_id}, using default 5s"
             )
-            interval = 5
+            interval: float = 5.0
         else:
-            interval = raw_interval
+            interval = float(raw_interval)
 
         self.logger.info(f"Starting feed {self.feed_id} with interval {interval}s")
 
