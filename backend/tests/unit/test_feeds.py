@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 
 from app.feeds.base import BaseFeed
+from app.feeds.crypto_price import CryptoPriceFeed
 from app.feeds.system_metrics import SystemMetricsFeed
 from app.hub.events import FeedEvent
 
@@ -183,3 +184,60 @@ class TestSystemMetricsFeed:
         assert data["memory_percent"] == 65.3
         assert data["memory_used_gb"] == 8.0
         assert data["memory_total_gb"] == 16.0
+
+
+def _coingecko_client(payload, captured_params):
+    """Build a fake httpx.AsyncClient context manager serving payload."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = payload
+    mock_response.raise_for_status.return_value = None
+    mock_client = AsyncMock()
+
+    async def _fake_get(url, params=None, timeout=None):
+        captured_params.update(params or {})
+        return mock_response
+
+    mock_client.get.side_effect = _fake_get
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = mock_client
+    mock_cm.__aexit__.return_value = False
+    return mock_cm
+
+
+class TestCryptoPriceFeed:
+    """Tests for CryptoPriceFeed currency handling (no network)."""
+
+    async def test_missing_currency_raises(self, mock_hub):
+        """Missing currency must raise instead of publishing price 0."""
+        feed = CryptoPriceFeed(uuid4(), {"coin_id": "bitcoin"}, mock_hub)
+        mock_cm = _coingecko_client({"bitcoin": {"eur": 1.0}}, {})
+        with patch(
+            "app.feeds.crypto_price.httpx.AsyncClient", return_value=mock_cm
+        ):
+            with pytest.raises(ValueError, match="Currency usd not found"):
+                await feed.fetch_data()
+
+    async def test_uppercase_currency_normalised(self, mock_hub):
+        """Uppercase config currency is normalised to lowercase."""
+        feed = CryptoPriceFeed(
+            uuid4(), {"coin_id": "bitcoin", "vs_currency": "USD"}, mock_hub
+        )
+        captured_params = {}
+        mock_cm = _coingecko_client({"bitcoin": {"usd": 42.0}}, captured_params)
+        with patch(
+            "app.feeds.crypto_price.httpx.AsyncClient", return_value=mock_cm
+        ):
+            data = await feed.fetch_data()
+        assert data["price"] == 42.0
+        assert data["vs_currency"] == "usd"
+        assert captured_params["vs_currencies"] == "usd"
+
+    async def test_real_zero_price_published(self, mock_hub):
+        """A real upstream zero is published, not treated as missing."""
+        feed = CryptoPriceFeed(uuid4(), {"coin_id": "bitcoin"}, mock_hub)
+        mock_cm = _coingecko_client({"bitcoin": {"usd": 0}}, {})
+        with patch(
+            "app.feeds.crypto_price.httpx.AsyncClient", return_value=mock_cm
+        ):
+            data = await feed.fetch_data()
+        assert data["price"] == 0
