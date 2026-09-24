@@ -15,6 +15,29 @@ router = APIRouter(prefix="/dashboards/{dashboard_id}/panels", tags=["panels"])
 logger = logging.getLogger(__name__)
 
 
+def _validate_feed_ids(raw: str) -> None:
+    """Validate that raw is a JSON list of feed UUID strings."""
+    value = json.loads(raw)
+    if not isinstance(value, list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="feed_ids_json must be a JSON list of feed UUID strings",
+        )
+    for item in value:
+        if not isinstance(item, str):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="feed_ids_json must be a JSON list of feed UUID strings",
+            )
+        try:
+            UUID(item)
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="feed_ids_json must be a JSON list of feed UUID strings",
+            ) from exc
+
+
 @router.post("", response_model=PanelRead, status_code=status.HTTP_201_CREATED)
 def create_panel(dashboard_id: UUID, panel: PanelCreate, session: SessionDep) -> Panel:
     """Create a new panel on a dashboard."""
@@ -40,6 +63,7 @@ def create_panel(dashboard_id: UUID, panel: PanelCreate, session: SessionDep) ->
             detail="Invalid JSON in options_json",
         ) from exc
 
+    _validate_feed_ids(panel.feed_ids_json)
     db_panel = Panel.model_validate(panel, update={"dashboard_id": dashboard_id})
     session.add(db_panel)
     session.commit()
@@ -69,6 +93,8 @@ def update_panel(
                 detail="Invalid JSON in feed_ids_json",
             ) from exc
 
+    if "feed_ids_json" in update_data:
+        _validate_feed_ids(update_data["feed_ids_json"])
     if "options_json" in update_data:
         try:
             json.loads(update_data["options_json"])
