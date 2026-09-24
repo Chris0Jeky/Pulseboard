@@ -414,6 +414,84 @@ class TestPanelAPI:
         data = response.json()
         assert data["title"] == "Test Panel"
 
+    @pytest.mark.parametrize("bad_value", ["5", '{"a": 1}', "[1]", '["not-a-uuid"]'])
+    def test_create_panel_rejects_non_uuid_feed_ids(
+        self, client: TestClient, session: Session, bad_value: str
+    ):
+        """POST with feed_ids_json that is not a list of UUIDs must fail."""
+        dashboard = Dashboard(name="Test Dashboard")
+        session.add(dashboard)
+        session.commit()
+
+        response = client.post(
+            f"/api/dashboards/{dashboard.id}/panels",
+            json={
+                "type": "stat",
+                "title": "Bad Feeds",
+                "feed_ids_json": bad_value,
+                "options_json": "{}",
+                "position_x": 0,
+                "position_y": 0,
+                "width": 4,
+                "height": 3,
+            },
+        )
+
+        assert response.status_code == 400
+        assert (
+            "feed_ids_json must be a JSON list of feed UUID strings"
+            in response.json()["detail"]
+        )
+
+    def test_create_panel_accepts_empty_and_uuid_feed_ids(
+        self, client: TestClient, session: Session
+    ):
+        """POST with [] or a real uuid4 string list must succeed."""
+        dashboard = Dashboard(name="Test Dashboard")
+        session.add(dashboard)
+        session.commit()
+
+        for good_value in ("[]", json.dumps([str(uuid4())])):
+            response = client.post(
+                f"/api/dashboards/{dashboard.id}/panels",
+                json={
+                    "type": "stat",
+                    "title": "Good Feeds",
+                    "feed_ids_json": good_value,
+                    "options_json": "{}",
+                    "position_x": 0,
+                    "position_y": 0,
+                    "width": 4,
+                    "height": 3,
+                },
+            )
+
+            assert response.status_code == 201
+
+    def test_update_panel_rejects_non_uuid_feed_ids(
+        self, client: TestClient, session: Session
+    ):
+        """PATCH with feed_ids_json [1] must fail and leave the row unchanged."""
+        dashboard = Dashboard(name="Test Dashboard")
+        panel = Panel(type="stat", title="Original", position_x=0, position_y=0)
+        dashboard.panels.append(panel)
+        session.add(dashboard)
+        session.commit()
+        original = panel.feed_ids_json
+
+        response = client.patch(
+            f"/api/dashboards/{dashboard.id}/panels/{panel.id}",
+            json={"feed_ids_json": "[1]"},
+        )
+
+        assert response.status_code == 400
+        assert (
+            "feed_ids_json must be a JSON list of feed UUID strings"
+            in response.json()["detail"]
+        )
+        session.refresh(panel)
+        assert panel.feed_ids_json == original
+
 
 class FakeFeedManager:
     """Test double recording FeedManager lifecycle calls."""
