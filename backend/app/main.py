@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     ws_router.set_hub(hub)
     feed_manager = FeedManager(hub)
+    app.state.feed_manager = feed_manager
 
     with Session(engine) as session:
         await feed_manager.load_feeds(session)
@@ -56,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if feed_manager:
         await feed_manager.stop_all_feeds()
+    app.state.feed_manager = None
 
     logger.info("Application shutdown complete")
 
