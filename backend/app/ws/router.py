@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
 
 from app.api.deps import SessionDep
+from app.api.routes.dashboards import collect_feed_ids
 from app.hub.hub import DataHub
 from app.models import Dashboard
 
@@ -47,17 +48,7 @@ async def websocket_dashboard(
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
-        feed_ids: set[UUID] = set()
-        for panel in dashboard.panels:
-            try:
-                panel_feed_ids = json.loads(panel.feed_ids_json)
-                for feed_id_str in panel_feed_ids:
-                    try:
-                        feed_ids.add(UUID(feed_id_str))
-                    except ValueError:
-                        logger.warning(f"Invalid feed ID in panel {panel.id}: {feed_id_str}")
-            except json.JSONDecodeError:
-                logger.warning(f"Invalid feed_ids_json in panel {panel.id}")
+        feed_ids: set[UUID] = collect_feed_ids(dashboard.panels)
 
         await websocket.accept()
         await hub.register_connection(dashboard_id, websocket, feed_ids)
