@@ -149,6 +149,27 @@ class TestBaseFeed:
         assert mock_error.call_count == 0
 
 
+    async def test_feed_run_huge_int_interval_falls_back_to_default(
+        self, mock_hub, monkeypatch
+    ):
+        """An int too large for a float must not raise (asyncio.sleep would): it falls back to 5s."""
+        huge = 10**400
+        feed_id = uuid4()
+        feed = MockFeed(feed_id, {"interval_sec": huge}, mock_hub)
+        seen = []
+
+        async def fake_sleep(delay):
+            seen.append(delay)
+            feed._stop_requested = True
+
+        monkeypatch.setattr("app.feeds.base.asyncio.sleep", fake_sleep)
+        with patch.object(feed.logger, "error") as mock_error:
+            await feed.run()
+
+        assert seen == [5.0]
+        assert mock_error.call_count == 1
+
+
 class TestSystemMetricsFeed:
     """Tests for SystemMetricsFeed."""
 

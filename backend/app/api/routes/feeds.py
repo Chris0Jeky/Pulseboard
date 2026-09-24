@@ -36,8 +36,8 @@ def _validate_interval_sec(config: dict) -> None:
     if (
         isinstance(value, bool)
         or not isinstance(value, (int, float))
-        or not math.isfinite(value)
         or not 1 <= value <= 86400
+        or (isinstance(value, float) and not math.isfinite(value))
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

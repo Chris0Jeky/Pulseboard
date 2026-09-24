@@ -65,18 +65,20 @@ class BaseFeed(ABC):
 
         self._running = True
         raw_interval = self.config.get("interval_sec", 5)
-        if (
-            isinstance(raw_interval, bool)
-            or not isinstance(raw_interval, (int, float))
-            or not math.isfinite(raw_interval)
-            or raw_interval <= 0
-        ):
+        # asyncio.sleep converts the delay to float, so an int too large for a float is invalid too.
+        resolved: float | None = None
+        if isinstance(raw_interval, (int, float)) and not isinstance(raw_interval, bool):
+            try:
+                resolved = float(raw_interval)
+            except OverflowError:
+                resolved = None
+        if resolved is None or not math.isfinite(resolved) or resolved <= 0:
             self.logger.error(
                 f"Invalid interval_sec {raw_interval!r} for feed {self.feed_id}, using default 5s"
             )
-            interval: float = 5.0
+            interval = 5.0
         else:
-            interval = float(raw_interval)
+            interval = resolved
 
         self.logger.info(f"Starting feed {self.feed_id} with interval {interval}s")
 
