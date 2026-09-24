@@ -111,6 +111,43 @@ class TestBaseFeed:
         # Feed should have recovered and continued
         assert feed.call_count >= 2
 
+    @pytest.mark.parametrize("bad_value", ["10", 0, -1, True, float("nan")])
+    async def test_feed_run_invalid_interval_falls_back_to_default(
+        self, mock_hub, monkeypatch, bad_value
+    ):
+        """Invalid interval_sec values fall back to 5s with an error log."""
+        feed_id = uuid4()
+        feed = MockFeed(feed_id, {"interval_sec": bad_value}, mock_hub)
+        seen = []
+
+        async def fake_sleep(delay):
+            seen.append(delay)
+            feed._stop_requested = True
+
+        monkeypatch.setattr("app.feeds.base.asyncio.sleep", fake_sleep)
+        with patch.object(feed.logger, "error") as mock_error:
+            await feed.run()
+
+        assert seen == [5]
+        assert mock_error.call_count >= 1
+
+    async def test_feed_run_small_interval_used_as_is(self, mock_hub, monkeypatch):
+        """A small but positive interval such as 0.1 is used as-is."""
+        feed_id = uuid4()
+        feed = MockFeed(feed_id, {"interval_sec": 0.1}, mock_hub)
+        seen = []
+
+        async def fake_sleep(delay):
+            seen.append(delay)
+            feed._stop_requested = True
+
+        monkeypatch.setattr("app.feeds.base.asyncio.sleep", fake_sleep)
+        with patch.object(feed.logger, "error") as mock_error:
+            await feed.run()
+
+        assert seen == [0.1]
+        assert mock_error.call_count == 0
+
 
 class TestSystemMetricsFeed:
     """Tests for SystemMetricsFeed."""

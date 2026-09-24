@@ -4,6 +4,7 @@ Feed API routes.
 
 import json
 import logging
+import math
 from datetime import datetime, timezone
 from typing import List
 from uuid import UUID
@@ -25,6 +26,23 @@ logger = logging.getLogger(__name__)
 def _feed_manager(request: Request) -> FeedManager | None:
     """Return the running FeedManager, or None when lifespan is not active."""
     return getattr(request.app.state, "feed_manager", None)
+
+
+def _validate_interval_sec(config: dict) -> None:
+    """Reject out-of-range or non-numeric interval_sec values."""
+    if "interval_sec" not in config:
+        return
+    value = config["interval_sec"]
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or not 1 <= value <= 86400
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="interval_sec must be a number of seconds between 1 and 86400",
+        )
 
 
 class FeedTypeInfo(BaseModel):
@@ -76,12 +94,15 @@ async def create_feed(
         )
 
     try:
-        json.loads(feed.config_json)
+        parsed_config = json.loads(feed.config_json)
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid JSON in config_json",
         ) from exc
+
+    if isinstance(parsed_config, dict):
+        _validate_interval_sec(parsed_config)
 
     db_feed = FeedDefinition.model_validate(feed)
     session.add(db_feed)
@@ -118,6 +139,7 @@ async def update_feed(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
 
     update_data = feed_update.model_dump(exclude_unset=True)
+    parsed_update_config = None
     if "type" in update_data and not get_feed_class(update_data["type"]):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -126,12 +148,15 @@ async def update_feed(
 
     if "config_json" in update_data:
         try:
-            json.loads(update_data["config_json"])
+            parsed_update_config = json.loads(update_data["config_json"])
         except json.JSONDecodeError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid JSON in config_json",
             ) from exc
+
+    if "config_json" in update_data and isinstance(parsed_update_config, dict):
+        _validate_interval_sec(parsed_update_config)
 
     for field, value in update_data.items():
         setattr(feed, field, value)

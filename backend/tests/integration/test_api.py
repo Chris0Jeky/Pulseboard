@@ -211,6 +211,64 @@ class TestFeedAPI:
         assert response.status_code == 400
         assert "Invalid JSON" in response.json()["detail"]
 
+    @pytest.mark.parametrize("bad_value", [0, "10", True, 90000])
+    def test_create_feed_rejects_bad_interval_sec(self, client: TestClient, bad_value):
+        """POST with an invalid interval_sec must fail with 400."""
+        response = client.post(
+            "/api/feeds",
+            json={
+                "type": "system_metrics",
+                "name": "Bad Interval Feed",
+                "config_json": json.dumps({"interval_sec": bad_value}),
+                "enabled": True,
+            },
+        )
+
+        assert response.status_code == 400
+        assert (
+            "interval_sec must be a number of seconds between 1 and 86400"
+            in response.json()["detail"]
+        )
+
+    def test_create_feed_accepts_valid_interval_sec(self, client: TestClient):
+        """POST with interval_sec 5 must succeed."""
+        response = client.post(
+            "/api/feeds",
+            json={
+                "type": "system_metrics",
+                "name": "Good Interval Feed",
+                "config_json": json.dumps({"interval_sec": 5}),
+                "enabled": True,
+            },
+        )
+
+        assert response.status_code == 201
+
+    def test_update_feed_rejects_bad_interval_sec(
+        self, client: TestClient, session: Session
+    ):
+        """PATCH with an invalid interval_sec must fail and leave config unchanged."""
+        original_config = '{"interval_sec": 5}'
+        feed = FeedDefinition(
+            type="system_metrics", name="Patch Feed", config_json=original_config
+        )
+        session.add(feed)
+        session.commit()
+        session.refresh(feed)
+
+        response = client.patch(
+            f"/api/feeds/{feed.id}",
+            json={"config_json": json.dumps({"interval_sec": 0})},
+        )
+
+        assert response.status_code == 400
+        assert (
+            "interval_sec must be a number of seconds between 1 and 86400"
+            in response.json()["detail"]
+        )
+        session.refresh(feed)
+        assert feed.config_json == original_config
+
     def test_list_feeds(self, client: TestClient, session: Session):
         """Test listing feeds."""
         feed1 = FeedDefinition(type="system_metrics", name="Feed 1", enabled=True)
