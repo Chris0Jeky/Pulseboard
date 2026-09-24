@@ -286,6 +286,25 @@ class TestFeedAPI:
 
         assert response.status_code == 201
 
+    def test_create_feed_rejects_huge_interval_sec(self, client: TestClient):
+        """POST with interval_sec 10**400 must fail with 400, not 500."""
+        config_json = '{"interval_sec": 1' + "0" * 400 + "}"
+        response = client.post(
+            "/api/feeds",
+            json={
+                "type": "system_metrics",
+                "name": "Huge Interval Feed",
+                "config_json": config_json,
+                "enabled": True,
+            },
+        )
+
+        assert response.status_code == 400
+        assert (
+            "interval_sec must be a number of seconds between 1 and 86400"
+            in response.json()["detail"]
+        )
+
     def test_update_feed_rejects_bad_interval_sec(
         self, client: TestClient, session: Session
     ):
@@ -301,6 +320,32 @@ class TestFeedAPI:
         response = client.patch(
             f"/api/feeds/{feed.id}",
             json={"config_json": json.dumps({"interval_sec": 0})},
+        )
+
+        assert response.status_code == 400
+        assert (
+            "interval_sec must be a number of seconds between 1 and 86400"
+            in response.json()["detail"]
+        )
+        session.refresh(feed)
+        assert feed.config_json == original_config
+
+    def test_update_feed_rejects_huge_interval_sec(
+        self, client: TestClient, session: Session
+    ):
+        """PATCH with interval_sec 10**400 must fail with 400 and leave config unchanged."""
+        original_config = '{"interval_sec": 5}'
+        feed = FeedDefinition(
+            type="system_metrics", name="Huge Patch Feed", config_json=original_config
+        )
+        session.add(feed)
+        session.commit()
+        session.refresh(feed)
+
+        config_json = '{"interval_sec": 1' + "0" * 400 + "}"
+        response = client.patch(
+            f"/api/feeds/{feed.id}",
+            json={"config_json": config_json},
         )
 
         assert response.status_code == 400
