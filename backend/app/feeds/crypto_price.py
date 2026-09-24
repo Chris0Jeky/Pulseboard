@@ -35,7 +35,7 @@ class CryptoPriceFeed(BaseFeed):
         if not coin_id:
             raise ValueError("coin_id is required in config")
 
-        vs_currency = self.config.get("vs_currency", "usd")
+        vs_currency = str(self.config.get("vs_currency", "usd")).strip().lower()
         include_market_data = self.config.get("include_market_data", False)
 
         # Simple price endpoint
@@ -59,12 +59,14 @@ class CryptoPriceFeed(BaseFeed):
                 raise ValueError(f"Coin {coin_id} not found in response")
 
             coin_data = data[coin_id]
+            if vs_currency not in coin_data:
+                raise ValueError(f"Currency {vs_currency} not found in response for {coin_id}")
 
             # Structure the response
             result: Dict[str, Any] = {
                 "coin_id": coin_id,
                 "vs_currency": vs_currency,
-                "price": coin_data.get(vs_currency, 0),
+                "price": coin_data[vs_currency],
             }
 
             if include_market_data:
