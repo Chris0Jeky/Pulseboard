@@ -112,6 +112,48 @@ class TestDashboardAPI:
         assert data["name"] == "Updated Name"
         assert data["description"] == "New description"
 
+    @pytest.mark.parametrize("field", ["name", "layout_json"])
+    def test_update_dashboard_rejects_explicit_null(
+        self, client: TestClient, session: Session, field: str
+    ):
+        """PATCH with an explicit null for a non-nullable field must fail with 422."""
+        dashboard = Dashboard(
+            name="Original", description="Keep me", layout_json='{"a": 1}'
+        )
+        session.add(dashboard)
+        session.commit()
+        session.refresh(dashboard)
+
+        response = client.patch(
+            f"/api/dashboards/{dashboard.id}", json={field: None}
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == f"{field} cannot be null"
+        session.refresh(dashboard)
+        assert dashboard.name == "Original"
+        assert dashboard.description == "Keep me"
+        assert dashboard.layout_json == '{"a": 1}'
+
+    def test_update_dashboard_allows_null_description(
+        self, client: TestClient, session: Session
+    ):
+        """PATCH with null description must clear it (description is nullable)."""
+        dashboard = Dashboard(name="Original", description="Keep me")
+        session.add(dashboard)
+        session.commit()
+        session.refresh(dashboard)
+
+        response = client.patch(
+            f"/api/dashboards/{dashboard.id}", json={"description": None}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["description"] is None
+        session.refresh(dashboard)
+        assert dashboard.description is None
+        assert dashboard.name == "Original"
+
     def test_delete_dashboard(self, client: TestClient, session: Session):
         """Test deleting a dashboard."""
         dashboard = Dashboard(name="To Delete")
@@ -310,6 +352,31 @@ class TestFeedAPI:
         assert data["name"] == "Updated"
         assert data["enabled"] is False
 
+    @pytest.mark.parametrize("field", ["config_json", "name", "enabled"])
+    def test_update_feed_rejects_explicit_null(
+        self, client: TestClient, session: Session, field: str
+    ):
+        """PATCH with an explicit null must fail with 422 and leave the feed unchanged."""
+        original_config = '{"interval_sec": 5}'
+        feed = FeedDefinition(
+            type="system_metrics",
+            name="Original",
+            config_json=original_config,
+            enabled=True,
+        )
+        session.add(feed)
+        session.commit()
+        session.refresh(feed)
+
+        response = client.patch(f"/api/feeds/{feed.id}", json={field: None})
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == f"{field} cannot be null"
+        session.refresh(feed)
+        assert feed.config_json == original_config
+        assert feed.name == "Original"
+        assert feed.enabled is True
+
     def test_delete_feed(self, client: TestClient, session: Session):
         """Test deleting a feed."""
         feed = FeedDefinition(type="system_metrics", name="To Delete")
@@ -382,6 +449,34 @@ class TestPanelAPI:
         data = response.json()
         assert data["title"] == "Updated Title"
         assert data["width"] == 6
+
+    @pytest.mark.parametrize("field", ["feed_ids_json", "options_json", "width"])
+    def test_update_panel_rejects_explicit_null(
+        self, client: TestClient, session: Session, field: str
+    ):
+        """PATCH with an explicit null must fail with 422 and leave the panel unchanged."""
+        dashboard = Dashboard(name="Test Dashboard")
+        panel = Panel(type="stat", title="Original", position_x=0, position_y=0)
+        dashboard.panels.append(panel)
+        session.add(dashboard)
+        session.commit()
+        session.refresh(panel)
+        original_feed_ids = panel.feed_ids_json
+        original_options = panel.options_json
+        original_width = panel.width
+
+        response = client.patch(
+            f"/api/dashboards/{dashboard.id}/panels/{panel.id}",
+            json={field: None},
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == f"{field} cannot be null"
+        session.refresh(panel)
+        assert panel.feed_ids_json == original_feed_ids
+        assert panel.options_json == original_options
+        assert panel.width == original_width
+        assert panel.title == "Original"
 
     def test_delete_panel(self, client: TestClient, session: Session):
         """Test deleting a panel."""

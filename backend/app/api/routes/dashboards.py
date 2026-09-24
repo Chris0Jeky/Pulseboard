@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 from sqlmodel import select
 
-from app.api.deps import SessionDep
+from app.api.deps import SessionDep, reject_nulls
 from app.models import (
     Dashboard,
     DashboardCreate,
@@ -68,6 +68,7 @@ def update_dashboard(
 
     # Update fields
     update_data = dashboard_update.model_dump(exclude_unset=True)
+    reject_nulls(update_data, nullable=frozenset({"description"}))
     for field, value in update_data.items():
         setattr(dashboard, field, value)
 
