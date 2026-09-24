@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlmodel import select
 
-from app.api.deps import SessionDep
+from app.api.deps import SessionDep, reject_nulls
 from app.feeds import FEED_METADATA, FEED_TYPES, get_feed_class
 from app.feeds.manager import FeedManager
 from app.hub.hub import DataHub
@@ -139,6 +139,7 @@ async def update_feed(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
 
     update_data = feed_update.model_dump(exclude_unset=True)
+    reject_nulls(update_data)
     parsed_update_config = None
     if "type" in update_data and not get_feed_class(update_data["type"]):
         raise HTTPException(

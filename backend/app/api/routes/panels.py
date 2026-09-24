@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import SessionDep
+from app.api.deps import SessionDep, reject_nulls
 from app.models import Dashboard, Panel, PanelCreate, PanelRead, PanelUpdate
 
 router = APIRouter(prefix="/dashboards/{dashboard_id}/panels", tags=["panels"])
@@ -83,6 +83,7 @@ def update_panel(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Panel not found")
 
     update_data = panel_update.model_dump(exclude_unset=True)
+    reject_nulls(update_data)
 
     if "feed_ids_json" in update_data:
         try:
