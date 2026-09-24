@@ -3,7 +3,7 @@ Integration tests for REST API endpoints.
 """
 
 import json
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -355,3 +355,130 @@ class TestPanelAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Test Panel"
+
+
+class FakeFeedManager:
+    """Test double recording FeedManager lifecycle calls."""
+
+    def __init__(self):
+        self.calls = []
+
+    async def start_feed(self, feed_def):
+        self.calls.append(("start", feed_def.id))
+
+    async def stop_feed(self, feed_id):
+        self.calls.append(("stop", feed_id))
+
+    async def restart_feed(self, session, feed_id):
+        self.calls.append(("restart", feed_id))
+
+
+class FailingStopFeedManager(FakeFeedManager):
+    """Manager whose stop_feed raises, to prove HTTP is unaffected."""
+
+    async def stop_feed(self, feed_id):
+        raise RuntimeError("boom")
+
+
+class TestFeedLifecycle:
+    """Feed create/update/delete must drive the running feed manager."""
+
+    def test_create_enabled_feed_starts(self, client: TestClient):
+        """POST an enabled feed starts it via the manager."""
+        fake = FakeFeedManager()
+        app.state.feed_manager = fake
+        try:
+            response = client.post(
+                "/api/feeds",
+                json={
+                    "type": "system_metrics",
+                    "name": "Lifecycle Feed",
+                    "config_json": '{"interval_sec": 5}',
+                    "enabled": True,
+                },
+            )
+
+            assert response.status_code == 201
+            new_id = UUID(response.json()["id"])
+            assert fake.calls == [("start", new_id)]
+        finally:
+            if hasattr(app.state, "feed_manager"):
+                delattr(app.state, "feed_manager")
+
+    def test_create_disabled_feed_no_start(self, client: TestClient):
+        """POST a disabled feed must not start anything."""
+        fake = FakeFeedManager()
+        app.state.feed_manager = fake
+        try:
+            response = client.post(
+                "/api/feeds",
+                json={
+                    "type": "system_metrics",
+                    "name": "Disabled Feed",
+                    "config_json": '{"interval_sec": 5}',
+                    "enabled": False,
+                },
+            )
+
+            assert response.status_code == 201
+            assert fake.calls == []
+        finally:
+            if hasattr(app.state, "feed_manager"):
+                delattr(app.state, "feed_manager")
+
+    def test_update_feed_restarts(self, client: TestClient, session: Session):
+        """PATCH a feed restarts it via the manager."""
+        feed = FeedDefinition(type="system_metrics", name="Original", enabled=True)
+        session.add(feed)
+        session.commit()
+        feed_id = feed.id
+
+        fake = FakeFeedManager()
+        app.state.feed_manager = fake
+        try:
+            response = client.patch(
+                f"/api/feeds/{feed_id}", json={"name": "Updated"}
+            )
+
+            assert response.status_code == 200
+            assert fake.calls == [("restart", feed_id)]
+        finally:
+            if hasattr(app.state, "feed_manager"):
+                delattr(app.state, "feed_manager")
+
+    def test_delete_feed_stops(self, client: TestClient, session: Session):
+        """DELETE a feed stops it via the manager."""
+        feed = FeedDefinition(type="system_metrics", name="To Delete")
+        session.add(feed)
+        session.commit()
+        feed_id = feed.id
+
+        fake = FakeFeedManager()
+        app.state.feed_manager = fake
+        try:
+            response = client.delete(f"/api/feeds/{feed_id}")
+
+            assert response.status_code == 204
+            assert fake.calls == [("stop", feed_id)]
+        finally:
+            if hasattr(app.state, "feed_manager"):
+                delattr(app.state, "feed_manager")
+
+    def test_delete_feed_manager_error_still_204(
+        self, client: TestClient, session: Session
+    ):
+        """A manager stop error must not change the DELETE response."""
+        feed = FeedDefinition(type="system_metrics", name="To Delete")
+        session.add(feed)
+        session.commit()
+        feed_id = feed.id
+
+        app.state.feed_manager = FailingStopFeedManager()
+        try:
+            response = client.delete(f"/api/feeds/{feed_id}")
+
+            assert response.status_code == 204
+            assert session.get(FeedDefinition, feed_id) is None
+        finally:
+            if hasattr(app.state, "feed_manager"):
+                delattr(app.state, "feed_manager")

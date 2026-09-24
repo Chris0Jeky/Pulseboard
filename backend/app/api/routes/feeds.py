@@ -8,17 +8,23 @@ from datetime import datetime, timezone
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlmodel import select
 
 from app.api.deps import SessionDep
 from app.feeds import FEED_METADATA, FEED_TYPES, get_feed_class
+from app.feeds.manager import FeedManager
 from app.hub.hub import DataHub
 from app.models import FeedCreate, FeedDefinition, FeedRead, FeedUpdate
 
 router = APIRouter(prefix="/feeds", tags=["feeds"])
 logger = logging.getLogger(__name__)
+
+
+def _feed_manager(request: Request) -> FeedManager | None:
+    """Return the running FeedManager, or None when lifespan is not active."""
+    return getattr(request.app.state, "feed_manager", None)
 
 
 class FeedTypeInfo(BaseModel):
@@ -59,7 +65,9 @@ def list_feed_types() -> List[FeedTypeInfo]:
 
 
 @router.post("", response_model=FeedRead, status_code=status.HTTP_201_CREATED)
-def create_feed(feed: FeedCreate, session: SessionDep) -> FeedDefinition:
+async def create_feed(
+    feed: FeedCreate, session: SessionDep, request: Request
+) -> FeedDefinition:
     """Create a new feed definition."""
     if not get_feed_class(feed.type):
         raise HTTPException(
@@ -80,6 +88,12 @@ def create_feed(feed: FeedCreate, session: SessionDep) -> FeedDefinition:
     session.commit()
     session.refresh(db_feed)
 
+    manager = _feed_manager(request)
+    if manager is not None and db_feed.enabled:
+        try:
+            await manager.start_feed(db_feed)
+        except Exception:
+            logger.exception(f"Failed to start feed {db_feed.id} after create")
     logger.info(f"Created feed {db_feed.id}: {db_feed.name} ({db_feed.type})")
     return db_feed
 
@@ -95,7 +109,9 @@ def get_feed(feed_id: UUID, session: SessionDep) -> FeedDefinition:
 
 
 @router.patch("/{feed_id}", response_model=FeedRead)
-def update_feed(feed_id: UUID, feed_update: FeedUpdate, session: SessionDep) -> FeedDefinition:
+async def update_feed(
+    feed_id: UUID, feed_update: FeedUpdate, session: SessionDep, request: Request
+) -> FeedDefinition:
     """Update a feed definition."""
     feed = session.get(FeedDefinition, feed_id)
     if not feed:
@@ -124,12 +140,18 @@ def update_feed(feed_id: UUID, feed_update: FeedUpdate, session: SessionDep) -> 
     session.commit()
     session.refresh(feed)
 
+    manager = _feed_manager(request)
+    if manager is not None:
+        try:
+            await manager.restart_feed(session, feed_id)
+        except Exception:
+            logger.exception(f"Failed to restart feed {feed_id} after update")
     logger.info(f"Updated feed {feed_id}")
     return feed
 
 
 @router.delete("/{feed_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_feed(feed_id: UUID, session: SessionDep) -> None:
+async def delete_feed(feed_id: UUID, session: SessionDep, request: Request) -> None:
     """Delete a feed definition."""
     feed = session.get(FeedDefinition, feed_id)
     if not feed:
@@ -138,6 +160,12 @@ def delete_feed(feed_id: UUID, session: SessionDep) -> None:
     session.delete(feed)
     session.commit()
 
+    manager = _feed_manager(request)
+    if manager is not None:
+        try:
+            await manager.stop_feed(feed_id)
+        except Exception:
+            logger.exception(f"Failed to stop feed {feed_id} after delete")
     logger.info(f"Deleted feed {feed_id}")
 
 
