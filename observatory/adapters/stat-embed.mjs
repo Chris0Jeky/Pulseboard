@@ -282,7 +282,8 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
       return null;
     }
     try {
-      if (typeof doc.body.append === 'function') doc.body.append(details);
+      if (typeof doc.body.prepend === 'function') doc.body.prepend(details);
+      else if (typeof doc.body.append === 'function') doc.body.append(details);
       else doc.body.appendChild(details);
     } catch {
       return null;
