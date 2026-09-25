@@ -4,7 +4,7 @@
 
 | Direction | Implemented here | Still needs a producer / consumer |
 | --- | --- | --- |
-| Observatory -> Desk | Authenticated aggregate API and browser client | Production rollout remains opt-in |
+| Observatory -> Desk | Authenticated aggregate API, legacy opt-in client and separate Alibi statistics client | Other projects remain opt-in; no further statistics consumer is admitted |
 | CommitAtlas -> Desk | Reader for existing native v2 `projects.json` | Automatic refresh and explicit repo-to-project mapping |
 | Developer Lens -> Desk | Strict reader for `pulseboard.lens-projection/1` | Native Lens exporter for this new contract |
 | GitHub -> Desk | Server-side connector for a reviewed numeric-id mapping, `pulseboard.github-evidence/1`, release notebook | An owner-approved mapping (q-9: Alibi) and a server-side token |
