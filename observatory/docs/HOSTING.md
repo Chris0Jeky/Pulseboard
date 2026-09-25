@@ -45,6 +45,14 @@ returns schema 2 after deployment. The new `/v1/collect-stat/alibi` route is
 disabled unless `COLLECT_STAT_PROJECTS` is exactly `alibi`; the current hosted
 configuration does not set it. Turning that switch on belongs to issue #89's
 consumer cutover and must follow its browser, notice and opt-out checks.
+If the Worker must be rolled back to a schema-1 build, first remove
+`COLLECT_STAT_PROJECTS`, stop the statistics consumer, and deploy the prior
+Worker. Its old readiness check expects version 1, so run
+`UPDATE schema_version SET version=1 WHERE id=1 AND version=2` against this D1
+database as the final rollback step and confirm `/readyz` returns 200. Leave
+the additive `statistics` table in place for forward recovery; do not drop it
+or delete historical event rows. This rollback has not yet been exercised on
+hosted D1 and is a cutover gate in issue #89.
 
 The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
 before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
