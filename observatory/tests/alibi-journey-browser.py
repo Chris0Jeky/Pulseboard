@@ -52,7 +52,7 @@ def build_observer() -> str:
     source = """
 import { buildEmbed } from './adapters/build-embed.mjs';
 process.stdout.write(buildEmbed('alibi', {
-  endpoint: 'https://collector.test/v1/collect/alibi',
+  endpoint: 'https://collector.test/v1/collect-stat/alibi',
   release: '0.11.4',
   route: 'puzzle',
 }));
@@ -177,18 +177,13 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
             page.goto(HOST_ORIGIN + "/", wait_until="load")
             sharing = page.locator("#pulseboard-usage-sharing")
             sharing.wait_for(state="attached")
-            sharing.locator("summary").click()
-            consent = sharing.locator("input[type=checkbox]")
-            consent.wait_for(state="visible")
-
-            assert page.evaluate("() => globalThis.PulseboardUsage.track('puzzle.started')") is False
-            page.wait_for_timeout(200)
-            assert posts == [], "pre-consent events must not reach the collector"
-
-            consent.check()
+            assert sharing.evaluate("element => element.open") is True, "notice is open on first visit"
+            sharing_switch = sharing.locator("input[type=checkbox]")
+            sharing_switch.wait_for(state="visible")
+            assert sharing_switch.is_checked(), "eligible first visit starts on"
             # Sync Playwright handles routed requests only while it runs; time.sleep would starve the proxy.
             pump = lambda seconds: page.wait_for_timeout(seconds * 1000)
-            wait_for(lambda: len(posts) == 1, "consented page view was not delivered", pause=pump)
+            wait_for(lambda: len(posts) == 1, "initial aggregate page view was not delivered", pause=pump)
 
             accepted = page.evaluate("""async () => {
               const track = event => globalThis.PulseboardUsage.track(event);
@@ -206,9 +201,9 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
               return results;
             }""")
             assert accepted == [True] * 7
-            wait_for(lambda: len(posts) == 2, "journey batch was not delivered", pause=pump)
+            wait_for(lambda: len(posts) == 2, "aggregate journey batch was not delivered", pause=pump)
 
-            consent.uncheck()
+            sharing_switch.uncheck()
             before_withdrawal = len(posts)
             ignored = page.evaluate("""async () => {
               globalThis.__ALIBI_TEST_CONTEXT.route = 'puzzle';
@@ -221,36 +216,21 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
             assert len(posts) == before_withdrawal, "post-withdrawal event reached the collector"
             browser.close()
 
-        snapshot = http_json(f"{local_origin}/v1/portfolio?days=7", token=READ_TOKEN)
-        alibi = next(project for project in snapshot["projects"] if project["id"] == "alibi")
-        operation = alibi["operations"][0]
-        assert operation == {
-            "id": "puzzle.solve",
-            "version": 1,
-            "attempts": 3,
-            "completed": 1,
-            "failed": 1,
-            "open": 1,
-            "retries": 2,
-            "completion": operation["completion"],
-            "releases": [
-                {
-                    "release": "0.11.4",
-                    "attempts": 3,
-                    "completed": 1,
-                    "failed": 1,
-                    "open": 1,
-                    "retries": 2,
-                }
-            ],
-        }
-        assert operation["completion"]["numerator"] == 1
-        assert operation["completion"]["denominator"] == 3
-        assert abs(operation["completion"]["value"] - 1 / 3) < 1e-12
-        assert alibi["flow"]["denominator"] == 0
-        assert alibi["totals"]["events"] == 8
-        assert alibi["totals"]["sessions"] == 1
-        print("Alibi browser -> collector -> aggregate journey passed")
+        observed = [count for post in posts for count in post["counts"]]
+        assert all(set(post) == {"v", "counts"} and post["v"] == 1 for post in posts)
+        assert all(set(count) == {"event", "route", "release", "n"} and count["n"] == 1 for count in observed)
+        assert len(observed) == 8
+        assert observed[0] == {"event": "page.view", "route": "puzzle", "release": "0.11.4", "n": 1}
+        assert not any("session" in json.dumps(post).lower() or "puzzleid" in json.dumps(post).lower() for post in posts)
+        statistics = http_json(f"{local_origin}/v1/statistics/alibi?days=7", token=READ_TOKEN)
+        assert statistics["schema"] == "pulseboard.statistics/1"
+        assert statistics["total"] == 8
+        assert statistics["collectionAdmitted"] is True
+        assert not any(key in statistics for key in ("sessions", "flow", "operations"))
+        legacy = http_json(f"{local_origin}/v1/portfolio?days=7", token=READ_TOKEN)
+        alibi = next(project for project in legacy["projects"] if project["id"] == "alibi")
+        assert alibi["totals"]["events"] == 0, "aggregate events never enter the opt-in population"
+        print("Alibi browser -> aggregate collector -> separate statistics reader passed")
     finally:
         fixture.terminate()
         try:
