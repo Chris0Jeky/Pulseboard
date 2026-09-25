@@ -102,6 +102,18 @@ a wrong-Origin POST returned 403, and one valid Alibi aggregate POST returned
 table; it is not a player visit. The Alibi default-on client was not yet
 deployed at this collector checkpoint.
 
+The consumer subsequently deployed as [Alibi 0.12.0](https://github.com/Chris0Jeky/Alibi/releases/tag/v0.12.0)
+from merge commit `0ebe3541837561a3f12da373ccfe266dc6a2260e`, Cloudflare
+Worker version `8edf7ab7-a92e-4963-be7a-d1bebcd68fe8`. A disposable hosted
+Chromium visit saw the notice open with Usage sharing on, received 202 for one
+aggregate-only `page.view` / `home` / `0.12.0` / `n=1`, persisted an explicit
+off choice, and sent no additional count after navigation. This added a second
+synthetic QA count to production statistics. The separate Sites fallback runs
+the same Alibi release but does not collect. The Alibi receipt PR records both
+origins' HTTP and offline/save acceptance. Alibi's physical-device checks
+remain open; the statistical-purpose exception and international applicability
+remain subject to the product-specific review described in `ENGINEERING.md`.
+
 The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
 before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
 `%LOCALAPPDATA%/Pulseboard/read-token.dpapi`. To copy it for **Connect data** without printing it,

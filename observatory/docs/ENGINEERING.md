@@ -81,5 +81,6 @@ The schema and browser tests cover most of these locally. Full host builds, brow
 - Cloudflare D1 billing observability: https://developers.cloudflare.com/d1/observability/billing/
 - Cloudflare Worker pricing: https://developers.cloudflare.com/workers/platform/pricing/
 - ICO storage/access exceptions: https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guidance-on-the-use-of-storage-and-access-technologies/what-are-the-exceptions/
+- CNIL audience-measurement exemption: https://www.cnil.fr/fr/node/677
 
-The UK statistical-purpose exception is conditional, not a universal exemption for analytics. This rollout chooses explicit opt-in because the products have existing privacy promises and potentially international audiences. Deployment still requires review of the actual notices, data use, service providers and applicable rules.
+The UK statistical-purpose exception is conditional, not a universal exemption for analytics. The original pilot used explicit opt-in. Alibi 0.12.0 uses a separate aggregate-only, default-on path for eligible visitors without a stored opt-out, including return visits, after the owner approved its notice and opt-out redesign; other projects retain opt-in. This does not settle the applicable rules for every international visitor or authorize another consumer. Review the actual notice, data use, service providers and local rules before any expansion.
