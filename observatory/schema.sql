@@ -24,9 +24,18 @@ CREATE TABLE IF NOT EXISTS probe_history (
 CREATE INDEX IF NOT EXISTS events_session_flow ON events(project,session,event,seq);
 CREATE INDEX IF NOT EXISTS probe_history_time ON probe_history(checked);
 
+-- Aggregate Alibi statistics (producer half). One row per project, UTC day,
+-- event, route and release. No event IDs, session IDs, puzzle IDs, text,
+-- URLs or IPs are stored here. Historical events are never dropped or mutated.
+CREATE TABLE IF NOT EXISTS statistics (
+  project TEXT NOT NULL, day TEXT NOT NULL, event TEXT NOT NULL,
+  route TEXT NOT NULL, release TEXT NOT NULL, n INTEGER NOT NULL,
+  received INTEGER NOT NULL, PRIMARY KEY (project, day, event, route, release)
+);
+
 -- Readiness asserts this row, so a database that predates a migration reports 503 instead of ready.
 CREATE TABLE IF NOT EXISTS schema_version (
   id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
 );
-INSERT INTO schema_version(id, version) VALUES (1, 1)
+INSERT INTO schema_version(id, version) VALUES (1, 2)
   ON CONFLICT(id) DO UPDATE SET version = excluded.version;

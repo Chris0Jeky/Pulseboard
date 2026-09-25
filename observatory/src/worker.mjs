@@ -1,6 +1,7 @@
 import { projects } from './projects.mjs';
 import { collectionAdmission } from './admission.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
+import { validateStatBatch, statAdmission } from './stat-contract.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { assets } from './assets.mjs';
 import { createGithubEvidence } from './github.mjs';
@@ -8,11 +9,12 @@ import { githubMap } from './github-map.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 // Naming every column means a database missing a later-added column fails readiness instead of failing a request.
 const READINESS = [
   'SELECT project,day,used,receipt FROM budget LIMIT 0',
   'SELECT project,id,received,session,seq,event,route,release,value FROM events LIMIT 0',
+  'SELECT project,day,event,route,release,n,received FROM statistics LIMIT 0',
   'SELECT project,state,failures,successes,opened,checked,status,duration FROM probes LIMIT 0',
   'SELECT project,checked,ok,duration FROM probe_history LIMIT 0',
 ];
@@ -112,6 +114,43 @@ export async function handle(request, env) {
       if (ids.length !== 1 || [...url.searchParams.keys()].some(key => key !== 'project') || !Object.hasOwn(projects, ids[0])) return json({ error: 'project' }, 400);
       return json(await githubEvidence(env).read(ids[0]));
     }
+    // Alibi-only aggregate admission (producer half). The Desk does not read the
+    // statistics table until a consumer slice lands; this endpoint only admits counts.
+    const statMatch = /^\/v1\/collect-stat\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (statMatch) {
+      const statId = statMatch[1];
+      if (url.search) return json({ error: 'not_found' }, 404);
+      if (statId !== 'alibi') return json({ error: 'not_found' }, 404);
+      const statProject = Object.hasOwn(projects, statId) ? projects[statId] : null;
+      if (!statProject || !statProject.origin || request.headers.get('origin') !== statProject.origin) return json({ error: 'origin' }, 403);
+      cors = { 'Access-Control-Allow-Origin': statProject.origin, 'Vary': 'Origin' };
+      if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, ...cors,
+        'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
+      if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
+      const statAdmissionCheck = collectionAdmission(env);
+      if (!statAdmissionCheck.valid || !statAdmissionCheck.admitted.includes(statId)) return json({ error: 'disabled' }, 503, cors);
+      if (!statAdmission(env)) return json({ error: 'disabled' }, 503, cors);
+      if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers.get('content-type') || '')) return json({ error: 'media_type' }, 415, cors);
+      let statBody;
+      try { statBody = await readBounded(request); } catch { return json({ error: 'invalid_body' }, 400, cors); }
+      if (!validateStatBatch(statBody, statProject)) return json({ error: 'contract' }, 400, cors);
+      const statNow = Date.now(), statDay = new Date(statNow).toISOString().slice(0, 10), statReceipt = crypto.randomUUID();
+      const statReserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) SELECT ?,?,?,? WHERE ?<=?
+        ON CONFLICT(project,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt
+        WHERE used+excluded.used<=? RETURNING used`)
+        .bind(statId, statDay, statBody.counts.length, statReceipt, statBody.counts.length, statProject.dailyLimit, statProject.dailyLimit);
+      // At-most-once client delivery: the aggregate contract carries no event IDs,
+      // session IDs, puzzle IDs, text, URLs or IPs, so there is nothing to deduplicate
+      // on; every admitted POST adds its counts again and repeated requests count repeatedly.
+      // D1 batch is transactional. Receipt gating makes a rejected reservation write no aggregate.
+      const aggregates = statBody.counts.map(c => env.DB.prepare(`INSERT INTO statistics(project,day,event,route,release,n,received)
+        SELECT ?,?,?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
+        ON CONFLICT(project,day,event,route,release) DO UPDATE SET n=n+excluded.n,received=excluded.received`)
+        .bind(statId, statDay, c.event, c.route, c.release, 1, statNow, statId, statDay, statReceipt));
+      const statResult = await env.DB.batch([statReserve, ...aggregates]);
+      if (!statResult[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
+      return json({ accepted: true, meaning: 'stat batch admitted; repeated requests count repeatedly' }, 202, cors);
+    }
     const match = /^\/v1\/collect\/([a-z0-9-]+)$/.exec(url.pathname);
     if (!match) return json({ error: 'not_found' }, 404);
     const id = match[1], project = Object.hasOwn(projects, id) ? projects[id] : null;
@@ -181,6 +220,7 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
 export async function maintain(env, now = Date.now()) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 14 * 86400000),
+    env.DB.prepare('DELETE FROM statistics WHERE day<?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
     env.DB.prepare('DELETE FROM budget WHERE day<?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
     env.DB.prepare('DELETE FROM probe_history WHERE checked<?').bind(now - 30 * 86400000),
   ]);
