@@ -37,6 +37,15 @@ Use a unique random token of at least 32 characters and the secret command's sec
 Never put a production token in a command argument, source file, URL or PR. The live read token
 belongs in an operator-controlled secret store; the browser only keeps it in memory.
 
+For the later schema-2 Alibi statistics producer, migrate the existing D1 database
+with `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0002-alibi-statistics.sql`
+before deploying a Worker that requires schema 2. The migration creates only an
+aggregate table and preserves historical session event rows. Confirm `/readyz`
+returns schema 2 after deployment. The new `/v1/collect-stat/alibi` route is
+disabled unless `COLLECT_STAT_PROJECTS` is exactly `alibi`; the current hosted
+configuration does not set it. Turning that switch on belongs to issue #89's
+consumer cutover and must follow its browser, notice and opt-out checks.
+
 The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
 before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
 `%LOCALAPPDATA%/Pulseboard/read-token.dpapi`. To copy it for **Connect data** without printing it,

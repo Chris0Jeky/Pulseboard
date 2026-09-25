@@ -20,8 +20,11 @@ browser SDKs, collectors, probe targets and collection defaults are retained.
 | Desk UI (next slice) | Triage, cohort inspection, replay, deliberate downloads | Silent collection activation or publication |
 | Legacy workbench | Existing custom feeds and live panels | A claimed migration into the Desk |
 
-No new runtime dependency, database table or schema migration is required.
-`src/portfolio.mjs` consumes the existing SQLite/D1 schema. Pure decision helpers
+The original Desk reader needed no new runtime dependency, database table or
+schema migration. The later Alibi statistics producer adds the `statistics`
+table in schema version 2; its migration is `migrations/0002-alibi-statistics.sql`.
+`src/portfolio.mjs` still consumes the existing session event rows until the
+statistics consumer is reviewed. Pure decision helpers
 live in `public/desk-model.mjs`, shared with the browser without bundling server
 configuration. `public/desk-demo.mjs` creates deterministic invented snapshots.
 
@@ -46,6 +49,12 @@ rows are excluded. Daily buckets use UTC; both edge days may be partial. Event
 retention is still 14 days, probe history 30 days. Counts are admitted events,
 not offered traffic or verified people. The contract bounds possible groups;
 SQL still scans the selected window. This is not a high-volume analytics engine.
+The separate Alibi statistics producer admits only closed event counts, stores
+one aggregate row per UTC day, event, route and release, and deletes those rows
+after 14 days. It accepts no session or event identifiers. Its switch
+`COLLECT_STAT_PROJECTS` is unset in the hosted configuration, so this producer
+does not change the player-facing default or the Desk readout yet. Repeated
+requests count repeatedly because aggregate-only payloads have no dedupe key.
 
 `/v1/summary` is preserved for compatibility, including its original seven-day
 session-level flow semantics. New consumers should use `/v1/portfolio`. Do not
