@@ -42,9 +42,11 @@ with `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/
 before deploying a Worker that requires schema 2. The migration creates only an
 aggregate table and preserves historical session event rows. Confirm `/readyz`
 returns schema 2 after deployment. The new `/v1/collect-stat/alibi` route is
-disabled unless `COLLECT_STAT_PROJECTS` is exactly `alibi`; the current hosted
-configuration does not set it. Turning that switch on belongs to issue #89's
-consumer cutover and must follow its browser, notice and opt-out checks.
+disabled unless `COLLECT_STAT_PROJECTS` is exactly `alibi`. The activation
+candidate sets that value in production and preview, following issue #89's
+browser, notice and opt-out checks. The hosted version remains unactivated
+until the candidate is reviewed, merged and deployed; record its version and
+the first accepted payload below before claiming live collection.
 If the Worker must be rolled back to a schema-1 build, first remove
 `COLLECT_STAT_PROJECTS`, stop the statistics consumer, and deploy the prior
 Worker. Its old readiness check expects version 1, so run

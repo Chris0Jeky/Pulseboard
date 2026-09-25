@@ -56,9 +56,10 @@ not offered traffic or verified people. The contract bounds possible groups;
 SQL still scans the selected window. This is not a high-volume analytics engine.
 The separate Alibi statistics producer admits only closed event counts, stores
 one aggregate row per UTC day, event, route and release, and retains at most
-14 UTC calendar dates including today. It accepts no session or event identifiers. Its switch
-`COLLECT_STAT_PROJECTS` is unset in the hosted configuration, so this producer
-does not change the player-facing default or the Desk readout yet. Repeated
+14 UTC calendar dates including today. It accepts no session or event identifiers. The
+reviewed deployment configuration admits `alibi` through `COLLECT_STAT_PROJECTS`;
+actual admission begins only when that configuration is deployed. The separate
+statistics reader keeps these counts out of the legacy opt-in readout. Repeated
 requests count repeatedly because aggregate-only payloads have no dedupe key.
 
 `/v1/summary` is preserved for compatibility, including its original seven-day
