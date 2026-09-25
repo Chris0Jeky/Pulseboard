@@ -51,8 +51,29 @@ Worker. Its old readiness check expects version 1, so run
 `UPDATE schema_version SET version=1 WHERE id=1 AND version=2` against this D1
 database as the final rollback step and confirm `/readyz` returns 200. Leave
 the additive `statistics` table in place for forward recovery; do not drop it
-or delete historical event rows. This rollback has not yet been exercised on
-hosted D1 and is a cutover gate in issue #89.
+or delete historical event rows. The rollback was exercised on scratch D1 and
+the disposable preview Worker on 2026-09-25; production still needs its own
+cutover receipt under issue #89.
+
+## 2026-09-25: Alibi aggregate producer preview
+
+Scratch D1 was migrated from schema 1 to 2 without dropping historical events.
+Preview Worker version `c0ff3f29-c167-4424-b6c4-73685b9743dc` ran with
+`COLLECT_STAT_PROJECTS=alibi`; `/readyz` returned 200/schema 2 and unauthenticated
+`/v1/portfolio` returned 401. One synthetic two-count Alibi POST returned 202;
+scratch D1 held exactly one aggregate row with `n=2`. An identifier-bearing
+payload returned 400 and a foreign Origin returned 403. No real player event
+was sent. The preview's aggregate budget-exhaustion path was not exercised;
+local SQLite tests cover both sides of that transaction.
+
+For rollback proof, the scratch schema marker was set to 1. The new Worker
+reported 503 readiness as expected. The previous main Worker was deployed to
+the preview as version `8388a892-4d5e-433d-9b96-c8a48fb119c6`; its readiness
+returned 200/schema 1 and the new route returned 404. The two aggregate counts
+and seven pre-existing raw event rows were still present in scratch D1. The
+preview Worker was then deleted (`/healthz` 404), and the additive migration
+restored scratch's schema marker to 2. The live production Worker and D1 were
+not changed by this proof.
 
 The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
 before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
