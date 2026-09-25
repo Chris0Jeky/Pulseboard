@@ -37,16 +37,15 @@ Use a unique random token of at least 32 characters and the secret command's sec
 Never put a production token in a command argument, source file, URL or PR. The live read token
 belongs in an operator-controlled secret store; the browser only keeps it in memory.
 
-For the later schema-2 Alibi statistics producer, migrate the existing D1 database
+For the schema-2 Alibi statistics producer, migrate the existing D1 database
 with `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0002-alibi-statistics.sql`
 before deploying a Worker that requires schema 2. The migration creates only an
 aggregate table and preserves historical session event rows. Confirm `/readyz`
 returns schema 2 after deployment. The new `/v1/collect-stat/alibi` route is
-disabled unless `COLLECT_STAT_PROJECTS` is exactly `alibi`. The activation
-candidate sets that value in production and preview, following issue #89's
-browser, notice and opt-out checks. The hosted version remains unactivated
-until the candidate is reviewed, merged and deployed; record its version and
-the first accepted payload below before claiming live collection.
+disabled unless `COLLECT_STAT_PROJECTS` is exactly `alibi`. Production now
+admits that project following issue #89's browser, notice and opt-out checks;
+the deployment and first accepted payload are recorded below. Alibi's client
+deployment is a separate release step.
 If the Worker must be rolled back to a schema-1 build, first remove
 `COLLECT_STAT_PROJECTS`, stop the statistics consumer, and deploy the prior
 Worker. Its old readiness check expects version 1, so run
@@ -54,8 +53,7 @@ Worker. Its old readiness check expects version 1, so run
 database as the final rollback step and confirm `/readyz` returns 200. Leave
 the additive `statistics` table in place for forward recovery; do not drop it
 or delete historical event rows. The rollback was exercised on scratch D1 and
-the disposable preview Worker on 2026-09-25; production still needs its own
-cutover receipt under issue #89.
+the disposable preview Worker on 2026-09-25; production rollback was not exercised.
 
 ## 2026-09-25: Alibi aggregate producer preview
 
@@ -82,16 +80,27 @@ The additive migration moved production D1 from schema 1 to 2 before Worker
 version `6c521e83-3907-4e94-885e-c46cff517d17` was deployed. Actual HTTPS
 `/healthz` and `/readyz` returned 200 (schema 2), unauthenticated
 `/v1/portfolio` returned 401, and a synthetic statistics POST returned 503.
-`COLLECT_STAT_PROJECTS` remains unset; the Alibi player still uses explicit
-opt-in. No public default or production statistics collection was activated.
+`COLLECT_STAT_PROJECTS` was unset at this cutover; the Alibi player still used
+explicit opt-in. No public default or production statistics collection was activated then.
 
 The aggregate reader and 14-UTC-date retention fix were deployed from merged
 `main` on 2026-09-25 as Worker version
 `76ab45a7-fe14-4156-b608-08770c0d3992`. A production Wrangler dry run
 passed; live `/healthz` and `/readyz` returned 200 and unauthenticated
-`/v1/statistics/alibi` returned 401. `COLLECT_STAT_PROJECTS` remained unset,
-so the public default and statistics admission were still off. The aggregate
+`/v1/statistics/alibi` returned 401. `COLLECT_STAT_PROJECTS` was still unset
+at that deployment, so the public default and statistics admission were off. The aggregate
 read model is separate from the legacy opt-in portfolio.
+
+The production statistics admission switch was deployed later on 2026-09-25
+from merged `main` as Worker version `51871cc3-75ef-40e8-80b8-3e4bb0336cb0`,
+with `COLLECT_STAT_PROJECTS=alibi`. Actual hosted responses were `/healthz`
+200, `/readyz` 200 with schema 2, and unauthenticated
+`/v1/statistics/alibi` 401. An identifier-bearing aggregate POST returned 400,
+a wrong-Origin POST returned 403, and one valid Alibi aggregate POST returned
+202. That last admission inserted one **synthetic QA** count for
+`page.view` / `home` / `unattributed` / `n=1` in the production statistics
+table; it is not a player visit. The Alibi default-on client was not yet
+deployed at this collector checkpoint.
 
 The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
 before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
