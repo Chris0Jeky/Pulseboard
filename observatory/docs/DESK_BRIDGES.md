@@ -17,6 +17,38 @@ URLs, contact GitHub, call an LLM or upload it. Imports have a 256 KiB limit and
 bounded object/array fields. Only projected fields survive in tab memory. Imports
 are never mixed into telemetry totals, operational rules or public pulse exports.
 
+## Alibi collection contract
+
+Alibi's `package.json` version is sent as the release label on opted-in events.
+The collector and the copied browser adapter share one closed release list in
+`observatory/src/alibi-releases.mjs`; `projects.mjs` feeds that list to both
+collector validation and artifact generation. The generated Alibi host checker
+compares the app version with the installed artifact and prints the version,
+registered releases and artifact hash, so release drift fails during host CI.
+
+From a Pulseboard checkout, synchronize a candidate Alibi release with:
+
+```sh
+cd observatory
+npm run sync:alibi -- "<Alibi checkout>"
+npm run check:alibi -- "<Alibi checkout>"
+```
+
+The sync command requires `alibi-puzzle-club`, a stable package version and one
+matching `content/releases.json` record with the matching `v<version>` tag. It
+adds only that version to the closed collector list and regenerates the
+Pulseboard-owned `observatory/browser.js`, lock and shared host checker in the
+Alibi checkout. The existing approved collector endpoint is preserved. Locally
+edited or unowned host files, a mismatched lock, or a different endpoint stop the
+sync for manual reconciliation. The JSON receipt reports the package version,
+complete accepted list, target, byte count and SHA-256. `check:alibi` is
+read-only and verifies that the candidate host artifact matches the Pulseboard
+source and lock.
+
+Merge the Pulseboard contract before the Alibi release that first sends the new
+label. Do not deploy or publish as part of synchronization; hosted collection
+and Alibi publication remain separate release gates.
+
 ## CommitAtlas: consume the contract that already exists
 
 The reader is grounded in `packages/static/src/projects-catalog.ts` and the core
