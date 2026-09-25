@@ -16,6 +16,10 @@ each seam, the map, the pitfalls and the authority (T2, `.agent-harness/tier.jso
 
 - Desk changes: `cd observatory && npm test`, and for browser changes `tests/desk-browser.py`
   against the real local server (the offline mode does not verify HTTP serving or CSP).
+- Alibi release sync: from `observatory`, `npm run sync:alibi` discovers a unique sibling checkout;
+  use `ALIBI_REPO` or a positional path to select another. `npm run check:alibi` is read-only.
+  Both commands support `--json`; see `observatory/docs/DESK_BRIDGES.md` for the receipt and daily
+  contract watch.
 - Do not enable collection, deploy Workers, broaden probe targets or publish private projections
   as incidental cleanup. Review-only exports stay review-only. Imported claims never become
   verified CI, user identity, public project health or causality by relabelling.

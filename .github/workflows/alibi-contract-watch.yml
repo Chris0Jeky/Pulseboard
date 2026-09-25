@@ -1,0 +1,73 @@
+name: Alibi connection watch
+on:
+  schedule:
+    - cron: '23 8 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: alibi-connection-watch
+  cancel-in-progress: true
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: Chris0Jeky/Alibi
+          ref: main
+          path: _upstream/alibi
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Check the public Alibi main contract
+        id: check
+        continue-on-error: true
+        shell: bash
+        env:
+          REPORT_PATH: ${{ runner.temp }}/alibi-contract.json
+        run: |
+          set +e
+          node observatory/adapters/sync-alibi.mjs --check --json "$GITHUB_WORKSPACE/_upstream/alibi" > "$REPORT_PATH"
+          result=$?
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          exit "$result"
+      - name: Summarize connection status
+        if: always()
+        env:
+          REPORT_PATH: ${{ runner.temp }}/alibi-contract.json
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          import { readFileSync } from 'node:fs';
+          let report;
+          try {
+            report = JSON.parse(readFileSync(process.env.REPORT_PATH, 'utf8'));
+          } catch {
+            report = { ok: false, error: { message: 'The checker did not produce a JSON receipt.' } };
+          }
+          const lines = [
+            '# Alibi connection watch',
+            '',
+            `- Status: ${report.ok ? report.status : 'drift or check error'}`,
+            `- Alibi checkout: ${report.checkoutSource ?? 'public main checkout'}`,
+            `- Release: ${report.packageVersion ?? 'unavailable'}`,
+            `- Registered releases: ${report.releases?.join(', ') ?? 'unavailable'}`,
+            `- Adapter: ${report.target ?? 'unavailable'} (${report.bytes ?? 'unknown'} bytes; SHA-256 ${report.sha256 ?? 'unavailable'})`,
+            `- Changed files: ${report.changedFiles?.join(', ') || 'none (read-only check)'}`,
+            '',
+            report.ok
+              ? 'This scheduled/manual check reads public Alibi main and writes no repository files.'
+              : `- Check detail: ${report.error?.message ?? 'no checker details available'}`,
+            '',
+          ];
+          if (!report.ok) lines.push('To reconcile a reviewed release candidate, run `cd observatory && npm run sync:alibi -- --write "<Alibi checkout>"`, inspect both repository diffs, then rerun `npm run check:alibi -- "<Alibi checkout>"`.');
+          process.stdout.write(lines.join('\n'));
+          NODE
+      - name: Fail when the Alibi contract needs attention
+        if: steps.check.outcome == 'failure'
+        run: exit 1
