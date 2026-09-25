@@ -284,6 +284,22 @@ test('old allow:false is an indefinite opt-out even when expired', async () => {
   facade.dispose();
 });
 
+test('malformed legacy preference fails closed until the visitor makes a fresh choice', async () => {
+  for (const raw of ['{broken', JSON.stringify({ allow: 'false' }), JSON.stringify({ other: true })]) {
+    const calls = [];
+    const storage = makeStorage({ [OLD_KEY]: raw });
+    const document = makeDocument();
+    const runtime = makeRuntime({ storage, document, calls });
+    const facade = mountStatisticObserver(baseConfig(), createStatisticObserver, runtime);
+    assert.ok(facade);
+    await tick();
+    assert.equal(facade.status().active, false, raw);
+    assert.equal(getCheckbox(document).checked, false, raw);
+    assert.equal(calls.length, 0, raw);
+    facade.dispose();
+  }
+});
+
 test('new allow:false is preserved and never sends', async () => {
   const calls = [];
   const storage = makeStorage({ [PREF_KEY]: JSON.stringify({ allow: false }) });
@@ -552,6 +568,59 @@ test('non-bfcache pagehide hands once with preserve; bfcache resume repaints wit
   assert.equal(before, after, 'resume never duplicates the initial view');
   assert.match(getStatus(document2).textContent.toLowerCase(), /on|off/);
   facade2.dispose();
+});
+
+test('idle tracked counts flush automatically through a bounded keepalive handoff', async () => {
+  const calls = [];
+  const storage = makeStorage();
+  const document = makeDocument();
+  const runtime = makeRuntime({ storage, document, calls });
+  const timers = new Map();
+  let nextTimer = 0;
+  runtime.setTimeout = (fn, ms) => {
+    const id = ++nextTimer;
+    timers.set(id, { fn, ms });
+    return id;
+  };
+  runtime.clearTimeout = id => { timers.delete(id); };
+  const facade = mountStatisticObserver(baseConfig(), createStatisticObserver, runtime);
+  assert.ok(facade);
+  await tick();
+  calls.length = 0;
+  assert.equal(facade.track('action.requested'), true);
+  assert.equal(facade.status().queued, 1);
+  assert.equal(calls.length, 0);
+  const scheduled = [...timers.values()].find(timer => timer.ms <= 5000);
+  assert.ok(scheduled, 'tracked event schedules a flush within five seconds');
+  scheduled.fn();
+  await tick();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].init.keepalive, true);
+  assert.deepEqual(JSON.parse(calls[0].init.body).counts.map(count => count.event), ['action.requested']);
+  assert.equal(facade.status().queued, 0);
+  fireRuntime(runtime, 'pagehide', { persisted: false });
+  assert.equal(calls.length, 1, 'pagehide does not replay the automatic handoff');
+});
+
+test('initial view in flight survives ordinary navigation without a duplicate', async () => {
+  const calls = [];
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  const storage = makeStorage();
+  const document = makeDocument();
+  const runtime = makeRuntime({ storage, document, calls, fetchImpl: () => pending });
+  const facade = mountStatisticObserver(baseConfig(), createStatisticObserver, runtime);
+  assert.ok(facade);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].init.keepalive, true, 'initial view uses navigation-safe transport');
+  const signal = calls[0].init.signal;
+  fireRuntime(runtime, 'pagehide', { persisted: false });
+  assert.equal(calls.length, 1, 'pagehide does not replay the aggregate');
+  assert.equal(signal?.aborted, false, 'ordinary exit preserves the in-flight keepalive');
+  finish({ ok: true });
+  await tick();
+  assert.equal(calls.length, 1);
+  assert.equal(facade.status().queued, 0);
 });
 
 test('dispose removes listeners and UI and stops collection', async () => {

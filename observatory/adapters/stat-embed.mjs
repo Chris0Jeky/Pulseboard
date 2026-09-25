@@ -10,6 +10,7 @@ const HARDCODED_LEGACY = 'https://pulseboard-observatory.commit-atlas.workers.de
 const ALIBI_ORIGIN = 'https://alibi-after-hours-preview.commit-atlas.workers.dev';
 const STAT_PATH = '/v1/collect-stat/alibi';
 const LEGACY_PATH = '/v1/collect/alibi';
+const AUTO_FLUSH_MS = 2000;
 
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -79,9 +80,10 @@ function readOldOptOut(storage, keys) {
     if (raw === null || raw === undefined) continue;
     try {
       const parsed = JSON.parse(raw);
-      if (isPlainObject(parsed) && parsed.allow === false) return { broken: false, optOut: true };
+      if (!isPlainObject(parsed) || typeof parsed.allow !== 'boolean') return { broken: true, optOut: false };
+      if (parsed.allow === false) return { broken: false, optOut: true };
     } catch {
-      continue;
+      return { broken: true, optOut: false };
     }
   }
   return { broken: false, optOut: false };
@@ -295,6 +297,40 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
   let disposed = false;
   let announced = false;
   let storageWarning = false;
+  let autoFlushTimer = null;
+
+  function clearAutoFlush() {
+    if (autoFlushTimer === null) return;
+    try {
+      if (typeof runtime?.clearTimeout === 'function') runtime.clearTimeout(autoFlushTimer);
+      else globalThis.clearTimeout(autoFlushTimer);
+    } catch {
+      /* Clearing a timer never blocks revocation. */
+    }
+    autoFlushTimer = null;
+  }
+
+  function scheduleAutoFlush() {
+    if (disposed || autoFlushTimer !== null) return;
+    try {
+      const callback = () => {
+        autoFlushTimer = null;
+        if (disposed) return;
+        try {
+          if (privacyBlocked()) transport.setEnabled(false);
+          else transport.flushOnHide();
+          paint();
+        } catch {
+          /* A failed automatic send never reaches the host. */
+        }
+      };
+      autoFlushTimer = typeof runtime?.setTimeout === 'function'
+        ? runtime.setTimeout(callback, AUTO_FLUSH_MS)
+        : globalThis.setTimeout(callback, AUTO_FLUSH_MS);
+    } catch {
+      autoFlushTimer = null;
+    }
+  }
 
   const privacyBlocked = () => {
     try {
@@ -392,6 +428,7 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
       } catch {
         result = false;
       }
+      if (result) scheduleAutoFlush();
       try {
         paint();
       } catch {
@@ -452,6 +489,7 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
   function disposeInternal(preserveHandoffs) {
     if (disposed) return;
     disposed = true;
+    clearAutoFlush();
     try {
       removeListener(runtime, 'error', onError);
     } catch {
@@ -502,6 +540,7 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
     try {
       if (disposed) return false;
       if (privacyBlocked()) {
+        clearAutoFlush();
         try {
           transport.setEnabled(false);
         } catch {
@@ -517,6 +556,7 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
         want = false;
       }
       if (want === false) {
+        clearAutoFlush();
         try {
           transport.setEnabled(false);
         } catch {
@@ -539,6 +579,7 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
         ok = false;
       }
       if (!ok) {
+        clearAutoFlush();
         try {
           transport.setEnabled(false);
         } catch {
@@ -564,10 +605,9 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
           /* Initial view is best-effort. */
         }
         try {
-          const pending = flush();
-          if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+          transport.flushOnHide();
         } catch {
-          /* Flush failure still counts as announced. */
+          /* The queued view can still be handed off on pagehide. */
         }
       }
       return active;
@@ -610,6 +650,7 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
 
   function onPageHide(event) {
     try {
+      clearAutoFlush();
       try {
         transport.flushOnHide();
       } catch {
@@ -669,10 +710,9 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
         /* Initial paint failure leaves the queued view for flush. */
       }
       try {
-        const pending = transport.flush();
-        if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+        transport.flushOnHide();
       } catch {
-        /* Initial flush failure stays queued for the next flush. */
+        /* Initial handoff failure stays queued for pagehide. */
       }
       try {
         paint();
