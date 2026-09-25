@@ -231,7 +231,7 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
 export async function maintain(env, now = Date.now()) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 14 * 86400000),
-    env.DB.prepare('DELETE FROM statistics WHERE day<?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
+    env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
     env.DB.prepare('DELETE FROM budget WHERE day<?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
     env.DB.prepare('DELETE FROM probe_history WHERE checked<?').bind(now - 30 * 86400000),
   ]);

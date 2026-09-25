@@ -220,13 +220,13 @@ test('migration is idempotent and readiness tracks version 2', async t => {
 test('aggregate retention removes old counts without touching in-window counts', async t => {
   const DB = database(t);
   const now = Date.UTC(2026, 8, 25, 12);
-  for (const statDay of ['2026-09-10', '2026-09-11', '2026-09-25']) {
+  for (const statDay of ['2026-09-10', '2026-09-11', '2026-09-12', '2026-09-25']) {
     await DB.prepare('INSERT INTO statistics VALUES(?,?,?,?,?,?,?)')
       .bind('alibi', statDay, 'page.view', 'home', '0.11.6', 1, now).run();
   }
   await maintain({ DB }, now);
   const remaining = (await DB.prepare('SELECT day FROM statistics ORDER BY day').all()).results.map(row => row.day);
-  assert.deepEqual(remaining, ['2026-09-11', '2026-09-25']);
+  assert.deepEqual(remaining, ['2026-09-12', '2026-09-25']);
 });
 
 test('legacy collect, summary and portfolio behavior is unchanged', async t => {

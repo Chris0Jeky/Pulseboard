@@ -55,8 +55,8 @@ retention is still 14 days, probe history 30 days. Counts are admitted events,
 not offered traffic or verified people. The contract bounds possible groups;
 SQL still scans the selected window. This is not a high-volume analytics engine.
 The separate Alibi statistics producer admits only closed event counts, stores
-one aggregate row per UTC day, event, route and release, and deletes those rows
-after 14 days. It accepts no session or event identifiers. Its switch
+one aggregate row per UTC day, event, route and release, and retains at most
+14 UTC calendar dates including today. It accepts no session or event identifiers. Its switch
 `COLLECT_STAT_PROJECTS` is unset in the hosted configuration, so this producer
 does not change the player-facing default or the Desk readout yet. Repeated
 requests count repeatedly because aggregate-only payloads have no dedupe key.
