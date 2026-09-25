@@ -230,7 +230,7 @@ test('first visit defaults on with notice before network', async () => {
   assert.ok(container, 'notice container mounted with stable id');
   assert.equal(container.open, true, 'notice and switch are visible on first visit');
   const text = collectText(container).toLowerCase();
-  for (const word of ['improve', 'count', 'section', 'release', 'pulseboard', '14-day', 'no puzzle', 'off', 'free']) {
+  for (const word of ['improve', 'count', 'section', 'release', 'pulseboard', '14-day', 'no puzzle', 'ip address', 'off', 'free']) {
     assert.ok(text.includes(word), `notice explains ${word}`);
   }
   const checkbox = getCheckbox(document);
