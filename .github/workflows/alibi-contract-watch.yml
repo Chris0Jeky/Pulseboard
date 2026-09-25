@@ -65,7 +65,7 @@ jobs:
               : `- Check detail: ${report.error?.message ?? 'no checker details available'}`,
             '',
           ];
-          if (!report.ok) lines.push('To reconcile a reviewed release candidate, run `cd observatory && npm run sync:alibi -- --write "<Alibi checkout>"`, inspect both repository diffs, then rerun `npm run check:alibi -- "<Alibi checkout>"`.');
+          if (!report.ok) lines.push('To reconcile a reviewed release candidate, run `cd observatory && npm run sync:alibi -- "<Alibi checkout>"`, inspect both repository diffs, then rerun `npm run check:alibi -- "<Alibi checkout>"`.');
           process.stdout.write(lines.join('\n'));
           NODE
       - name: Fail when the Alibi contract needs attention

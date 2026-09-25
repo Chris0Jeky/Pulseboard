@@ -39,6 +39,8 @@ test('Alibi release sync is repository-scoped, validates the catalogue and rolls
     const { renderAlibiReleaseRegistry, resolveAlibiCheckout, syncAlibi } = syncModule;
     const oldReleases = [...ALIBI_RELEASES];
     const nextReleases = ['unattributed', ...oldReleases.slice(1), VERSION];
+    assert.match(renderAlibiReleaseRegistry(oldReleases), /npm run sync:alibi -- <alibi-repository>/);
+    assert.doesNotMatch(renderAlibiReleaseRegistry(oldReleases), /sync:alibi -- --write/);
     const registryFile = path.join(pulseboard, 'src/alibi-releases.mjs');
     const siblingPulseboard = path.join(discoveryRoot, 'Pulseboard');
     const siblingAlibi = path.join(discoveryRoot, 'Alibi');
@@ -102,7 +104,12 @@ test('Alibi release sync is repository-scoped, validates the catalogue and rolls
     writeFileSync(path.join(alibi, 'content/releases.json'), JSON.stringify([{ version: VERSION, tag: 'v' + VERSION }]));
 
     makeAlibi(alibi, '0.11.8');
-    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /0\.11\.8 is missing from the Pulseboard collector contract/);
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), error => {
+      assert.match(error.message, /0\.11\.8 is missing from the Pulseboard collector contract/);
+      assert.match(error.message, /npm run sync:alibi -- <alibi-repository>/);
+      assert.doesNotMatch(error.message, /sync:alibi -- --write/);
+      return true;
+    });
     const rejectedReport = spawnSync(process.execPath, ['adapters/sync-alibi.mjs', '--check', '--json', alibi], { cwd: pulseboard, encoding: 'utf8' });
     assert.notEqual(rejectedReport.status, 0);
     const rejectedJson = JSON.parse(rejectedReport.stdout);
