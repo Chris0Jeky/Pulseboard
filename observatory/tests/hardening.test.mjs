@@ -32,7 +32,7 @@ test('installer refuses dangling symlinks at the target, the lock path and a par
   } finally { for (const root of roots) rmSync(root, { recursive: true }); rmSync(outside, { recursive: true }); }
 });
 test('Alibi standalone artifacts are gated even on the public origin', () => {
-  const code = buildEmbed('alibi', { endpoint: 'https://collector.test/v1/collect/alibi' });
+  const code = buildEmbed('alibi', { endpoint: 'https://collector.test/v1/collect-stat/alibi' });
   const context = { URL, document: { readyState: 'complete' }, location: { origin: 'https://alibi-after-hours-preview.commit-atlas.workers.dev', protocol: 'https:', pathname: '/' }, navigator: {}, ALIBI_CONFIG: { standalone: true } };
   vm.runInNewContext(code, context); assert.equal(context.PulseboardUsage, null);
 });

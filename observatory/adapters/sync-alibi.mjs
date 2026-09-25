@@ -9,7 +9,11 @@ import { buildEmbed, install } from './build-embed.mjs';
 const SOURCE = 'Chris0Jeky/Pulseboard:observatory';
 const PACKAGE_NAME = 'alibi-puzzle-club';
 const TARGET = 'observatory/browser.js';
-const ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi';
+const ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi';
+// The retired raw route is kept only as a migration input: the generated
+// statistic artifact's stat-embed control reads the matching old opt-out key.
+// Sync never generates or validates against this route.
+const LEGACY_ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi';
 const REGISTRY = fileURLToPath(new URL('../src/alibi-releases.mjs', import.meta.url));
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const normalise = value => String(value).replaceAll('\r\n', '\n');
@@ -96,7 +100,7 @@ function parseConfig(content) {
   return config;
 }
 
-function readAlibi(rootInput) {
+function readAlibi(rootInput, { allowLegacy = false } = {}) {
   const root = realpathSync(rootInput);
   const packageJson = JSON.parse(readFileSync(safeFile(root, 'package.json', 'Alibi package manifest'), 'utf8'));
   if (packageJson.name !== PACKAGE_NAME || typeof packageJson.version !== 'string' || !SEMVER.test(packageJson.version)) {
@@ -119,7 +123,11 @@ function readAlibi(rootInput) {
   const artifact = readFileSync(artifactPath, 'utf8');
   if (sha256(artifact) !== entry.sha256) throw new Error('Alibi Observatory artifact differs from its locked bytes; inspect local edits before syncing');
   const config = parseConfig(artifact);
-  if (config.endpoint !== ENDPOINT) throw new Error('Alibi Observatory artifact does not use the already approved collector endpoint');
+  if (config.endpoint !== ENDPOINT && !(allowLegacy && config.endpoint === LEGACY_ENDPOINT)) {
+    throw new Error(config.endpoint === LEGACY_ENDPOINT
+      ? 'Alibi Observatory artifact uses the retired raw collector endpoint; regenerate with npm run sync:alibi -- <alibi-repository>'
+      : 'Alibi Observatory artifact does not use an approved collector endpoint');
+  }
   return { root, version: packageJson.version, registry: releases, artifactPath, artifact, config, lock };
 }
 
@@ -195,7 +203,7 @@ export function resolveAlibiCheckout({ rootArgument, environment = process.env, 
 
 export function syncAlibi(rootInput, { mode = 'check' } = {}) {
   if (!['check', 'write'].includes(mode)) throw new Error('Mode must be check or write');
-  const alibi = readAlibi(rootInput);
+  const alibi = readAlibi(rootInput, { allowLegacy: mode === 'write' });
   const current = validateReleases(projects.alibi.releases ?? ALIBI_RELEASES);
   const registryFile = safeRegistryPath(REGISTRY, PULSEBOARD_ROOT);
   const registryBytes = readFileSync(registryFile, 'utf8');
