@@ -51,6 +51,37 @@ const artifacts = entries.map(([target, owned]) => {
   new vm.Script(content, { filename: target });
   return Object.freeze({ target, project: owned.project, sha256: actual, content });
 });
+const alibiArtifacts = artifacts.filter(artifact => artifact.project === 'alibi');
+let alibiContract = null;
+const packagePath = path.join(root, 'package.json');
+const packageStat = lstatSync(packagePath, { throwIfNoEntry: false });
+const packageManifest = packageStat?.isFile() && !packageStat.isSymbolicLink()
+  ? JSON.parse(readFileSync(ownedFile('package.json', 'host package manifest'), 'utf8')) : null;
+if (packageManifest?.name === 'alibi-puzzle-club' && alibiArtifacts.length !== 1) {
+  throw new Error('The Alibi package must have exactly one installed Observatory artifact labelled alibi');
+}
+if (alibiArtifacts.length) {
+  if (alibiArtifacts.length !== 1) throw new Error('Alibi must have exactly one installed Observatory artifact');
+  const manifest = packageManifest;
+  if (manifest?.name !== 'alibi-puzzle-club' || typeof manifest.version !== 'string' || !/^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/.test(manifest.version)) throw new Error('The alibi artifact requires the Alibi package manifest with a stable x.y.z version');
+  const artifact = alibiArtifacts[0];
+  const configLine = artifact.content.split('\\n').filter(line => line.startsWith('const config = '));
+  if (configLine.length !== 1) throw new Error('Alibi artifact has no unique generated client configuration');
+  const match = /^const config = (\\{.*\\});$/.exec(configLine[0]);
+  if (!match) throw new Error('Alibi artifact client configuration is malformed');
+  const config = JSON.parse(match[1]);
+  if (config.id !== 'alibi' || !Array.isArray(config.project?.releases)) throw new Error('Alibi artifact has no closed release contract');
+  if (!config.project.releases.includes(manifest.version)) {
+    throw new Error('Alibi package version ' + manifest.version + ' is not registered by its Pulseboard artifact. Registered releases: '
+      + config.project.releases.join(', ') + '. Run Pulseboard sync:alibi and commit the regenerated files.');
+  }
+  const catalogue = JSON.parse(readFileSync(ownedFile('content/releases.json', 'Alibi release catalogue'), 'utf8'));
+  const matchingReleases = Array.isArray(catalogue) ? catalogue.filter(release => release?.version === manifest.version) : [];
+  if (matchingReleases.length !== 1 || matchingReleases[0].tag !== 'v' + manifest.version) {
+    throw new Error('Alibi content/releases.json must contain exactly one matching v' + manifest.version + ' record');
+  }
+  alibiContract = { packageVersion: manifest.version, catalogueTag: matchingReleases[0].tag, registeredReleases: config.project.releases, artifactSha256: artifact.sha256 };
+}
 const localPath = path.join(here, 'check.local.mjs');
 const localStat = lstatSync(localPath, { throwIfNoEntry: false });
 if (localStat) {
@@ -60,7 +91,9 @@ if (localStat) {
   if (typeof check !== 'function') throw new Error('observatory/check.local.mjs must export a default function or check()');
   await check(Object.freeze({ root, source: SOURCE, lock: Object.freeze(lock), artifacts: Object.freeze(artifacts) }));
 }
-console.log(JSON.stringify({ source: SOURCE, targets: artifacts.map(artifact => artifact.target) }));
+const report = { source: SOURCE, targets: artifacts.map(artifact => artifact.target) };
+if (alibiContract) report.alibi = alibiContract;
+console.log(JSON.stringify(report));
 `;
 }
 

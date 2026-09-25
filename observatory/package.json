@@ -11,6 +11,8 @@
     "test": "node --test tests/*.test.mjs",
     "start": "node src/local.mjs",
     "build:embed": "node adapters/build-embed.mjs",
+    "check:alibi": "node adapters/sync-alibi.mjs --check",
+    "sync:alibi": "node adapters/sync-alibi.mjs --write",
     "dev:worker": "wrangler dev",
     "deploy:check": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy",

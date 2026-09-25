@@ -7,6 +7,10 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { install, buildEmbed, assertArtifactShape } from '../adapters/build-embed.mjs';
 const runChecker = root => spawnSync(process.execPath, ['observatory/check.mjs'], { cwd: root, encoding: 'utf8' });
+function writeAlibiRelease(root, version = '0.11.6', tag = 'v' + version) {
+  mkdirSync(path.join(root, 'content'), { recursive: true });
+  writeFileSync(path.join(root, 'content/releases.json'), JSON.stringify([{ version, tag }]));
+}
 test('generated browser script parses and remains inert while unconfigured', () => {
   const code = buildEmbed('mdviewer'); new vm.Script(code);
   const context = { document: { readyState: 'complete' } }; vm.runInNewContext(code, context);
@@ -30,7 +34,7 @@ test('Alibi artifact publishes only its bounded context handle and registered re
   const code = buildEmbed('alibi', { endpoint: 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi' });
   const config = JSON.parse(/const config = (\{.*\});/.exec(code)[1].replaceAll('\\u003c', '<'));
   assert.equal(config.contextGlobal, 'ALIBI_OBSERVATORY_CONTEXT');
-  assert.deepEqual(config.project.releases, ['unattributed', '0.11.3', '0.11.4', '0.11.5']);
+  assert.deepEqual(config.project.releases, ['unattributed', '0.11.3', '0.11.4', '0.11.5', '0.11.6']);
   assert.equal(code.includes('ALIBI_CONFIG.version'), false);
 });
 test('embed options are an allowlist, not an arbitrary override', () => {
@@ -113,6 +117,8 @@ test('host checker normalises CRLF but rejects real artifact drift', () => {
 test('host checker delegates product policy to an optional local module', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'observatory-test-'));
   try {
+    writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'alibi-puzzle-club', version: '0.11.6' }));
+    writeAlibiRelease(root);
     install('alibi', root, 'observatory/browser.js');
     writeFileSync(path.join(root, 'observatory/check.local.mjs'), `export default ({ source, artifacts }) => {
       if (source !== 'Chris0Jeky/Pulseboard:observatory') throw new Error('wrong source');
@@ -123,6 +129,32 @@ test('host checker delegates product policy to an optional local module', () => 
     const result = runChecker(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /local-policy-ok/);
+  } finally { rmSync(root, { recursive: true }); }
+});
+test('host checker reports the registered Alibi app release and rejects contract drift', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'observatory-test-'));
+  try {
+    writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'alibi-puzzle-club', version: '0.11.6' }));
+    writeAlibiRelease(root);
+    install('alibi', root, 'observatory/browser.js', 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi');
+    const healthy = runChecker(root);
+    assert.equal(healthy.status, 0, healthy.stderr || healthy.stdout);
+    const report = JSON.parse(healthy.stdout);
+    assert.equal(report.alibi.packageVersion, '0.11.6');
+    assert.equal(report.alibi.catalogueTag, 'v0.11.6');
+    assert.ok(report.alibi.registeredReleases.includes('0.11.6'));
+    assert.match(report.alibi.artifactSha256, /^[a-f0-9]{64}$/);
+
+    writeAlibiRelease(root, '0.11.6', 'wrong-tag');
+    const catalogueDrift = runChecker(root);
+    assert.notEqual(catalogueDrift.status, 0);
+    assert.match(catalogueDrift.stderr + catalogueDrift.stdout, /content\/releases\.json must contain exactly one matching v0\.11\.6 record/);
+    writeAlibiRelease(root);
+
+    writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'alibi-puzzle-club', version: '0.11.7' }));
+    const drift = runChecker(root);
+    assert.notEqual(drift.status, 0);
+    assert.match(drift.stderr + drift.stdout, /package version 0\.11\.7 is not registered/i);
   } finally { rmSync(root, { recursive: true }); }
 });
 test('installer preserves host notes and refuses an edited shared checker', () => {

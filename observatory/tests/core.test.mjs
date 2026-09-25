@@ -12,6 +12,10 @@ const request = (events, extra = {}) => new Request('https://collector.example/v
 const env = DB => ({ DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'mdviewer', READ_TOKEN: 'a'.repeat(64) });
 const withDB = fn => async () => { const database = db(); try { await fn(database); } finally { database.close(); } };
 test('closed contract accepts only the documented envelope', () => { assert.equal(validateEvent(event(), projects.mdviewer), true); });
+test('Alibi 0.11.6 is admitted from the shared registry and unknown releases still fail closed', () => {
+  assert.equal(validateEvent(event({ release: '0.11.6' }), projects.alibi), true);
+  assert.equal(validateEvent(event({ release: '0.11.7' }), projects.alibi), false);
+});
 for (const [name, extra] of Object.entries({ 'free text': { message: 'PRIVATE' }, url: { url: 'https://private.test/?token=SECRET' }, identity: { user: 'alice' }, route: { route: '/private/123' }, release: { release: 'email@example.com' }, event: { event: 'arbitrary.secret' }, version: { v: 2 }, uuid: { id: 'not-a-uuid' }, sequence: { seq: 0 }, value: { value: 1 }, infinity: { event: 'duration.ms', value: Infinity }, negative: { event: 'duration.ms', value: -1 } })) {
   test('rejects ' + name, () => assert.equal(validateEvent(event(extra), projects.mdviewer), false));
 }
