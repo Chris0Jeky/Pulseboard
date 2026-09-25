@@ -30,9 +30,15 @@ From a Pulseboard checkout, synchronize a candidate Alibi release with:
 
 ```sh
 cd observatory
-npm run sync:alibi -- "<Alibi checkout>"
-npm run check:alibi -- "<Alibi checkout>"
+npm run sync:alibi
+npm run check:alibi
 ```
+
+When there is exactly one Alibi checkout beside Pulseboard, the commands find it
+automatically. Set `ALIBI_REPO` to choose a checkout elsewhere; a positional path
+overrides that setting. If discovery finds more than one candidate, it stops and
+asks for an explicit choice. Both commands also accept `--json` for machine-readable
+success and failure receipts.
 
 The sync command requires `alibi-puzzle-club`, a stable package version and one
 matching `content/releases.json` record with the matching `v<version>` tag. It
@@ -40,10 +46,17 @@ adds only that version to the closed collector list and regenerates the
 Pulseboard-owned `observatory/browser.js`, lock and shared host checker in the
 Alibi checkout. The existing approved collector endpoint is preserved. Locally
 edited or unowned host files, a mismatched lock, or a different endpoint stop the
-sync for manual reconciliation. The JSON receipt reports the package version,
-complete accepted list, target, byte count and SHA-256. `check:alibi` is
-read-only and verifies that the candidate host artifact matches the Pulseboard
-source and lock.
+sync for manual reconciliation. The JSON receipt reports the resolved checkout
+source, package version, complete accepted list, target, byte count, SHA-256 and
+exact files changed in both repositories. `check:alibi` is read-only and reports
+`in-sync` only when the candidate host artifact matches the Pulseboard source and
+lock.
+
+The **Alibi connection watch** workflow checks public Alibi `main` once a day and
+can be run on demand. It writes a release and adapter receipt to the Actions
+summary; drift fails the run with the specific reconciliation command. The watch
+does not write either repository, deploy the collector or change collection
+settings.
 
 Merge the Pulseboard contract before the Alibi release that first sends the new
 label. Do not deploy or publish as part of synchronization; hosted collection

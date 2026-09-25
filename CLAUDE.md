@@ -46,10 +46,12 @@ repo-side; merge with a merge commit.
 - `observatory/` — `src/` collector, worker, sqlite, portfolio, contracts; `public/` the Desk
   UI (native ESM, no build step); `adapters/` embed installer; `docs/DESK_*.md` architecture,
   bridges and direction; `tests/*.test.mjs` plus `tests/desk-browser.py`.
-- Alibi release sync: `cd observatory && npm run sync:alibi -- "<Alibi checkout>"` validates
-  Alibi's package and release records, updates the shared release contract, and refreshes the
-  locked host adapter. `npm run check:alibi -- "<Alibi checkout>"` checks without writing.
-  See `observatory/docs/DESK_BRIDGES.md`.
+- Alibi release sync: `cd observatory && npm run sync:alibi` finds one Alibi checkout beside
+  Pulseboard; `ALIBI_REPO` or a positional path selects another. It validates Alibi's package and
+  release records, updates the shared release contract, and refreshes the locked host adapter.
+  `npm run check:alibi` checks without writing. Both commands support `--json`; a daily
+  read-only Actions watch reports drift against public Alibi `main`. See
+  `observatory/docs/DESK_BRIDGES.md`.
 - Workbench architecture detail loads by path from `.claude/rules/workbench.md`.
 
 ## Desk boundaries
