@@ -96,12 +96,8 @@ function probeStorage(storage) {
     const probeKey = PREF_KEY + ':probe';
     storage.setItem(probeKey, '1');
     const read = storage.getItem(probeKey);
-    try {
-      storage.removeItem(probeKey);
-    } catch {
-      /* Probe cleanup failure still counts as unusable below when read mismatches. */
-    }
-    return read === '1';
+    storage.removeItem(probeKey);
+    return read === '1' && storage.getItem(probeKey) === null;
   } catch {
     return false;
   }
