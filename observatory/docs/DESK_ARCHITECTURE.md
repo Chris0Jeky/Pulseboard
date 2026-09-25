@@ -23,8 +23,13 @@ browser SDKs, collectors, probe targets and collection defaults are retained.
 The original Desk reader needed no new runtime dependency, database table or
 schema migration. The later Alibi statistics producer adds the `statistics`
 table in schema version 2; its migration is `migrations/0002-alibi-statistics.sql`.
-`src/portfolio.mjs` still consumes the existing session event rows until the
-statistics consumer is reviewed. Pure decision helpers
+`src/portfolio.mjs` still consumes only the existing opt-in session event rows.
+The separate `GET /v1/statistics/alibi?days=7` read (1, 7 or 14 UTC calendar
+days) authenticates with the Desk read token, reads only daily aggregate rows,
+and returns event totals and daily totals. It returns no route/release cells,
+session estimate or flow. Its `collectionAdmitted` and `observationStatus`
+fields distinguish a disabled collector from observed counts. These results
+must never be summed with the legacy portfolio's opt-in population. Pure decision helpers
 live in `public/desk-model.mjs`, shared with the browser without bundling server
 configuration. `public/desk-demo.mjs` creates deterministic invented snapshots.
 
@@ -50,8 +55,8 @@ retention is still 14 days, probe history 30 days. Counts are admitted events,
 not offered traffic or verified people. The contract bounds possible groups;
 SQL still scans the selected window. This is not a high-volume analytics engine.
 The separate Alibi statistics producer admits only closed event counts, stores
-one aggregate row per UTC day, event, route and release, and deletes those rows
-after 14 days. It accepts no session or event identifiers. Its switch
+one aggregate row per UTC day, event, route and release, and retains at most
+14 UTC calendar dates including today. It accepts no session or event identifiers. Its switch
 `COLLECT_STAT_PROJECTS` is unset in the hosted configuration, so this producer
 does not change the player-facing default or the Desk readout yet. Repeated
 requests count repeatedly because aggregate-only payloads have no dedupe key.
