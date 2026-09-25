@@ -354,6 +354,27 @@ test('storage denial and corruption fail closed', async () => {
   }
 });
 
+test('failed storage probe removal keeps sharing off before the first request', async () => {
+  for (const initial of [{}, { [PREF_KEY]: JSON.stringify({ allow: true }) }]) {
+    for (const removal of ['throws', 'no-op']) {
+      const calls = [];
+      const storage = makeStorage(initial);
+      storage.removeItem = () => {
+        if (removal === 'throws') throw new Error('removal denied');
+      };
+      const document = makeDocument();
+      const runtime = makeRuntime({ storage, document, calls });
+      const facade = mountStatisticObserver(baseConfig(), createStatisticObserver, runtime);
+      assert.ok(facade, `${removal} still mounts the control`);
+      await tick();
+      assert.equal(facade.status().active, false, removal);
+      assert.equal(getCheckbox(document).checked, false, removal);
+      assert.equal(calls.length, 0, `${removal} sends no page view`);
+      facade.dispose();
+    }
+  }
+});
+
 test('explicit off aborts, clears queue and persists; failed persistence warns and stays off', async () => {
   const calls = [];
   const storage = makeStorage();
