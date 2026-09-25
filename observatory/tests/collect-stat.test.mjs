@@ -211,6 +211,10 @@ test('migration is idempotent and readiness tracks version 2', async t => {
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 2);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
   assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 200);
+  DB.exec('UPDATE schema_version SET version=3');
+  DB.exec(migration);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3,
+    'an old migration cannot downgrade a newer schema marker');
 });
 
 test('aggregate retention removes old counts without touching in-window counts', async t => {

@@ -38,4 +38,4 @@ CREATE TABLE IF NOT EXISTS schema_version (
   id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
 );
 INSERT INTO schema_version(id, version) VALUES (1, 2)
-  ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+  ON CONFLICT(id) DO UPDATE SET version = MAX(schema_version.version, excluded.version);

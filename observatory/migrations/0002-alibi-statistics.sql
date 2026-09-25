@@ -8,4 +8,4 @@ CREATE TABLE IF NOT EXISTS statistics (
   received INTEGER NOT NULL, PRIMARY KEY (project, day, event, route, release)
 );
 INSERT INTO schema_version(id, version) VALUES (1, 2)
-  ON CONFLICT(id) DO UPDATE SET version = excluded.version;
+  ON CONFLICT(id) DO UPDATE SET version = MAX(schema_version.version, excluded.version);
