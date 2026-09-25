@@ -34,7 +34,7 @@ test('Alibi artifact publishes only its bounded context handle and registered re
   const code = buildEmbed('alibi', { endpoint: 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi' });
   const config = JSON.parse(/const config = (\{.*\});/.exec(code)[1].replaceAll('\\u003c', '<'));
   assert.equal(config.contextGlobal, 'ALIBI_OBSERVATORY_CONTEXT');
-  assert.deepEqual(config.project.releases, ['unattributed', '0.11.3', '0.11.4', '0.11.5', '0.11.6']);
+  assert.deepEqual(config.project.releases, ['unattributed', '0.11.3', '0.11.4', '0.11.5', '0.11.6', '0.12.0']);
   assert.equal(code.includes('ALIBI_CONFIG.version'), false);
 });
 test('embed options are an allowlist, not an arbitrary override', () => {
