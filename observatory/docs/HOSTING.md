@@ -75,6 +75,14 @@ preview Worker was then deleted (`/healthz` 404), and the additive migration
 restored scratch's schema marker to 2. The live production Worker and D1 were
 not changed by this proof.
 
+Production cutover later on 2026-09-25: PR #90 merged as `717a0580aa97c69c1657215ab5880a9f1520d3ee`.
+The additive migration moved production D1 from schema 1 to 2 before Worker
+version `6c521e83-3907-4e94-885e-c46cff517d17` was deployed. Actual HTTPS
+`/healthz` and `/readyz` returned 200 (schema 2), unauthenticated
+`/v1/portfolio` returned 401, and a synthetic statistics POST returned 503.
+`COLLECT_STAT_PROJECTS` remains unset; the Alibi player still uses explicit
+opt-in. No public default or production statistics collection was activated.
+
 The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
 before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
 `%LOCALAPPDATA%/Pulseboard/read-token.dpapi`. To copy it for **Connect data** without printing it,
