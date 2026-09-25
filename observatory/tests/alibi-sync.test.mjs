@@ -4,10 +4,12 @@ import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const VERSION = '0.12.1';
-const ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi';
+const ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi';
+const LEGACY_ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi';
 const sourceObservatory = fileURLToPath(new URL('../', import.meta.url));
 const checker = root => spawnSync(process.execPath, ['observatory/check.mjs'], { cwd: root, encoding: 'utf8' });
 
@@ -77,6 +79,17 @@ test('Alibi release sync is repository-scoped, validates the catalogue and rolls
     assert.deepEqual(projects.alibi.releases, nextReleases, 'successful sync must update the in-process collector contract');
     assert.equal(readFileSync(registryFile, 'utf8'), renderAlibiReleaseRegistry(nextReleases));
     assert.equal(readFileSync(outsideRegistry, 'utf8'), 'keep this file unchanged', 'sync must not accept a caller-controlled registry path');
+    const generatedText = readFileSync(path.join(alibi, 'observatory/browser.js'), 'utf8');
+    assert.ok(generatedText.includes(ENDPOINT), 'synced artifact uses the new stat route');
+    assert.equal(generatedText.includes(`"endpoint":"${LEGACY_ENDPOINT}"`), false, 'synced config does not use the retired raw endpoint');
+    assert.ok(generatedText.includes('createStatisticObserver') && generatedText.includes('mountStatisticObserver'));
+    assert.ok(generatedText.includes('ALIBI_OBSERVATORY_CONTEXT'));
+    assert.equal(/MAX_BYTES|MAX_BATCH/.test(generatedText), false);
+    const configLines = generatedText.split('\n').filter(line => line.startsWith('const config = '));
+    assert.equal(configLines.length, 1, 'generated artifact keeps one config line for host checker/sync parser');
+    const parsed = JSON.parse(/^const config = (\{.*\});$/.exec(configLines[0])[1]);
+    assert.equal(parsed.endpoint, ENDPOINT);
+    assert.equal(parsed.origin, 'https://alibi-after-hours-preview.commit-atlas.workers.dev');
     const host = checker(alibi);
     assert.equal(host.status, 0, host.stderr || host.stdout);
     assert.equal(JSON.parse(host.stdout).alibi.packageVersion, VERSION);
@@ -87,6 +100,22 @@ test('Alibi release sync is repository-scoped, validates the catalogue and rolls
     assert.deepEqual(checked.changedFiles, []);
     assert.equal(checked.registered, true);
     assert.equal(checked.packageVersion, VERSION);
+    const artifactPath = path.join(alibi, 'observatory/browser.js');
+    const cleanBytes = readFileSync(artifactPath);
+    const legacyBytes = String(cleanBytes).replace(`"endpoint":"${ENDPOINT}"`, `"endpoint":"${LEGACY_ENDPOINT}"`);
+    assert.notEqual(legacyBytes, String(cleanBytes));
+    writeFileSync(artifactPath, legacyBytes);
+    const lockPath = path.join(alibi, 'observatory.lock.json');
+    const migrateLock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    migrateLock.installs['observatory/browser.js'].sha256 = createHash('sha256').update(legacyBytes).digest('hex');
+    writeFileSync(lockPath, JSON.stringify(migrateLock, null, 2) + '\n');
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /retired raw collector endpoint/);
+    assert.equal(syncAlibi(alibi, { mode: 'write' }).status, 'updated', 'write migrates an owned legacy artifact');
+    assert.equal(readFileSync(artifactPath, 'utf8'), String(cleanBytes));
+    writeFileSync(artifactPath, String(cleanBytes).replace(ENDPOINT, 'https://example.test/v1/collect-stat/alibi'));
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /differs from its locked bytes/);
+    writeFileSync(artifactPath, cleanBytes);
+    assert.equal(syncAlibi(alibi, { mode: 'check' }).status, 'in-sync', 'restored artifact is in-sync again');
     const cliReport = spawnSync(process.execPath, ['adapters/sync-alibi.mjs', '--check', '--json', alibi], { cwd: pulseboard, encoding: 'utf8' });
     assert.equal(cliReport.status, 0, cliReport.stderr || cliReport.stdout);
     assert.equal(JSON.parse(cliReport.stdout).checkoutSource, 'path argument');
