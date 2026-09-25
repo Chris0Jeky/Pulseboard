@@ -83,6 +83,14 @@ version `6c521e83-3907-4e94-885e-c46cff517d17` was deployed. Actual HTTPS
 `COLLECT_STAT_PROJECTS` remains unset; the Alibi player still uses explicit
 opt-in. No public default or production statistics collection was activated.
 
+The aggregate reader and 14-UTC-date retention fix were deployed from merged
+`main` on 2026-09-25 as Worker version
+`76ab45a7-fe14-4156-b608-08770c0d3992`. A production Wrangler dry run
+passed; live `/healthz` and `/readyz` returned 200 and unauthenticated
+`/v1/statistics/alibi` returned 401. `COLLECT_STAT_PROJECTS` remained unset,
+so the public default and statistics admission were still off. The aggregate
+read model is separate from the legacy opt-in portfolio.
+
 The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
 before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
 `%LOCALAPPDATA%/Pulseboard/read-token.dpapi`. To copy it for **Connect data** without printing it,

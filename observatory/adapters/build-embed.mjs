@@ -33,6 +33,39 @@ export function buildEmbed(id, options = {}) {
     config.contextGlobal = project.contextGlobal;
   }
   if (id === 'alibi') config.publicFlag = { global: 'ALIBI_CONFIG', key: 'standalone', expected: false };
+  if (id === 'alibi') {
+    // Alibi uses the aggregate statistic route. The retired raw route is never
+    // generated here; its opt-out key is preserved by the stat-embed control.
+    if (config.endpoint) {
+      let u;
+      try {
+        u = new URL(config.endpoint);
+      } catch {
+        throw new Error('Expected the exact HTTPS statistic collector endpoint');
+      }
+      if (u.protocol !== 'https:' || u.pathname !== '/v1/collect-stat/alibi' || u.search || u.hash || u.username || u.password) throw new Error('Expected the exact HTTPS statistic collector endpoint');
+    }
+    // JSON escapes prevent accidental HTML script termination when embedding in an offline artifact.
+    const json = JSON.stringify(config).replaceAll('<', '\\u003c');
+    // Only the two client modules are published: aggregate transport plus
+    // statistic control. Server validation from stat-contract stays server-side.
+    // Stripping covers only module declarations so vm.Script shape stays plain.
+    const statBrowser = read('../src/stat-browser.mjs').replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+    const statEmbed = read('./stat-embed.mjs').replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+    return assertArtifactShape(`/* SPDX-License-Identifier: GPL-3.0-only
+ * Pulseboard Observatory 0.1.0. Generated; see observatory.lock.json.
+ * Disabled until endpoint is configured. No dynamic/CDN dependency. */
+(function () {
+'use strict';
+${statBrowser}
+${statEmbed}
+const config = ${json};
+function start() { globalThis.PulseboardUsage?.dispose(); globalThis.PulseboardUsage = mountStatisticObserver(config, createStatisticObserver); }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
+globalThis.addEventListener?.('pageshow', event => { if (event.persisted && globalThis.PulseboardUsage?.resume?.() === undefined) start(); });
+})();
+`);
+  }
   if (config.endpoint) {
     const u = new URL(config.endpoint);
     if (u.protocol !== 'https:' || u.pathname !== '/v1/collect/' + id || u.search || u.hash || u.username || u.password) throw new Error('Expected the exact HTTPS project collector endpoint');

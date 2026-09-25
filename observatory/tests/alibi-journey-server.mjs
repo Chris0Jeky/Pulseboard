@@ -16,6 +16,7 @@ const env = {
   READ_TOKEN: token,
   COLLECT_ENABLED: 'true',
   COLLECT_PROJECTS: 'alibi',
+  COLLECT_STAT_PROJECTS: 'alibi',
 };
 const origin = `http://127.0.0.1:${port}`;
 const server = createServer(async (req, res) => {

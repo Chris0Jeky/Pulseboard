@@ -9,7 +9,7 @@
 const STAT_V = 1;
 const MAX_QUEUE = 100;
 const MAX_REQUESTS = 120;
-const MAX_BATCH = 20;
+const CLIENT_BATCH_LIMIT = 20;
 const KEEPALIVE_BUDGET = 65536;
 
 export function createStatisticObserver(config, runtime = globalThis) {
@@ -206,7 +206,7 @@ export function createStatisticObserver(config, runtime = globalThis) {
         return 0;
       }
       if (flight || queue.length === 0 || requests >= MAX_REQUESTS) return 0;
-      const batch = queue.splice(0, MAX_BATCH);
+      const batch = queue.splice(0, CLIENT_BATCH_LIMIT);
       const body = JSON.stringify({ v: STAT_V, counts: batch });
       const controller = makeController();
       const record = {
@@ -290,7 +290,7 @@ export function createStatisticObserver(config, runtime = globalThis) {
       // aggregate contract has no identifiers to deduplicate a duplicate.
       let handed = 0;
       while (queue.length && requests < MAX_REQUESTS) {
-        const batch = queue.slice(0, MAX_BATCH);
+        const batch = queue.slice(0, CLIENT_BATCH_LIMIT);
         const body = JSON.stringify({ v: STAT_V, counts: batch });
         const bytes = byteLength(body);
         if (keepaliveBytes + bytes > KEEPALIVE_BUDGET) break;

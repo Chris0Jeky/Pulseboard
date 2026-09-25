@@ -240,7 +240,8 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
     const note = doc.createElement('p');
     note.textContent = 'Help improve this site. When sharing is on, this page sends closed event counts '
       + 'by section (page) and release (app version) to Pulseboard. Counts are kept as 14-day aggregates. '
-      + 'No puzzle content, progress, or IDs are sent. You can turn sharing off at any time for free — the site works the same.';
+      + 'No puzzle content, progress, or IDs are in the event payload. Pulseboard also receives ordinary request metadata, '
+      + 'such as your IP address. You can turn sharing off at any time for free — the site works the same.';
     const label = doc.createElement('label');
     checkbox = doc.createElement('input');
     checkbox.type = 'checkbox';
@@ -281,7 +282,8 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
       return null;
     }
     try {
-      if (typeof doc.body.append === 'function') doc.body.append(details);
+      if (typeof doc.body.prepend === 'function') doc.body.prepend(details);
+      else if (typeof doc.body.append === 'function') doc.body.append(details);
       else doc.body.appendChild(details);
     } catch {
       return null;

@@ -104,6 +104,13 @@ function makeDocument(order) {
     return el;
   }
   const body = makeEl('body');
+  body.prepend = (...nodes) => {
+    order?.push('dom');
+    for (const n of [...nodes].reverse()) {
+      body.children.unshift(n);
+      if (n && typeof n === 'object') n.parent = body;
+    }
+  };
   const rawAppend = body.append.bind(body);
   body.append = (...nodes) => {
     order?.push('dom');
@@ -230,7 +237,7 @@ test('first visit defaults on with notice before network', async () => {
   assert.ok(container, 'notice container mounted with stable id');
   assert.equal(container.open, true, 'notice and switch are visible on first visit');
   const text = collectText(container).toLowerCase();
-  for (const word of ['improve', 'count', 'section', 'release', 'pulseboard', '14-day', 'no puzzle', 'off', 'free']) {
+  for (const word of ['improve', 'count', 'section', 'release', 'pulseboard', '14-day', 'no puzzle', 'ip address', 'off', 'free']) {
     assert.ok(text.includes(word), `notice explains ${word}`);
   }
   const checkbox = getCheckbox(document);
@@ -245,7 +252,7 @@ test('first visit defaults on with notice before network', async () => {
     assert.ok(!('style' in el) || el.style === undefined, 'no fixed inline styles');
     assert.ok(!('style' in (el.attributes ?? {})), 'no style attribute');
   }
-  assert.ok(document.body.children.includes(container), 'placement appends to body for later styling');
+  assert.equal(document.body.children[0], container, 'control is first in keyboard order');
   await tick();
   assert.ok(calls.length >= 1, 'initial page.view sent after mounting');
   assert.ok(order.includes('dom') && order.includes('fetch'), 'both UI and network happened');

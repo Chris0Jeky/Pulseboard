@@ -31,11 +31,19 @@ test('the artifact publishes the client contract only, never operator data', () 
   assert.ok(config.project.events.includes('export.print_requested'));
 });
 test('Alibi artifact publishes only its bounded context handle and registered release', () => {
-  const code = buildEmbed('alibi', { endpoint: 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi' });
+  const code = buildEmbed('alibi', { endpoint: 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi' });
   const config = JSON.parse(/const config = (\{.*\});/.exec(code)[1].replaceAll('\\u003c', '<'));
   assert.equal(config.contextGlobal, 'ALIBI_OBSERVATORY_CONTEXT');
+  assert.deepEqual(config.publicFlag, { global: 'ALIBI_CONFIG', key: 'standalone', expected: false });
+  assert.equal(config.origin, 'https://alibi-after-hours-preview.commit-atlas.workers.dev');
+  assert.equal(config.endpoint, 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi');
   assert.deepEqual(config.project.releases, ['unattributed', '0.11.3', '0.11.4', '0.11.5', '0.11.6', '0.12.0']);
   assert.equal(code.includes('ALIBI_CONFIG.version'), false);
+  assert.ok(code.includes('createStatisticObserver') && code.includes('mountStatisticObserver'));
+  assert.equal(/MAX_BYTES|MAX_BATCH/.test(code), false);
+  assert.equal(code.includes('CLIENT_BATCH_LIMIT'), true);
+  new vm.Script(code);
+  assert.throws(() => buildEmbed('alibi', { endpoint: 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi' }), /statistic collector endpoint/);
 });
 test('embed options are an allowlist, not an arbitrary override', () => {
   assert.throws(() => buildEmbed('mdviewer', { origin: 'https://attacker.test' }), /Unsupported embed option: origin/);
@@ -136,7 +144,7 @@ test('host checker reports the registered Alibi app release and rejects contract
   try {
     writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'alibi-puzzle-club', version: '0.11.6' }));
     writeAlibiRelease(root);
-    install('alibi', root, 'observatory/browser.js', 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi');
+    install('alibi', root, 'observatory/browser.js', 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi');
     const healthy = runChecker(root);
     assert.equal(healthy.status, 0, healthy.stderr || healthy.stdout);
     const report = JSON.parse(healthy.stdout);
