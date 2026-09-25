@@ -2,6 +2,7 @@ import { projects } from './projects.mjs';
 import { collectionAdmission } from './admission.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
 import { validateStatBatch, statAdmission } from './stat-contract.mjs';
+import { readStatistics } from './statistics.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { assets } from './assets.mjs';
 import { createGithubEvidence } from './github.mjs';
@@ -106,6 +107,16 @@ export async function handle(request, env) {
       const admission = collectionAdmission(env);
       if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
       return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: admission.enabled, admittedProjects: admission.admitted }));
+    }
+    if (url.pathname === '/v1/statistics/alibi' && request.method === 'GET') {
+      if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const values = url.searchParams.getAll('days');
+      if ([...url.searchParams.keys()].some(key => key !== 'days') || values.length > 1 ||
+        (values.length && !/^(1|7|14)$/.test(values[0]))) return json({ error: 'window', allowedDays: WINDOWS }, 400);
+      const admission = collectionAdmission(env);
+      if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
+      return json(await readStatistics(env.DB, { days: Number(values[0] ?? 7),
+        admitted: admission.admitted.includes('alibi') && statAdmission(env) }));
     }
     // Read only on explicit desk action, never by the portfolio poll; its own contract keeps /v1/portfolio closed.
     if (url.pathname === '/v1/github-evidence' && request.method === 'GET') {
