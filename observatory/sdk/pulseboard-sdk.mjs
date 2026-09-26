@@ -38,7 +38,11 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{
 const PERSONAL_KEYS = new Set(('email emailaddress password passwd pwd phone phonenumber mobile token accesstoken '
   + 'refreshtoken secret apikey ip ipaddress address streetaddress postcode zipcode ssn iban cardnumber cvv dob '
   + 'dateofbirth firstname lastname fullname username nickname displayname player playername user handle realname '
-  + 'surname givenname').split(' '));
+  + 'surname givenname userid uid clientip ipaddr remoteaddr url href').split(' '));
+const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/([^\s/?#'"<>]*)[^\s'"<>]*/gi;
+const IPV4_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+// Full forms need five or more groups and compressed forms need `::`, so clock times such as 12:30:45 survive.
+const IPV6_RE = /(?<![0-9a-z:])(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){4,7}|(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?|::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?)(?![0-9a-z:])/gi;
 const SEARCH = ['google', 'bing', 'duckduckgo', 'yahoo', 'ecosia', 'brave', 'yandex', 'baidu'];
 const SOCIAL = ['twitter', 'facebook', 'instagram', 'linkedin', 'reddit', 'mastodon', 'bsky', 'youtube', 'tiktok', 'discord'];
 // web.dev "good" and "poor" boundaries: at or below the first is good, above the second is poor.
@@ -117,10 +121,20 @@ function byteLength(text, runtime) {
   return String(text).length * 3;
 }
 
-/** Remove personal keys and mask e-mail-looking strings, recursively. Returns a fresh value; never mutates input. */
+/** A prop string with e-mails masked, `scheme://…` URLs cut to their host, and IPv4/IPv6-looking text masked as `[ip]`. */
+export function scrubString(text) {
+  // URLs first, so credentials in an authority go with the rest of the URL instead of reading as an e-mail.
+  return text.replace(URL_RE, (_, authority) => {
+      const host = authority.slice(authority.lastIndexOf('@') + 1);
+      return host.startsWith('[') ? '[ip]' : host.replace(/:\d*$/, '').toLowerCase();
+    })
+    .replace(EMAIL_RE, '[email]').replace(IPV4_RE, '[ip]').replace(IPV6_RE, '[ip]');
+}
+
+/** Remove personal keys and scrub strings (scrubString), recursively. Returns a fresh value; never mutates input. */
 export function scrubProps(value, depth = 0) {
   if (depth > 8) return undefined;
-  if (typeof value === 'string') return value.replace(EMAIL_RE, '[email]');
+  if (typeof value === 'string') return scrubString(value);
   if (Array.isArray(value)) return value.map(item => scrubProps(item, depth + 1));
   if (isPlain(value)) {
     const out = {};
@@ -171,22 +185,33 @@ function checkConfig(config) {
   } catch { return null; }
 }
 
-function inert() {
+/** A host's reserved bar space (`[data-pulseboard-bar]`) is released whenever no bar is showing. */
+function releasePlaceholder(doc) {
+  try {
+    const node = typeof doc?.querySelector === 'function' ? doc.querySelector('[data-pulseboard-bar]') : null;
+    if (!node) return;
+    if (node.style) { node.style.height = '0'; node.style.minHeight = '0'; node.style.overflow = 'hidden'; }
+    node.setAttribute?.('hidden', '');
+  } catch { /* The host keeps its placeholder. */ }
+}
+
+function inert(runtime) {
   const off = () => false;
-  return { route: off, count: off, track: off, mount: off, resume: off, flush: () => 0, dispose() {},
+  const mount = () => { try { releasePlaceholder(runtime?.document); } catch { /* Nothing else to do. */ } return false; };
+  return { route: off, count: off, track: off, mount, resume: off, flush: () => 0, dispose() {},
     status: () => ({ active: false }),
     consent: { get: () => ({ counts: false, diagnostics: false, journeys: false, decided: false, region: 'unknown', blocked: true }), set: off, open: off } };
 }
 
 export function createPulseboard(config, runtime = globalThis) {
   const cfg = checkConfig(config);
-  if (!cfg) return inert();
+  if (!cfg) return inert(runtime);
   try {
     const loc = runtime?.location;
-    if (!loc || loc.origin !== cfg.origin || loc.protocol !== 'https:') return inert();
-    if (runtime?.navigator?.webdriver) return inert();
-    if (typeof runtime?.fetch !== 'function') return inert();
-  } catch { return inert(); }
+    if (!loc || loc.origin !== cfg.origin || loc.protocol !== 'https:') return inert(runtime);
+    if (runtime?.navigator?.webdriver) return inert(runtime);
+    if (typeof runtime?.fetch !== 'function') return inert(runtime);
+  } catch { return inert(runtime); }
 
   const KEYS = { consent: 'pulseboard:consent:v3:' + cfg.id, region: 'pulseboard:region:' + cfg.id,
     visit: 'pulseboard:visit:' + cfg.id, session: 'pulseboard:session:' + cfg.id };
@@ -713,6 +738,7 @@ export function createPulseboard(config, runtime = globalThis) {
 
   function collapse() {
     remove(ui.bar); ui.bar = null; ui.choose = null; ui.chooseButton = null;
+    releasePlaceholder(ui.doc);
     showPill();
     try { ui.pill?.focus?.(); } catch { /* Focus is best-effort. */ }
   }
@@ -820,10 +846,12 @@ export function createPulseboard(config, runtime = globalThis) {
       try { ui.slot = typeof doc.querySelector === 'function' ? doc.querySelector('[data-pulseboard-slot]') : null; } catch { ui.slot = null; }
       if (!blocked() && !decided()) {
         const bar = buildBar();
-        const body = doc.body;
-        if (typeof body.prepend === 'function') body.prepend(bar);
-        else body.insertBefore(bar, body.firstChild ?? null);
-      } else showPill();
+        let holder = null;
+        try { holder = typeof doc.querySelector === 'function' ? doc.querySelector('[data-pulseboard-bar]') : null; } catch { holder = null; }
+        if (holder) holder.append(bar);
+        else if (typeof doc.body.prepend === 'function') doc.body.prepend(bar);
+        else doc.body.insertBefore(bar, doc.body.firstChild ?? null);
+      } else { releasePlaceholder(doc); showPill(); }
       if (!ui.bar && !ui.pill) return false;
       mounted = true;
       // Notice is on screen: only now may anything leave the page.

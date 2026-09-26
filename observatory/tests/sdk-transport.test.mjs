@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPulseboard, classifyReferrer, campaignOf, deviceOf, validProps, scrubProps } from '../sdk/pulseboard-sdk.mjs';
+import { createPulseboard, classifyReferrer, campaignOf, deviceOf, validProps, scrubProps, scrubString } from '../sdk/pulseboard-sdk.mjs';
 import { config, makeRuntime, storage, settle, ORIGIN } from './sdk-fakes.mjs';
 
 const DECIDED = { 'pulseboard:consent:v3:demo': JSON.stringify({ counts: true, diagnostics: true, journeys: true, decided: true, month: '2026-09' }) };
@@ -247,4 +247,24 @@ test('bfcache: persisted pagehide keeps the instance; an ordinary exit disposes 
   assert.ok(handed.every(c => c.aborted === false), 'keepalive handoffs survive an ordinary exit');
   assert.equal(h.runtime.listeners.pagehide.length, 0);
   assert.equal(h.sdk.count('app.ready'), false);
+});
+
+test('prop strings: URLs cut to their host, IPv4 and IPv6 masked, identifier keys dropped', async () => {
+  const cases = [
+    ['see https://user:pw@Example.com:8443/a/b?q=1 now', 'see example.com now'],
+    ['ftp://10.0.0.1/file', '[ip]'],
+    ['http://[::1]:80/x', '[ip]'],
+    ['from 192.168.1.20 via 2001:db8:85a3::8a2e:370:7334', 'from [ip] via [ip]'],
+    ['2001:0db8:0000:0000:0000:ff00:0042:8329 and fe80::1 and ::1', '[ip] and [ip] and [ip]'],
+    ['at 12:30:45 on 2026-09-26, v1.2.3, note::thing', 'at 12:30:45 on 2026-09-26, v1.2.3, note::thing'],
+    ['write to a@b.co', 'write to [email]'],
+  ];
+  for (const [input, output] of cases) assert.equal(scrubString(input), output, input);
+  const props = { userId: 1, uid: 2, clientIp: 3, ip_addr: 4, 'remote-addr': 5, URL: 6, href: 7, link: 'https://x.test/private/path', kept: 1 };
+  assert.deepEqual(scrubProps(props), { link: 'x.test', kept: 1 });
+  const h = start();
+  h.sdk.track('link.opened', props);
+  h.fire();
+  await settle();
+  assert.deepEqual(h.products()[0].body.events.find(e => e.name === 'link.opened').props, { link: 'x.test', kept: 1 });
 });
