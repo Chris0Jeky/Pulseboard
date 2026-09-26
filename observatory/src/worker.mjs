@@ -159,7 +159,7 @@ export async function handle(request, env) {
       if (raw) {
         const names = url.searchParams.getAll('name'), limits = url.searchParams.getAll('limit');
         if (names.length > 1 || (names.length && !PRODUCT_NAME.test(names[0]))) return json({ error: 'name' }, 400);
-        if (limits.length > 1 || (limits.length && !/^(?:[1-9][0-9]{0,3}|5000)$/.test(limits[0]))) return json({ error: 'limit', max: 5000 }, 400);
+        if (limits.length > 1 || (limits.length && !/^(?:[1-9][0-9]{0,2}|[1-4][0-9]{3}|5000)$/.test(limits[0]))) return json({ error: 'limit', max: 5000 }, 400);
         name = names[0] ?? null; limit = Number(limits[0] ?? EVENTS_DEFAULT_LIMIT);
       }
       const admission = collectionAdmission(env);
