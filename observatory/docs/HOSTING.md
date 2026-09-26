@@ -300,3 +300,9 @@ owner actions; no agent holds either.
 - Alibi-origin requests: a v2 batch with context `desktop/direct/new` and two counts returned 202; a v1 batch with one count (the live embed's shape) returned 202; a v2 batch with `device: phone` returned 400.
 - Scratch rows afterwards: `country GB 3`, taken from Cloudflare's edge country with no IP read; `device desktop 2 / unknown 1`, `source direct 2 / unknown 1`, `visit new 2 / unknown 1`. Every dimension sums to the three admitted counts.
 - The preview Worker was deleted afterwards (`/healthz` 404). Production D1 is not migrated yet; that happens at deploy time, after merge.
+
+### Schema 3 in production, 2026-09-26 (#111)
+
+- #111 merged as `38164bf`. Production D1 was migrated with `migrations/0003-statistics-dimensions.sql` (additive, and `statistics_dimensions` is `WITHOUT ROWID`, confirmed in `sqlite_master`). Worker version `9a9fcfac-4d4c-4ca2-9d5c-e14264a2088b` was deployed from `38164bf` right after. `/healthz` and `/readyz` return 200, schema 3, statistics admitted `["alibi"]`.
+- At deploy time, production `statistics` held 3 rows and 4 counts, including earlier QA counts. The live Alibi embed still posts v1 batches, so its device, source and visit read `unknown` until slice 3 (#104). The country is recorded from the edge from now on.
+- Rollback: check out `859adb2` (the #109 merge: schema 2, and it admits Alibi 0.13.0), run `npx wrangler deploy` from `observatory/`, then `UPDATE schema_version SET version=2 WHERE id=1 AND version=3`. The table stays. Do not roll back to `bffba8a7…`: it was built before #109, so it rejects every Alibi 0.13.0 batch with a 400 `contract` response.
