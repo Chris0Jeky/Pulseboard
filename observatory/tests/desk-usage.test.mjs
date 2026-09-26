@@ -34,7 +34,7 @@ test('the Desk accepts what the aggregate reader produces', async t => {
   assert.match(text, /4 completions against 12 starts/);
   assert.match(text, /15 hint requests against 12 starts/);
   assert.match(text, /2 app errors/);
-  assert.match(text, /2 releases reported counts/);
+  assert.match(text, /2 release labels/);
 });
 
 test('the Desk refuses a statistics read that disagrees with itself or its window', async t => {
@@ -48,6 +48,10 @@ test('the Desk refuses a statistics read that disagrees with itself or its windo
     s => { s.window.startDay = '2026-09-20'; },
     s => { s.events[0].n = -1; },
     s => { s.limitations = 'none'; },
+    s => { s.visitors = 3; },
+    s => { s.events[0].country = 'GB'; },
+    s => { s.events.push({ ...s.events[0], n: 0 }); },
+    s => { s.window.extra = 1; },
   ];
   for (const change of broken) {
     const copy = structuredClone(stats); change(copy);

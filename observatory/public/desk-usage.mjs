@@ -1,11 +1,12 @@
 /** Usage view model: the aggregate Alibi statistics read, its contract check and a synthetic twin.
  *  Counts are client-reported events, never people; nothing here derives visitors, retention or conversion. */
-import { plain, requireValue, boundedString, list } from './desk-bridge.mjs';
+import { plain, requireValue, boundedString, list, exactKeys, unique } from './desk-bridge.mjs';
 export const STATISTICS_SCHEMA = 'pulseboard.statistics/2';
 export const STATISTICS_MAX_BYTES = 65536;
+const TOP_KEYS = ['schema', 'project', 'generatedAt', 'window', 'collectionAdmitted', 'observationStatus', 'population', 'limitations', 'total', 'events', 'daily', 'routes', 'releases', 'eventDaily'];
 const VOCABULARY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const DAY_TEXT = /^\d{4}-\d\d-\d\d$/;
-const count = value => { requireValue(Number.isSafeInteger(value) && value >= 0, 'Invalid count'); return value; };
+const nonNegative = value => { requireValue(Number.isSafeInteger(value) && value >= 0, 'Invalid count'); return value; };
 const word = value => { requireValue(typeof value === 'string' && VOCABULARY.test(value), 'Invalid vocabulary'); return value; };
 const day = value => { requireValue(typeof value === 'string' && DAY_TEXT.test(value) && new Date(value + 'T00:00:00Z').toISOString().startsWith(value), 'Invalid UTC day'); return value; };
 
@@ -19,23 +20,29 @@ export function requestStatistics(fetcher, { token, days, signal }) {
 
 export function assertStatistics(input, days) {
   requireValue(plain(input) && input.schema === STATISTICS_SCHEMA && input.project === 'alibi', 'Unexpected statistics contract');
+  // Closed: a field the reader does not emit today (a people-shaped one included) is refused, not ignored. Only the sandbox adds mode.
+  exactKeys(input, [...TOP_KEYS, ...(input.mode === 'demo' ? ['mode'] : [])]);
   requireValue(Number.isSafeInteger(input.generatedAt) && input.generatedAt >= 0, 'Invalid timestamp');
   requireValue(typeof input.collectionAdmitted === 'boolean' && ['observed', 'no-admitted-counts'].includes(input.observationStatus), 'Invalid observation status');
   const w = input.window;
-  requireValue(plain(w) && w.days === days && w.timezone === 'UTC', 'Invalid statistics window');
+  exactKeys(w, ['startDay', 'endDay', 'days', 'timezone', 'partialToday']);
+  requireValue(w.days === days && w.timezone === 'UTC' && w.partialToday === true, 'Invalid statistics window');
   day(w.startDay); day(w.endDay);
   requireValue(Date.parse(w.endDay) - Date.parse(w.startDay) === (days - 1) * 86400000, 'Invalid statistics window');
   list(input.limitations, 16).forEach(text => boundedString(text, 500));
   boundedString(input.population, 120);
-  count(input.total);
+  nonNegative(input.total);
   const inWindow = d => requireValue(day(d) >= w.startDay && d <= w.endDay, 'Day outside window');
-  list(input.events, 64).forEach(r => { word(r.event); count(r.n); });
-  list(input.routes, 64).forEach(r => { word(r.route); count(r.n); });
-  list(input.releases, 64).forEach(r => { word(r.release); count(r.n); });
-  list(input.daily, 14).forEach(r => { inWindow(r.day); count(r.n); });
-  list(input.eventDaily, 14 * 64).forEach(r => { inWindow(r.day); word(r.event); count(r.n); });
+  const rows = (value, max, keys, check) => { list(value, max).forEach(r => { exactKeys(r, [...keys, 'n']); check(r); nonNegative(r.n); });
+    unique(value.map(r => keys.map(k => r[k]).join('|'))); };
+  rows(input.events, 64, ['event'], r => word(r.event));
+  rows(input.routes, 64, ['route'], r => word(r.route));
+  rows(input.releases, 64, ['release'], r => word(r.release));
+  rows(input.daily, 14, ['day'], r => inWindow(r.day));
+  rows(input.eventDaily, 14 * 64, ['day', 'event'], r => { inWindow(r.day); word(r.event); });
   const total = rows => rows.reduce((n, r) => n + r.n, 0);
-  requireValue([input.events, input.routes, input.releases, input.daily, input.eventDaily].every(rows => total(rows) === input.total), 'Statistics totals disagree');
+  requireValue([input.events, input.routes, input.releases, input.daily, input.eventDaily].every(xs => total(xs) === input.total), 'Statistics totals disagree');
+  requireValue(input.daily.every(d => total(input.eventDaily.filter(r => r.day === d.day)) === d.n), 'Daily statistics disagree');
   return input;
 }
 
@@ -68,7 +75,7 @@ export function usageQuestions(stats, reading = usageReading(stats)) {
   if (reading.started >= 10 && reading.hintsPerStart !== null && reading.hintsPerStart > 1)
     out.push({ kind: 'question', text: `${reading.hints} hint requests against ${reading.started} starts. Is one puzzle's difficulty out of line with the rest?` });
   if (reading.errors > 0) out.push({ kind: 'question', text: `${reading.errors} app errors reported in this window. Which release carries them? Compare the release mix below.` });
-  if (stats.releases.length > 1) out.push({ kind: 'note', text: `${stats.releases.length} releases reported counts. Older releases still sending means cached or unupdated clients.` });
+  if (stats.releases.length > 1) out.push({ kind: 'note', text: `Counts arrived under ${stats.releases.length} release labels. Check which are current: a non-current label can be a cached client or a QA count.` });
   if (reading.views && !reading.started) out.push({ kind: 'question', text: 'Pages are viewed but no puzzle was started. Is the start path obvious from the landing page?' });
   return out;
 }

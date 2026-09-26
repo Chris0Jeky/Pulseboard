@@ -360,7 +360,7 @@ function share(rows, key, total) {
     e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, total), value: r.n, 'aria-label': `${r[key]}: ${r.n} of ${total}` })])));
 }
 function coverage() {
-  const describe = p => p.id === 'alibi' && state.usage?.collectionAdmitted ? 'Aggregate counts, on by default with visitor opt-out'
+  const describe = p => p.id === 'alibi' && state.usage?.collectionAdmitted ? 'Aggregate counts admitted (Alibi 0.12.0 sends them by default, with opt-out)'
     : !p.collectionEligible ? 'Local-only by design; no browser collection'
       : p.collectionAdmitted ? 'Opt-in session events only' : 'Not measured. Needs your go-ahead: notice review and host adapter';
   return panel('Coverage across your sites', e('div', { class: 'table-shell' }, table(['Site', 'Usage measurement', 'Opt-in events (window)', 'Reachability'],
@@ -383,9 +383,9 @@ function usageView() {
       panel('Day by day', usageChart(r), e('span', { class: 'mini-label' }, 'AGGREGATE COUNTS'))),
     e('div', { class: 'overview-grid' },
       panel('Where activity happens', share(u.routes, 'route', u.total), e('span', { class: 'mini-label' }, 'ROUTE MIX')),
-      panel('What people do', share(u.events, 'event', u.total), e('span', { class: 'mini-label' }, 'EVENT MIX'))),
+      panel('What gets done', share(u.events, 'event', u.total), e('span', { class: 'mini-label' }, 'EVENT MIX'))),
     e('div', { class: 'overview-grid' },
-      panel('Which build they run', share(u.releases, 'release', u.total), e('span', { class: 'mini-label' }, 'RELEASE MIX')),
+      panel('Which build sent counts', share(u.releases, 'release', u.total), e('span', { class: 'mini-label' }, 'RELEASE MIX')),
       panel('Reading limits', e('ul', { class: 'tiny muted' }, u.limitations.map(text => e('li', {}, text))))),
     coverage()];
 }
@@ -451,7 +451,7 @@ $('#brief').addEventListener('click', fieldNote); $('#density').addEventListener
 $('#search').addEventListener('input', event => { state.query = event.target.value.toLowerCase().trim(); render(); });
 $('#scenario').addEventListener('change', event => { state.scenario = event.target.value; beginDemo(); });
 $('#replay').addEventListener('input', event => { state.phase = Number(event.target.value); if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } });
-$('#window').addEventListener('change', event => { state.days = Number(event.target.value); if (state.token) { cancelRead(); refresh(); } else if (state.snapshot?.mode === 'demo') beginDemo(); });
+$('#window').addEventListener('change', event => { state.days = Number(event.target.value); if (state.token) { state.usage = null; state.usageError = ''; } if (state.token) { cancelRead(); refresh(); } else if (state.snapshot?.mode === 'demo') beginDemo(); });
 $('#export-confirm').addEventListener('change', () => { $('#download-export').disabled = !$('#export-confirm').checked; });
 $('#accept-import').addEventListener('click', () => { if (!state.pendingImport) return; state.imported[state.pendingImport.kind] = state.pendingImport; state.pendingImport = null; $('#import-preview').textContent = ''; $('#import-dialog').close(); render(); notify('Reviewed context kept in this tab only.'); });
 $('#import-dialog').addEventListener('close', () => { state.pendingImport = null; $('#import-preview').textContent = ''; });
