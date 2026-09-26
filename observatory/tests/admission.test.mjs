@@ -49,7 +49,7 @@ test('every committed product allowlist admits exactly the ids it lists, and pro
   const lists = [...source.matchAll(/"COLLECT_PRODUCT_PROJECTS"\s*:\s*"([^"]*)"/g)].map(match => match[1]);
   assert.equal(lists.length, 2);
   for (const value of lists.filter(Boolean)) assert.deepEqual(productAdmission({ COLLECT_PRODUCT_PROJECTS: value }), value.split(','), value);
-  assert.deepEqual(lists, ['portfolio,alibi,commitatlas,idleharbor', ''], 'production admits the shipped SDK v3 hosts (q-13, q-20, q-21); preview admits none');
+  assert.deepEqual(lists, ['portfolio,alibi,commitatlas,idleharbor,developer-lens,wealthlens', ''], 'production admits the shipped SDK v3 hosts (q-13, q-20, q-21); preview admits none');
 });
 
 test('every committed statistics allowlist parses exactly, so a typo can never silently admit nothing', async () => {
@@ -58,7 +58,7 @@ test('every committed statistics allowlist parses exactly, so a typo can never s
   const lists = [...source.matchAll(/"COLLECT_STAT_PROJECTS"\s*:\s*"([^"]*)"/g)].map(match => match[1]);
   assert.equal(lists.length, 2);
   for (const value of lists) assert.deepEqual(statAdmission({ COLLECT_STAT_PROJECTS: value }), value.split(','), value);
-  assert.deepEqual(lists, ['alibi,portfolio,commitatlas,idleharbor', 'alibi'], 'production counts the shipped hosts; preview counts Alibi');
+  assert.deepEqual(lists, ['alibi,portfolio,commitatlas,idleharbor,developer-lens,wealthlens', 'alibi'], 'production counts the shipped hosts; preview counts Alibi');
 });
 
 test('readiness exposes admission and rejects an invalid allowlist', async t => {
