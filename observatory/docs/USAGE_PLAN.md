@@ -58,8 +58,10 @@ information and an easy opt-out. It can be made unobtrusive. The proposed standa
 
 - one line, no modal, no overlay, nothing that blocks input or shifts layout;
 - placed in the footer or settings, with the same text in every product;
-- proposed wording: "Anonymous usage counts help improve <product>. No names, IPs or
-  identifiers. [Turn off]". Where Cloudflare Web Analytics also runs, the line names Cloudflare;
+- proposed wording: "Aggregate usage counts help improve <product>. Pulseboard stores no
+  names, IPs or identifiers. [Turn off]". Never call the counts anonymous: with a handful of
+  testers they are not. The Cloudflare beacon is not covered by this line; it gets its own
+  wording in slice 6;
 - the opt-out works in one click and is remembered; GPC and DNT are honoured silently;
 - tester enrolment shows its own one-time explanation, because testers opt in explicitly.
 
@@ -106,8 +108,11 @@ depending on the vendor.
 5. **Tester tier (#106).** An enrolment switch and invite link in Alibi first, reusing the existing
    opt-in session path and portfolio flows, plus a Desk "Testers" panel with journeys, stalls and
    durations.
-6. **Cloudflare Web Analytics adapter (#107).** Needs q-17 and the vendor data review above. Then
-   a bounded adapter and a Usage-view source toggle follow.
+6. **Cloudflare Web Analytics beacon and adapter (#107).** Wiring the beacon into the embed
+   belongs to this slice and needs all of the following first: q-17 (site tokens and read token),
+   the vendor data review above, and the owner's approval of the notice line that names
+   Cloudflare (a new item like q-19). Only then do the beacon, the bounded adapter and the
+   Usage-view source toggle ship.
 
 ## Amendments to ENGINEERING.md
 
