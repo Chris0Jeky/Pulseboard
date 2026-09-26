@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -171,6 +171,139 @@ test('Alibi release sync is repository-scoped, validates the catalogue and rolls
       assert.equal(readFileSync(path.join(lateAlibi, relative)).compare(bytes), 0, `failed sync must restore ${relative}`);
     }
     assert.deepEqual(projects.alibi.releases, oldReleases, 'failed sync must restore temporary module state');
+  } finally {
+    rmSync(temp, { recursive: true });
+  }
+});
+
+test('Alibi release sync detects the SDK v3 layout from the lock, repins it, and keeps older checkouts of both layouts in sync', async () => {
+  const temp = mkdtempSync(path.join(tmpdir(), 'observatory-alibi-sdk-sync-'));
+  const pulseboard = path.join(temp, 'pulseboard');
+  const alibi = path.join(temp, 'alibi');
+  const olderSdk = path.join(temp, 'older-sdk');
+  const olderEmbed = path.join(temp, 'older-embed');
+  const lateAlibi = path.join(temp, 'late-alibi');
+  const SDK_TARGET = 'observatory/pulseboard.js';
+  try {
+    mkdirSync(pulseboard, { recursive: true });
+    for (const dir of ['adapters', 'src', 'sdk']) cpSync(path.join(sourceObservatory, dir), path.join(pulseboard, dir), { recursive: true });
+    const [syncModule, releasesModule, projectsModule, embedModule, sdkModule] = await Promise.all([
+      import(pathToFileURL(path.join(pulseboard, 'adapters/sync-alibi.mjs')).href),
+      import(pathToFileURL(path.join(pulseboard, 'src/alibi-releases.mjs')).href),
+      import(pathToFileURL(path.join(pulseboard, 'src/projects.mjs')).href),
+      import(pathToFileURL(path.join(pulseboard, 'adapters/build-embed.mjs')).href),
+      import(pathToFileURL(path.join(pulseboard, 'adapters/build-sdk.mjs')).href),
+    ]);
+    const { syncAlibi, renderAlibiReleaseRegistry } = syncModule;
+    const { projects } = projectsModule;
+    const { writeSdk, buildSdk } = sdkModule;
+    const oldReleases = [...releasesModule.ALIBI_RELEASES];
+    const registered = oldReleases.at(-1);
+    const registryFile = path.join(pulseboard, 'src/alibi-releases.mjs');
+    const sdkSource = path.join(pulseboard, 'sdk/pulseboard-sdk.mjs');
+    const SDK_VERSION = /^export const SDK_VERSION = '([0-9.]+)';$/m.exec(readFileSync(sdkSource, 'utf8'))[1];
+    const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+    const lockOf = root => JSON.parse(readFileSync(path.join(root, 'observatory.lock.json'), 'utf8'));
+    const writeLock = (root, lock) => writeFileSync(path.join(root, 'observatory.lock.json'), JSON.stringify(lock, null, 2) + '\n');
+    const makeSdkAlibi = (root, version) => {
+      makeAlibi(root, version);
+      const written = writeSdk('alibi', root, SDK_TARGET, { release: version });
+      writeLock(root, { version: '0.1.0', source: 'Chris0Jeky/Pulseboard:observatory', sdk: SDK_VERSION,
+        installs: { [SDK_TARGET]: { project: 'alibi', sdk: SDK_VERSION, sha256: written.sha256 } } });
+    };
+
+    // An SDK checkout at the newest registered release is in sync and reports its layout.
+    makeSdkAlibi(alibi, registered);
+    makeSdkAlibi(olderSdk, registered);
+    makeAlibi(olderEmbed, registered);
+    embedModule.install('alibi', olderEmbed, 'observatory/browser.js', ENDPOINT);
+    const initial = syncAlibi(alibi, { mode: 'check' });
+    assert.equal(initial.status, 'in-sync');
+    assert.equal(initial.layout, 'sdk');
+    assert.equal(initial.sdk, SDK_VERSION);
+    assert.equal(initial.target, SDK_TARGET);
+    assert.equal(initial.sha256, lockOf(alibi).installs[SDK_TARGET].sha256);
+    assert.equal(syncAlibi(olderEmbed, { mode: 'check' }).layout, 'embed', 'a lock without "sdk" keeps the embed layout');
+
+    // A new package version fails the read-only check, then write registers it and repins the SDK artifact.
+    makeAlibi(alibi, VERSION);
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), new RegExp(`${VERSION.replaceAll('.', '\\.')} is missing from the Pulseboard collector contract`));
+    const synced = syncAlibi(alibi, { mode: 'write' });
+    assert.equal(synced.status, 'updated');
+    assert.equal(synced.layout, 'sdk');
+    assert.equal(synced.addedRelease, VERSION);
+    assert.deepEqual([...synced.changedFiles].sort(), ['Alibi/observatory.lock.json', 'Alibi/observatory/pulseboard.js', 'Pulseboard/observatory/src/alibi-releases.mjs']);
+    assert.equal(readFileSync(registryFile, 'utf8'), renderAlibiReleaseRegistry([...oldReleases, VERSION]));
+    const artifact = readFileSync(path.join(alibi, SDK_TARGET), 'utf8');
+    assert.equal(artifact, buildSdk('alibi', { release: VERSION }));
+    assert.equal(JSON.parse(/^const config = (\{.*\});$/m.exec(artifact)[1]).release, VERSION);
+    const lock = lockOf(alibi);
+    assert.equal(lock.sdk, SDK_VERSION);
+    assert.deepEqual(Object.keys(lock.installs), [SDK_TARGET]);
+    assert.equal(lock.installs[SDK_TARGET].sha256, digest(readFileSync(path.join(alibi, SDK_TARGET))));
+    assert.equal(synced.sha256, lock.installs[SDK_TARGET].sha256);
+    assert.equal(syncAlibi(alibi, { mode: 'check' }).status, 'in-sync');
+    const lockBytes = readFileSync(path.join(alibi, 'observatory.lock.json'));
+    assert.equal(syncAlibi(alibi, { mode: 'write' }).status, 'unchanged', 'a second write is a no-op');
+    assert.equal(readFileSync(path.join(alibi, 'observatory.lock.json')).compare(lockBytes), 0);
+
+    // Registering a newer release must not turn older published checkouts of either layout stale.
+    assert.equal(syncAlibi(olderSdk, { mode: 'check' }).status, 'in-sync');
+    assert.equal(syncAlibi(olderEmbed, { mode: 'check' }).status, 'in-sync');
+    const cli = spawnSync(process.execPath, ['adapters/sync-alibi.mjs', '--check', '--json', olderSdk], { cwd: pulseboard, encoding: 'utf8' });
+    assert.equal(cli.status, 0, cli.stderr || cli.stdout);
+    assert.equal(JSON.parse(cli.stdout).layout, 'sdk');
+
+    // Fail closed on hand edits, a mismatched release, a foreign lock shape and an SDK upgrade.
+    const artifactPath = path.join(alibi, SDK_TARGET);
+    const clean = readFileSync(artifactPath, 'utf8');
+    const cleanLock = lockOf(alibi);
+    const edited = clean.replace("'use strict';", "'use strict'; void 0;");
+    writeFileSync(artifactPath, edited);
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /differs from its locked bytes/);
+    writeLock(alibi, { ...cleanLock, installs: { [SDK_TARGET]: { ...cleanLock.installs[SDK_TARGET], sha256: digest(edited) } } });
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /edited by hand/);
+    assert.throws(() => syncAlibi(alibi, { mode: 'write' }), /edited by hand/);
+    writeFileSync(artifactPath, clean);
+    writeLock(alibi, cleanLock);
+    writeLock(alibi, { ...cleanLock, installs: { ...cleanLock.installs, 'observatory/browser.js': { project: 'alibi', sha256: 'a'.repeat(64) } } });
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /must own exactly observatory\/pulseboard\.js/);
+    writeLock(alibi, { ...cleanLock, sdk: '3.0.0', installs: { [SDK_TARGET]: { ...cleanLock.installs[SDK_TARGET], sdk: '3.0.0' } } });
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /is not pulseboard-sdk 3\.0\.0/);
+    writeLock(alibi, { ...cleanLock, sdk: 'three' });
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /"sdk" must be a stable/);
+    writeLock(alibi, cleanLock);
+    makeAlibi(alibi, registered);
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /built for release/);
+    makeAlibi(alibi, VERSION);
+    const sdkBytes = readFileSync(sdkSource, 'utf8');
+    try {
+      writeFileSync(sdkSource, sdkBytes.replace(`SDK_VERSION = '${SDK_VERSION}'`, "SDK_VERSION = '9.9.9'"));
+      assert.throws(() => syncAlibi(alibi, { mode: 'write' }), /builds pulseboard-sdk 9\.9\.9 but Alibi pins/);
+    } finally {
+      writeFileSync(sdkSource, sdkBytes);
+    }
+    assert.equal(readFileSync(artifactPath, 'utf8'), clean, 'a refused SDK upgrade leaves the artifact alone');
+    assert.equal(syncAlibi(alibi, { mode: 'check' }).status, 'in-sync');
+
+    // A late lock write failure rolls back the SDK artifact and the Pulseboard registry.
+    projects.alibi.releases = oldReleases;
+    writeFileSync(registryFile, renderAlibiReleaseRegistry(oldReleases));
+    makeSdkAlibi(lateAlibi, registered);
+    makeAlibi(lateAlibi, VERSION);
+    const before = ['observatory/pulseboard.js', 'observatory.lock.json'].map(relative => [relative, readFileSync(path.join(lateAlibi, relative))]);
+    const beforeRegistry = readFileSync(registryFile);
+    const lateLock = path.join(lateAlibi, 'observatory.lock.json');
+    const lockMode = statSync(lateLock).mode & 0o777;
+    try {
+      chmodSync(lateLock, 0o444);
+      assert.throws(() => syncAlibi(lateAlibi, { mode: 'write' }), /EACCES|EPERM|permission denied|read-only/i);
+    } finally {
+      chmodSync(lateLock, lockMode);
+    }
+    assert.equal(readFileSync(registryFile).compare(beforeRegistry), 0, 'failed SDK sync must restore the registry');
+    for (const [relative, bytes] of before) assert.equal(readFileSync(path.join(lateAlibi, relative)).compare(bytes), 0, `failed SDK sync must restore ${relative}`);
+    assert.deepEqual(projects.alibi.releases, oldReleases);
   } finally {
     rmSync(temp, { recursive: true });
   }

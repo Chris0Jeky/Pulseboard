@@ -5,10 +5,16 @@ import { fileURLToPath } from 'node:url';
 import { ALIBI_RELEASES } from '../src/alibi-releases.mjs';
 import { projects } from '../src/projects.mjs';
 import { buildEmbed, install } from './build-embed.mjs';
+import { SDK_COLLECTOR, buildSdk, isPristineSdk, writeSdk } from './build-sdk.mjs';
 
 const SOURCE = 'Chris0Jeky/Pulseboard:observatory';
 const PACKAGE_NAME = 'alibi-puzzle-club';
+// Two host layouts, told apart by the lock: a lock without "sdk" pins the aggregate
+// statistics embed (Alibi up to 0.14.0); a lock with "sdk" pins the SDK v3 artifact
+// built by build-sdk.mjs (Alibi 0.14.1 onwards).
 const TARGET = 'observatory/browser.js';
+const SDK_TARGET = 'observatory/pulseboard.js';
+const SDK_HEADER_VERSION = /^\/\* SPDX-License-Identifier: GPL-3\.0-only\n \* pulseboard-sdk (\S+) for alibi\. /;
 const ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi';
 // The retired raw route is kept only as a migration input: the generated
 // statistic artifact's stat-embed control reads the matching old opt-out key.
@@ -114,7 +120,9 @@ function readAlibi(rootInput, { allowLegacy = false } = {}) {
   }
   const lockPath = safeFile(root, 'observatory.lock.json', 'Alibi Observatory lock');
   const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
-  if (lock.source !== SOURCE) throw new Error('Alibi Observatory lock has an unexpected source');
+  if (lock?.source !== SOURCE) throw new Error('Alibi Observatory lock has an unexpected source');
+  const base = { root, version: packageJson.version, registry: releases, lockPath, lock };
+  if (Object.hasOwn(lock, 'sdk')) return { ...base, ...readSdkLayout(root, lock) };
   const entries = lock.installs ?? (typeof lock.target === 'string' ? { [lock.target]: { project: lock.project, sha256: lock.sha256 } } : null);
   if (!entries || Object.getPrototypeOf(entries) !== Object.prototype) throw new Error('Alibi Observatory lock has an unsupported shape');
   const entry = entries[TARGET];
@@ -128,7 +136,62 @@ function readAlibi(rootInput, { allowLegacy = false } = {}) {
       ? 'Alibi Observatory artifact uses the retired raw collector endpoint; regenerate with npm run sync:alibi -- <alibi-repository>'
       : 'Alibi Observatory artifact does not use an approved collector endpoint');
   }
-  return { root, version: packageJson.version, registry: releases, artifactPath, artifact, config, lock };
+  return { ...base, layout: 'embed', target: TARGET, artifactPath, artifact, config };
+}
+
+function sdkHeaderVersion(content) {
+  return SDK_HEADER_VERSION.exec(normalise(content))?.[1] ?? null;
+}
+
+/** The SDK version this Pulseboard checkout builds, read from the builder's own header. */
+function builderSdkVersion() {
+  const version = sdkHeaderVersion(buildSdk('alibi'));
+  if (!version) throw new Error('Pulseboard SDK builder output has no recognisable header');
+  return version;
+}
+
+function readSdkLayout(root, lock) {
+  if (typeof lock.sdk !== 'string' || !SEMVER.test(lock.sdk)) throw new Error('Alibi Observatory lock "sdk" must be a stable x.y.z version');
+  const entries = lock.installs;
+  if (!entries || typeof entries !== 'object' || Object.getPrototypeOf(entries) !== Object.prototype) throw new Error('Alibi Observatory lock has an unsupported shape');
+  const targets = Object.keys(entries);
+  if (targets.length !== 1 || targets[0] !== SDK_TARGET) throw new Error(`Alibi Observatory SDK lock must own exactly ${SDK_TARGET}`);
+  const entry = entries[SDK_TARGET];
+  if (entry?.project !== 'alibi' || entry.sdk !== lock.sdk || !/^[a-f0-9]{64}$/.test(entry.sha256 ?? '')) {
+    throw new Error(`Alibi Observatory lock entry for ${SDK_TARGET} must name project alibi, sdk ${lock.sdk} and a SHA-256`);
+  }
+  const artifactPath = safeFile(root, SDK_TARGET, 'Alibi Pulseboard SDK artifact');
+  const artifact = readFileSync(artifactPath, 'utf8');
+  if (sha256(artifact) !== entry.sha256) throw new Error('Alibi Pulseboard SDK artifact differs from its locked bytes; inspect local edits before syncing');
+  if (!isPristineSdk(normalise(artifact))) throw new Error('Alibi Pulseboard SDK artifact body differs from its header hash (edited by hand)');
+  if (sdkHeaderVersion(artifact) !== lock.sdk) throw new Error(`Alibi Pulseboard SDK artifact is not pulseboard-sdk ${lock.sdk} for alibi`);
+  const config = parseConfig(artifact);
+  if (config.collector !== SDK_COLLECTOR) throw new Error('Alibi Pulseboard SDK artifact does not use the approved collector');
+  if (typeof config.release !== 'string') throw new Error('Alibi Pulseboard SDK artifact has no built-in release');
+  const builder = builderSdkVersion();
+  if (builder !== lock.sdk) {
+    throw new Error(`Pulseboard builds pulseboard-sdk ${builder} but Alibi pins ${lock.sdk}; an SDK upgrade is a reviewed Alibi change `
+      + '(rebuild with adapters/build-sdk.mjs and update observatory/check.mjs and the lock together), not a release sync');
+  }
+  return { layout: 'sdk', target: SDK_TARGET, sdk: lock.sdk, artifactPath, artifact, config };
+}
+
+/** An artifact carries the registry as it stood when its release was built: either the current
+ * list or the list up to and including that release. Registering a newer Alibi release must not
+ * turn a published older checkout stale. */
+function releaseCandidates(current, version) {
+  const prefix = current.slice(0, current.indexOf(version) + 1);
+  return prefix.length === current.length ? [current] : [current, prefix];
+}
+
+function buildExpected(alibi, releases) {
+  const previous = projects.alibi.releases;
+  try {
+    projects.alibi.releases = releases;
+    return alibi.layout === 'sdk' ? buildSdk('alibi', { release: alibi.version }) : buildEmbed('alibi', { endpoint: ENDPOINT });
+  } finally {
+    projects.alibi.releases = previous;
+  }
 }
 
 function validateReleases(releases) {
@@ -211,30 +274,39 @@ export function syncAlibi(rootInput, { mode = 'check' } = {}) {
   const wasRegistered = current.includes(alibi.version);
   if (mode === 'check') {
     if (!wasRegistered) throw new Error(`Alibi ${alibi.version} is missing from the Pulseboard collector contract; run npm run sync:alibi -- <alibi-repository>`);
-    const generated = buildExpectedEmbed(current);
-    if (normalise(alibi.artifact) !== normalise(generated)) throw new Error('Alibi Observatory artifact is stale; regenerate it with npm run sync:alibi -- <alibi-repository>');
+    const layoutFields = alibi.layout === 'sdk' ? { layout: 'sdk', sdk: alibi.sdk } : { layout: 'embed' };
+    if (alibi.layout === 'sdk' && alibi.config.release !== alibi.version) {
+      throw new Error(`Alibi Pulseboard SDK artifact is built for release ${alibi.config.release}, not package ${alibi.version}; regenerate it with npm run sync:alibi -- <alibi-repository>`);
+    }
+    const generated = releaseCandidates(current, alibi.version).map(releases => buildExpected(alibi, releases))
+      .find(candidate => normalise(alibi.artifact) === normalise(candidate));
+    if (!generated) throw new Error(`Alibi ${alibi.layout === 'sdk' ? 'Pulseboard SDK' : 'Observatory'} artifact is stale; regenerate it with npm run sync:alibi -- <alibi-repository>`);
     return { mode, status: 'in-sync', project: 'alibi', packageVersion: alibi.version, registered: true, addedRelease: null,
-      releases: current, target: TARGET, sha256: sha256(generated), bytes: Buffer.byteLength(generated), changedFiles: [] };
+      releases: current, ...layoutFields, target: alibi.target, sha256: sha256(generated), bytes: Buffer.byteLength(generated), changedFiles: [] };
   }
 
   const next = wasRegistered ? current : ['unattributed', ...new Set([...current.slice(1), alibi.version].sort(compareVersion))];
   const previousReleases = projects.alibi.releases;
+  const managed = alibi.layout === 'sdk'
+    ? [SDK_TARGET, 'observatory.lock.json']
+    : ['observatory/browser.js', 'observatory/check.mjs', 'observatory/README.md', 'observatory.lock.json'];
   const snapshots = [
-    ...snapshotManagedFiles(alibi.root, ['observatory/browser.js', 'observatory/check.mjs', 'observatory/README.md', 'observatory.lock.json']),
+    ...snapshotManagedFiles(alibi.root, managed),
     { full: registryFile, label: 'Pulseboard/observatory/src/alibi-releases.mjs', existed: true, bytes: Buffer.from(registryBytes, 'utf8') },
   ];
   try {
     if (!wasRegistered) writeFileSync(registryFile, renderAlibiReleaseRegistry(next), 'utf8');
     projects.alibi.releases = next;
-    const installed = install('alibi', alibi.root, TARGET, ENDPOINT);
-    const generated = buildExpectedEmbed(next);
+    const installed = alibi.layout === 'sdk' ? installSdk(alibi) : install('alibi', alibi.root, TARGET, ENDPOINT);
+    const generated = buildExpected(alibi, next);
     const changedFiles = snapshots.filter(snapshot => {
       const stat = lstatSync(snapshot.full, { throwIfNoEntry: false });
       if (!snapshot.existed) return Boolean(stat);
       return !stat?.isFile() || stat.isSymbolicLink() || !readFileSync(snapshot.full).equals(snapshot.bytes);
     }).map(snapshot => snapshot.label);
     return { mode, status: changedFiles.length ? 'updated' : 'unchanged', project: 'alibi', packageVersion: alibi.version, registered: true,
-      addedRelease: wasRegistered ? null : alibi.version, releases: next, target: TARGET, sha256: installed.sha256,
+      addedRelease: wasRegistered ? null : alibi.version, releases: next,
+      ...(alibi.layout === 'sdk' ? { layout: 'sdk', sdk: alibi.sdk } : { layout: 'embed' }), target: alibi.target, sha256: installed.sha256,
       bytes: Buffer.byteLength(generated), changedFiles };
   } catch (error) {
     projects.alibi.releases = previousReleases;
@@ -247,9 +319,16 @@ export function syncAlibi(rootInput, { mode = 'check' } = {}) {
   }
 }
 
-function buildExpectedEmbed(releases) {
-  projects.alibi.releases = releases;
-  return buildEmbed('alibi', { endpoint: ENDPOINT });
+/** Rebuilds the SDK artifact for the package release and repins it; the lock is rewritten only
+ * when the bytes change, so an unchanged run leaves Alibi's formatting alone. */
+function installSdk(alibi) {
+  const written = writeSdk('alibi', alibi.root, SDK_TARGET, { release: alibi.version });
+  const entry = alibi.lock.installs[SDK_TARGET];
+  if (written.sha256 !== entry.sha256) {
+    const lock = { ...alibi.lock, installs: { [SDK_TARGET]: { ...entry, sha256: written.sha256 } } };
+    writeFileSync(alibi.lockPath, JSON.stringify(lock, null, 2) + '\n');
+  }
+  return written;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
