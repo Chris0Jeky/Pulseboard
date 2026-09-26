@@ -29,6 +29,18 @@ const W = 'project=? AND day>=? AND day<=?';
 const median = source => `(SELECT AVG(v) FROM (SELECT v, ROW_NUMBER() OVER (ORDER BY v) AS r, COUNT(*) OVER () AS c FROM ${source})
   WHERE r IN ((c+1)/2,(c+2)/2))`;
 
+/** The Desk requires non-empty text without control characters. Control characters become spaces and empty text reads
+ *  'unknown'; groups that become equal are merged, so every kind and message pair stays unique. */
+const cleanText = value => { const text = String(value ?? '').replace(/[\x00-\x1f\x7f]/g, ' '); return text || 'unknown'; };
+function errorGroups(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const kind = cleanText(row.kind), message = cleanText(row.message), key = kind + '\u0000' + message, seen = groups.get(key);
+    if (seen) { seen.n += Number(row.n); seen.lastSeen = Math.max(seen.lastSeen, Number(row.lastSeen)); }
+    else groups.set(key, { kind, message, n: Number(row.n), lastSeen: Number(row.lastSeen) });
+  }
+  return [...groups.values()].sort((a, b) => b.n - a.n || b.lastSeen - a.lastSeen);
+}
 export async function readProduct(db, { project, days = 7, now = Date.now(), admitted = false } = {}) {
   checkProject(project);
   const w = window(days, now), bind = [project, w.startDay, w.endDay];
@@ -87,7 +99,7 @@ export async function readProduct(db, { project, days = 7, now = Date.now(), adm
     journeys,
     exits: exits.map(row => ({ name: row.name, n: Number(row.n) })),
     vitals: vitals.map(row => ({ metric: row.metric, route: row.route, p75: Number(row.p75), n: Number(row.n) })),
-    errors: errors.map(row => ({ kind: row.kind, message: row.message, n: Number(row.n), lastSeen: Number(row.lastSeen) })),
+    errors: errorGroups(errors),
   };
 }
 

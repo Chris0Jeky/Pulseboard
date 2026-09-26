@@ -47,9 +47,9 @@ aggregate table and preserves historical session event rows. For schema 4 (produ
 `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0004-product-events.sql`
 before deploying; it only adds `product_events` and its three indexes. Rolling back to a schema-3
 Worker needs `UPDATE schema_version SET version=3 WHERE id=1 AND version=4` after the deploy; the
-table stays, and nothing writes to it while `COLLECT_PRODUCT_PROJECTS` is empty (as committed). A
-schema-3 Worker also keeps its own 14-day retention, so rows the schema-4 retention would still keep
-are deleted by its next cron tick. Deploy the schema-4 Worker only together with a Desk that accepts
+table stays, and nothing writes to it while `COLLECT_PRODUCT_PROJECTS` is empty (as committed).
+Aggregate retention stays 14 days (`AGGREGATE_RETENTION_DAYS` in `src/statistics.mjs`) until no deployed
+host shows the old 14-day statistics notice; raising it to 400 is its own reviewed change. Deploy the schema-4 Worker only together with a Desk that accepts
 `pulseboard.statistics/4`: the Desk and the Worker ship from the same build, and a Desk that still
 validates `/3` refuses the Usage read. Confirm `/readyz`
 returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103, 4 since collector v4). The `/v1/collect-stat/<id>` route is

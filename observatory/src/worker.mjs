@@ -3,7 +3,7 @@ import { collectionAdmission, productAdmission } from './admission.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
 import { validateStatBatch, statAdmission, batchDimensions, serverDimensions, CAPPED_DIMENSIONS, DIMENSION_CAP, SENTINELS } from './stat-contract.mjs';
 import { validateProductBatch, redactProps, consentRegion, PRODUCT_DEFAULT_LIMIT, PRODUCT_NAME } from './product-contract.mjs';
-import { readStatistics, READ_WINDOWS } from './statistics.mjs';
+import { readStatistics, READ_WINDOWS, AGGREGATE_RETENTION_DAYS } from './statistics.mjs';
 import { readProduct, readProductEvents, EVENTS_DEFAULT_LIMIT } from './product.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { assets } from './assets.mjs';
@@ -338,14 +338,15 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
   }
 }
 export async function maintain(env, now = Date.now()) {
-  // Product events are kept 90 days and daily aggregates 400 (USAGE_PLAN.md "Consent categories"). Legacy session events keep
-  // 14 days: the deployed opt-in embed tells people "Raw events expire after 14 days" (adapters/embed.mjs).
+  // Product events are kept 90 days (USAGE_PLAN.md "Consent categories"). Legacy session events keep 14 days: the deployed
+  // opt-in embed tells people "Raw events expire after 14 days" (adapters/embed.mjs). Aggregates follow
+  // AGGREGATE_RETENTION_DAYS, 14 while the deployed stats notice promises 14-day aggregates.
   const dayBefore = days => new Date(now - days * 86400000).toISOString().slice(0, 10);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 14 * 86400000),
     env.DB.prepare('DELETE FROM product_events WHERE day<=?').bind(dayBefore(90)),
-    env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(dayBefore(400)),
-    env.DB.prepare('DELETE FROM statistics_dimensions WHERE day<=?').bind(dayBefore(400)),
+    env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(dayBefore(AGGREGATE_RETENTION_DAYS)),
+    env.DB.prepare('DELETE FROM statistics_dimensions WHERE day<=?').bind(dayBefore(AGGREGATE_RETENTION_DAYS)),
     env.DB.prepare('DELETE FROM budget WHERE day<?').bind(dayBefore(14)),
     env.DB.prepare('DELETE FROM probe_history WHERE checked<?').bind(now - 30 * 86400000),
   ]);

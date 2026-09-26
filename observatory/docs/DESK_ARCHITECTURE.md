@@ -67,14 +67,15 @@ session or receipt identifier is returned. Projects without data remain present.
 The reader performs nine SELECTs in one D1-compatible transactional batch. Its
 range is `[start, end)`: the lower bound is included, the upper bound and future
 rows are excluded. Daily buckets use UTC; both edge days may be partial. Product
-event retention is 90 days, aggregates 400 days, legacy session events and budget rows 14 days (the
-deployed opt-in notice promises 14 days) and probe history 30 days
+event retention is 90 days; legacy session events, aggregates and budget rows keep 14 days (the
+deployed opt-in and statistics notices promise 14 days; `AGGREGATE_RETENTION_DAYS` becomes 400 once no
+host shows the old notice, host wave #105) and probe history 30 days
 (collector v4, `USAGE_PLAN.md`). Counts are admitted events,
 not offered traffic or verified people. The contract bounds possible groups;
 SQL still scans the selected window. This is not a high-volume analytics engine.
 The separate Alibi statistics producer admits only closed event counts, stores
 one aggregate row per UTC day, event, route and release, and retains at most
-400 UTC calendar dates including today. It accepts no session or event identifiers. The
+`AGGREGATE_RETENTION_DAYS` (14) UTC calendar dates including today; a 30- or 90-day read shows only what is kept. It accepts no session or event identifiers. The
 reviewed deployment configuration admits `alibi` through `COLLECT_STAT_PROJECTS`, which since #102 is an exact comma list of
 registered public ids (any malformed entry disables it). It needs `COLLECT_ENABLED` and a valid session policy but not `COLLECT_PROJECTS` membership, so admitting counts never opens a host's session route;
 actual admission begins only when that configuration is deployed. The separate

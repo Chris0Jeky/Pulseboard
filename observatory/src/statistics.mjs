@@ -2,6 +2,10 @@
 import { DIMENSION_NAMES } from './stat-contract.mjs';
 /** Statistics and product reads (USAGE_PLAN.md section 4); /v1/portfolio keeps its own 1, 7 and 14. */
 export const READ_WINDOWS = Object.freeze([1, 7, 14, 30, 90]);
+/** Daily aggregates (statistics, statistics_dimensions) keep this many UTC dates including today. It stays 14 while any
+ *  deployed host still shows the old notice promising 14-day aggregates, and becomes 400 (USAGE_PLAN.md v2) once the host
+ *  wave (#105) has replaced that notice everywhere. A 30- or 90-day read window reads only what retention has kept. */
+export const AGGREGATE_RETENTION_DAYS = 14;
 
 export async function readStatistics(db, { project = 'alibi', days = 7, now = Date.now(), admitted = false } = {}) {
   if (typeof project !== 'string' || !/^[a-z0-9-]{1,64}$/.test(project)) throw new RangeError('Unsupported project');
@@ -35,6 +39,7 @@ export async function readStatistics(db, { project = 'alibi', days = 7, now = Da
       'Daily buckets are UTC calendar days and today is partial.',
       'These counts are separate from the legacy opt-in portfolio and must not be added to its journey or flow metrics.',
       'When collection is not admitted, a zero is not evidence of no traffic.',
+      `Aggregates are kept for ${AGGREGATE_RETENTION_DAYS} UTC days; days older than that are deleted, so a longer window shows only what is kept.`,
       'No paired flows, unique visitors, retention, or conversion rates can be measured from these counts.',
       'Every dimension is a separate total, never crossed with another dimension or with events; counts from before it was recorded read unknown.',
       'Browser and operating system are classified from the User-Agent on the server, which is not kept; language is the first Accept-Language tag; hour is the UTC hour the collector received the batch.',

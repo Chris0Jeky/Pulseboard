@@ -281,11 +281,15 @@ test('error groups are cut to the Desk bounds before grouping, so kind and messa
     { name: 'js.error', props: { kind: 'K'.repeat(80), message: 'm'.repeat(200) + 'a' } },
     { name: 'js.error', props: { kind: 'K'.repeat(80), message: 'm'.repeat(200) + 'b' } },
     { name: 'js.error', props: { message: 'no kind' } },
+    { name: 'js.error', props: { kind: 'Error', message: '' } },
+    { name: 'js.error', props: { kind: 'Error', message: 'line\nbreak' } },
+    { name: 'js.error', props: { kind: 'Error', message: 'line\tbreak' } },
     { name: 'web.vital', props: { metric: 'LCP', value: -5 } },
   ]);
   const r = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
-  assert.deepEqual(r.errors.map(e => [e.kind.length, e.message.length, e.n]), [[64, 160, 2], [7, 7, 1]]);
-  assert.equal(r.errors[1].kind, 'unknown');
+  assert.deepEqual(r.errors.map(e => [e.kind.length, e.message.length, e.n]), [[64, 160, 2], [5, 10, 2], [5, 7, 1], [7, 7, 1]]);
+  assert.deepEqual(r.errors.slice(1).map(e => [e.kind, e.message]), [['Error', 'line break'], ['Error', 'unknown'], ['unknown', 'no kind']]);
+  assert.ok(r.errors.every(e => e.kind && e.message && !/[\x00-\x1f\x7f]/.test(e.kind + e.message)), 'the Desk refuses empty or control text');
   assert.deepEqual(r.vitals, [], 'a negative vital is not a timing');
 });
 
@@ -331,7 +335,7 @@ test('the raw events read is newest first, filtered, limited and authenticated',
   await assert.rejects(readProductEvents(DB, { project: 'alibi', now: NOW, name: 'Bad' }), RangeError);
 });
 
-test('retention keeps 90 days of product events, 14 of legacy session events and 400 of aggregates', async t => {
+test('retention keeps 90 days of product events and 14 of legacy session events', async t => {
   const DB = database(t), now = Date.UTC(2026, 8, 25, 12);
   await seed(DB, [{ name: 'old', received: now - 90 * DAY }, { name: 'kept', received: now - 89 * DAY }, { name: 'new', received: now }]);
   const legacy = (id, received) => DB.prepare('INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?)').bind('alibi', id, received, 's', 1, 'page.view', 'home', 'unattributed', null).run();

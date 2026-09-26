@@ -247,14 +247,14 @@ test('migrations are idempotent and readiness tracks version 4', async t => {
 test('aggregate retention removes old counts without touching in-window counts', async t => {
   const DB = database(t);
   const now = Date.UTC(2026, 8, 25, 12);
-  // Aggregates are kept 400 days (USAGE_PLAN.md): 2026-09-25 minus 400 days is 2025-08-21.
-  for (const statDay of ['2025-08-20', '2025-08-21', '2025-08-22', '2026-09-25']) {
+  // Aggregates keep AGGREGATE_RETENTION_DAYS (14) while the old notice is deployed: 2026-09-25 minus 14 days is 2026-09-11.
+  for (const statDay of ['2026-09-10', '2026-09-11', '2026-09-12', '2026-09-25']) {
     await DB.prepare('INSERT INTO statistics VALUES(?,?,?,?,?,?,?)')
       .bind('alibi', statDay, 'page.view', 'home', '0.11.6', 1, now).run();
   }
   await maintain({ DB }, now);
   const remaining = (await DB.prepare('SELECT day FROM statistics ORDER BY day').all()).results.map(row => row.day);
-  assert.deepEqual(remaining, ['2025-08-22', '2026-09-25']);
+  assert.deepEqual(remaining, ['2026-09-12', '2026-09-25']);
 });
 
 test('legacy collect, summary and portfolio behavior is unchanged', async t => {
@@ -377,9 +377,9 @@ test('a refused budget writes no dimension rows, and retention removes old ones'
   assert.equal((await handle(withCountry(statRequest({ v: 2, context, counts: [count()] }), 'GB'), statEnv(DB))).status, 429);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM statistics_dimensions').first()).n, 0);
   const now = Date.UTC(2026, 8, 25, 12);
-  for (const d of ['2025-08-21', '2025-08-22']) await DB.prepare('INSERT INTO statistics_dimensions VALUES(?,?,?,?,?)').bind('alibi', d, 'country', 'GB', 1).run();
+  for (const d of ['2026-09-11', '2026-09-12']) await DB.prepare('INSERT INTO statistics_dimensions VALUES(?,?,?,?,?)').bind('alibi', d, 'country', 'GB', 1).run();
   await maintain({ DB }, now);
-  assert.deepEqual((await DB.prepare('SELECT day FROM statistics_dimensions').all()).results.map(r => r.day), ['2025-08-22']);
+  assert.deepEqual((await DB.prepare('SELECT day FROM statistics_dimensions').all()).results.map(r => r.day), ['2026-09-12']);
 });
 
 test('edge country codes are normalised and the Desk mirrors the closed vocabularies', () => {

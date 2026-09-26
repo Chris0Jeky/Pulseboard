@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { openDatabase } from '../src/sqlite.mjs';
-import { readStatistics } from '../src/statistics.mjs';
+import { readStatistics, AGGREGATE_RETENTION_DAYS } from '../src/statistics.mjs';
 import { handle } from '../src/worker.mjs';
 
 function database(t) {
@@ -43,6 +43,8 @@ test('aggregate reader excludes legacy rows and other days', async t => {
   for (const name of Object.keys(result.dimensions)) assert.deepEqual(result.dimensions[name], [{ value: 'unknown', n: 5 }]);
   assert.equal(result.window.startDay, '2026-09-19');
   assert.match(result.limitations.join(' '), /separate from the legacy opt-in portfolio/);
+  assert.match(result.limitations.join(' '), /kept for 14 UTC days/);
+  assert.equal(AGGREGATE_RETENTION_DAYS, 14, 'becomes 400 only once no deployed host shows the 14-day notice (#105)');
 });
 
 test('statistics endpoint authenticates and validates its closed window', async t => {
