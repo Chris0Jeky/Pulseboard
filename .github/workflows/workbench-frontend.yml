@@ -3,12 +3,12 @@ name: Workbench frontend
 on:
   pull_request:
     paths:
-      - 'frontend/pulseboard-web/**'
+      - 'legacy/frontend/pulseboard-web/**'
       - '.github/workflows/workbench-frontend.yml'
   push:
     branches: [main]
     paths:
-      - 'frontend/pulseboard-web/**'
+      - 'legacy/frontend/pulseboard-web/**'
       - '.github/workflows/workbench-frontend.yml'
   workflow_dispatch:
 
@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: frontend/pulseboard-web
+        working-directory: legacy/frontend/pulseboard-web
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: frontend/pulseboard-web/package-lock.json
+          cache-dependency-path: legacy/frontend/pulseboard-web/package-lock.json
       - run: npm ci
       - name: Run frontend tests
         run: npx vitest run --maxWorkers=2
