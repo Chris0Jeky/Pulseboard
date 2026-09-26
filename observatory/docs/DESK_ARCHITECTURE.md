@@ -29,8 +29,11 @@ days) authenticates with the Desk read token, reads only daily aggregate rows,
 and returns `pulseboard.statistics/3`: event, daily, route and release totals, per-day event
 totals, and separate country, device, source and visit totals (schema 3, #103), every breakdown
 summing to the same total. Dimension totals live in `statistics_dimensions`, keyed by day,
-dimension and value only, with no timestamp finer than the day, so they cannot be re-joined to the
-event counts of the same request. Counts from before schema 3 read `unknown`. The browser sends
+dimension and value only, with no timestamp finer than the day, and stored `WITHOUT ROWID` so
+storage order is key order rather than arrival order. That makes re-joining a request's rows to its
+event counts harder, not impossible: an operator who polls the one-day read repeatedly while
+traffic is sparse can still difference single requests, and `statistics.received` keeps the last
+write time. With a handful of testers this is not anonymity (`USAGE_PLAN.md`). Counts from before schema 3 read `unknown`. The browser sends
 device, source and visit in a v2 batch's closed `context`; the country is Cloudflare's edge
 country code, and the collector never reads the IP. Schema 1 carried
 only event and daily totals; route and release totals were added for the Desk's

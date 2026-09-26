@@ -396,7 +396,7 @@ function usageView() {
       panel('Where activity happens', share(u.routes, 'route', u.total), e('span', { class: 'mini-label' }, 'ROUTE MIX')),
       panel('What gets done', share(u.events, 'event', u.total), e('span', { class: 'mini-label' }, 'EVENT MIX'))),
     e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Who and where'),
-      e('p', {}, 'Separate totals per dimension, never crossed with each other or with events. With a handful of testers, a row can still describe one person.')),
+      e('p', {}, 'Share of counts, not of visitors: a busy visit weighs more than a quick one. Separate totals, never crossed. With a handful of testers, a row can still describe one person.')),
       e('div', { class: 'overview-grid' },
         panel('Country', share(u.dimensions.country, 'value', u.total, 'Country'), e('span', { class: 'mini-label' }, 'FROM THE EDGE · NO IP KEPT')),
         panel('Device', share(u.dimensions.device, 'value', u.total, 'Device'), e('span', { class: 'mini-label' }, 'VIEWPORT CLASS'))),

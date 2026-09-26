@@ -203,6 +203,9 @@ test('migrations are idempotent and readiness tracks version 3', async t => {
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3);
   const dimensionColumns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics_dimensions') ORDER BY cid").all()).results.map(r => r.name);
   assert.deepEqual(dimensionColumns, ['project', 'day', 'dimension', 'value', 'n'], 'no timestamp finer than the day');
+  const withoutRowid = (await DB.prepare("SELECT sql FROM sqlite_master WHERE name='statistics_dimensions'").first()).sql;
+  assert.match(withoutRowid, /WITHOUT ROWID/, 'storage order is key order, not arrival order');
+  assert.throws(() => DB.exec('SELECT rowid FROM statistics_dimensions'));
   const columns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics') ORDER BY cid").all()).results.map(r => r.name);
   assert.deepEqual(columns, ['project', 'day', 'event', 'route', 'release', 'n', 'received']);
 

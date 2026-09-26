@@ -44,7 +44,7 @@ before deploying a Worker that requires schema 2. For schema 3 (per-dimension to
 before deploying; it only adds `statistics_dimensions`. Rolling back to a schema-2 Worker needs
 `UPDATE schema_version SET version=2 WHERE id=1 AND version=3` after the deploy, and the table stays. The migration creates only an
 aggregate table and preserves historical session event rows. Confirm `/readyz`
-returns schema 2 after deployment. The `/v1/collect-stat/<id>` route is
+returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103). The `/v1/collect-stat/<id>` route is
 disabled for every id not listed in `COLLECT_STAT_PROJECTS` (an exact comma list since #102; it was exactly `alibi` before). Production now
 admits that project following issue #89's browser, notice and opt-out checks;
 the deployment and first accepted payload are recorded below. Alibi's client
@@ -52,7 +52,7 @@ deployment is a separate release step.
 If the Worker must be rolled back to a schema-1 build, first remove
 `COLLECT_STAT_PROJECTS`, stop the statistics consumer, and deploy the prior
 Worker. Its old readiness check expects version 1, so run
-`UPDATE schema_version SET version=1 WHERE id=1 AND version=2` against this D1
+`UPDATE schema_version SET version=1 WHERE id=1 AND version IN (2,3)` against this D1
 database as the final rollback step and confirm `/readyz` returns 200. Leave
 the additive `statistics` table in place for forward recovery; do not drop it
 or delete historical event rows. The rollback was exercised on scratch D1 and

@@ -33,7 +33,9 @@ exists between the statistics reader and the portfolio.
 
 Each dimension is stored as its own daily total: `(project, day, dimension, value, n)`. A
 dimension is never crossed with another dimension, or with the event, route or release. This keeps
-a combination such as "rare country × tablet × returning × this puzzle" from being stored at all.
+a combination such as "rare country × tablet × returning × this puzzle" out of any stored key.
+The table is `WITHOUT ROWID`, so arrival order is not kept either, although repeated reads of a
+sparse day can still be differenced by the operator.
 Every value comes from a closed vocabulary.
 
 - **country**: Cloudflare derives the country from the connection at its edge and passes it to the
