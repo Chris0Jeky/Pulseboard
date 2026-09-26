@@ -41,7 +41,5 @@ architecture map for the frozen legacy runtime under `legacy/` (moved 2026-09-26
 
 - Feeds must re-check `self._running` / `self._stop_requested` after every `await`, or shutdown hangs.
 - Chart panels expect numeric payload values; a string payload renders an empty ECharts panel.
-- Frontend tests fail on `updateDashboard` and `liveData.clear` because the stores lack them (#13):
-  a green run on a store change is 56/58, not 58/58, until that issue lands.
-- `npm run build` needs `node_modules/tailwindcss/theme.css`, absent with the pinned Tailwind (#13).
-- `ruff` (19) and `mypy` (9) are red on `main`; report deltas against those baselines, not zero.
+- Every workbench gate is green since #50–#61 (2026-09-22): backend tests, ruff and mypy clean, 64 frontend
+  tests, build and budget, `npm audit` 0. A red result is a regression, not a baseline.

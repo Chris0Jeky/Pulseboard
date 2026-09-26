@@ -26,7 +26,7 @@ adapter of this file; `legacy/WORKBENCH.md` is the legacy runtime's user README.
 | `legacy/frontend/**` | `cd legacy/frontend/pulseboard-web && npx vitest run --maxWorkers=2` | 64 passed, 5 s; `npm audit --audit-level=low` 0 findings (2026-09-26) |
 | frontend build | `cd legacy/frontend/pulseboard-web && npm run build && npm run build:budget` | passes, budget verified (2026-09-26) |
 | packaging | `python -m build --no-isolation` (with `setuptools==77.0.3`, `wheel`, `build`) then `python scripts/verify_python_package.py` | verified (2026-09-26); root `pyproject.toml` packages `legacy/backend/app` |
-| `observatory/**` | `cd observatory && npm test` | 216 passed, under 2 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
+| `observatory/**` | `cd observatory && npm test` | 283 passed, under 2 s (2026-09-26); CRLF-safe since #15 (#25 was line endings, not Node 24) |
 | Desk browser | once: `python -m venv .browser-venv && .browser-venv/Scripts/pip install playwright==1.57.0 && .browser-venv/Scripts/playwright install chromium`; then, with `READ_TOKEN` exported in the foreground shell, `cd observatory && node src/local.mjs` in one shell and `cd observatory && ../.browser-venv/Scripts/python tests/desk-browser.py --origin http://127.0.0.1:8788` in another | 15 checks passed; `kill` does not stop node.exe here, free port 8788 via PowerShell `Stop-Process` |
 | Desk hosted | `cd observatory && npx wrangler deploy --dry-run`; admission gate on a preview: `npx wrangler deploy --env preview` then `node tests/hosted-admission.mjs --origin <preview> --project mdviewer --events 1 --expect 202 --repeat` (delete the preview after) | 2026-09-10: 202/202, one event row; 429 on both budget branches |
 | docs and harness | `git diff --check` (working tree) and `git diff --check origin/main...HEAD` (review range; `--cached` for staged); `python <agent-harness>/harness.py audit .` | clean |
@@ -87,9 +87,8 @@ binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO
 merging anything. Hosted Cloudflare/D1 activation (q-2) and the Desk stack merge (q-3) were both
 authorised on 2026-09-10; q-3 carries the owner's condition that #15–#17 get a deep check and test
 pass first. Cloudflare access is verified (q-4). The Desk is hosted with collection on for Alibi only (below) and a 15-minute
-probe cron registered over the seven origins; the handler is proven on the edge but no unattended tick
-had been observed by 2026-09-10 16:00Z because of Cloudflare incident sjs8s0q2x4hw (#43 confirms the
-first tick once it resolves; `observatory/docs/HOSTING.md`). The scratch-D1 admission
+probe cron over the seven origins; unattended ticks run about 96 times a day (1,538 rows per origin by
+2026-09-26, #43 closed; `observatory/docs/HOSTING.md`). The scratch-D1 admission
 gate passed the same day. Collection is on for Alibi only since the owner chose it as the first pilot and approved
 its notice (q-7, 2026-09-10): `COLLECT_PROJECTS` in `wrangler.jsonc` lists the admitted ids and every other
 host artifact keeps an empty endpoint; adding a host there is a new owner decision, not cleanup. Global laws are auto-loaded; nothing here restates them.
