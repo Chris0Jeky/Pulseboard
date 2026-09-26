@@ -6,7 +6,7 @@ const common = ['page.view', 'app.ready', 'app.error', 'action.requested', 'acti
 // covered by .github/workflows/collector-canary.yml instead. buildEmbed() never publishes the probe record.
 const p = (label, origin, path, marker, events = [], routes = ['home'], binding = null) => ({
   label, origin, probe: { url: origin + path, marker, ...(binding ? { binding } : {}) }, events: [...common, ...events], routes,
-  releases: ['unattributed'], measurements: ['duration.ms'], dailyLimit: 1000,
+  releases: ['unattributed'], measurements: ['duration.ms'], dailyLimit: 1000, productLimit: 20000,
 });
 export const projects = {
   mdviewer: p('MDviewer', 'https://mdviewer-c9r.pages.dev', '/', 'MDviewer', ['export.print_requested', 'export.pdf_completed'], ['home', 'editor']),

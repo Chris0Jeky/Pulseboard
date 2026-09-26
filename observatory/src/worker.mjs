@@ -1,8 +1,10 @@
 import { projects } from './projects.mjs';
-import { collectionAdmission } from './admission.mjs';
+import { collectionAdmission, productAdmission } from './admission.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
-import { validateStatBatch, statAdmission, statCountry } from './stat-contract.mjs';
-import { readStatistics } from './statistics.mjs';
+import { validateStatBatch, statAdmission, batchDimensions, serverDimensions, CAPPED_DIMENSIONS, DIMENSION_CAP, SENTINELS } from './stat-contract.mjs';
+import { validateProductBatch, redactProps, consentRegion, PRODUCT_DEFAULT_LIMIT, PRODUCT_NAME } from './product-contract.mjs';
+import { readStatistics, READ_WINDOWS } from './statistics.mjs';
+import { readProduct, readProductEvents, EVENTS_DEFAULT_LIMIT } from './product.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { assets } from './assets.mjs';
 import { createGithubEvidence } from './github.mjs';
@@ -10,13 +12,14 @@ import { githubMap } from './github-map.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 // Naming every column means a database missing a later-added column fails readiness instead of failing a request.
 const READINESS = [
   'SELECT project,day,used,receipt FROM budget LIMIT 0',
   'SELECT project,id,received,session,seq,event,route,release,value FROM events LIMIT 0',
   'SELECT project,day,event,route,release,n,received FROM statistics LIMIT 0',
   'SELECT project,day,dimension,value,n FROM statistics_dimensions LIMIT 0',
+  'SELECT project,received,day,session,seq,name,route,release,ms,props,redacted,country,region,browser,os,device FROM product_events LIMIT 0',
   'SELECT project,state,failures,successes,opened,checked,status,duration FROM probes LIMIT 0',
   'SELECT project,checked,ok,duration FROM probe_history LIMIT 0',
 ];
@@ -36,6 +39,24 @@ async function authorized(request, secret) {
   for (let i = 0; i < aa.length; i++) mismatch |= aa[i] ^ bb[i];
   return mismatch === 0;
 }
+/** One `days` parameter from READ_WINDOWS, canonical spelling, no other keys but `allowed`; null when refused. */
+function readWindow(url, allowed = ['days']) {
+  const values = url.searchParams.getAll('days');
+  if ([...url.searchParams.keys()].some(key => !allowed.includes(key)) || values.length > 1 ||
+    (values.length && !/^(1|7|14|30|90)$/.test(values[0]))) return null;
+  return Number(values[0] ?? 7);
+}
+/** A registered project with a public origin, or null (unknown and local-only ids are not found). */
+const publicProject = id => Object.hasOwn(projects, id) && projects[id].origin ? projects[id] : null;
+const preflight = cors => new Response(null, { status: 204, headers: { ...headers, ...cors,
+  'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
+const sentinelList = SENTINELS.map(value => `'${value}'`).join(',');
+/** Distinct-value cap for open-shaped dimensions, evaluated inside the gated insert so it reads the same transaction.
+ *  Binds: value, capped flag, then project, day, dimension, value, then project, day, dimension, then value. */
+const CAP_SQL = `CASE WHEN ? IN (${sentinelList}) OR ?=0
+  OR EXISTS(SELECT 1 FROM statistics_dimensions WHERE project=? AND day=? AND dimension=? AND value=?)
+  OR (SELECT COUNT(*) FROM statistics_dimensions WHERE project=? AND day=? AND dimension=? AND value NOT IN (${sentinelList}))<${DIMENSION_CAP}
+  THEN ? ELSE 'other' END`;
 export async function summary(db, now = Date.now(), admission = collectionAdmission({})) {
   const since = now - 7 * 86400000;
   const counts = (await db.prepare(`SELECT project, event, release, COUNT(*) AS n, MAX(received) AS last
@@ -96,7 +117,9 @@ export async function handle(request, env) {
       // Reported, not gating: a malformed statistics list already disables itself, and this makes that visible.
       const statistics = { configured: typeof env.COLLECT_STAT_PROJECTS === 'string' && env.COLLECT_STAT_PROJECTS !== '',
         admitted: admission.enabled && admission.valid ? statAdmission(env) : [] };
-      return json({ ready: admission.valid, schema, collection, statistics }, admission.valid ? 200 : 503);
+      const product = { configured: typeof env.COLLECT_PRODUCT_PROJECTS === 'string' && env.COLLECT_PRODUCT_PROJECTS !== '',
+        admitted: admission.enabled && admission.valid ? productAdmission(env) : [] };
+      return json({ ready: admission.valid, schema, collection, statistics, product }, admission.valid ? 200 : 503);
     }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
@@ -116,14 +139,83 @@ export async function handle(request, env) {
     if (readMatch && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
       const readId = readMatch[1];
-      if (!Object.hasOwn(projects, readId) || !projects[readId].origin) return json({ error: 'project' }, 404);
-      const values = url.searchParams.getAll('days');
-      if ([...url.searchParams.keys()].some(key => key !== 'days') || values.length > 1 ||
-        (values.length && !/^(1|7|14)$/.test(values[0]))) return json({ error: 'window', allowedDays: WINDOWS }, 400);
+      if (!publicProject(readId)) return json({ error: 'project' }, 404);
+      const days = readWindow(url);
+      if (days === null) return json({ error: 'window', allowedDays: READ_WINDOWS }, 400);
       const admission = collectionAdmission(env);
       if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
-      return json(await readStatistics(env.DB, { project: readId, days: Number(values[0] ?? 7),
+      return json(await readStatistics(env.DB, { project: readId, days,
         admitted: admission.enabled && statAdmission(env).includes(readId) }));
+    }
+    // Product reads (USAGE_PLAN.md section 4). GET is always the authenticated read; the ingest below takes POST.
+    const productRead = /^\/v1\/product\/([a-z0-9-]{1,64})(\/events)?$/.exec(url.pathname);
+    if (productRead && request.method === 'GET') {
+      if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const readId = productRead[1], raw = !!productRead[2];
+      if (!publicProject(readId)) return json({ error: 'project' }, 404);
+      const days = readWindow(url, raw ? ['days', 'name', 'limit'] : ['days']);
+      if (days === null) return json({ error: 'window', allowedDays: READ_WINDOWS }, 400);
+      let name = null, limit = EVENTS_DEFAULT_LIMIT;
+      if (raw) {
+        const names = url.searchParams.getAll('name'), limits = url.searchParams.getAll('limit');
+        if (names.length > 1 || (names.length && !PRODUCT_NAME.test(names[0]))) return json({ error: 'name' }, 400);
+        if (limits.length > 1 || (limits.length && !/^(?:[1-9][0-9]{0,3}|5000)$/.test(limits[0]))) return json({ error: 'limit', max: 5000 }, 400);
+        name = names[0] ?? null; limit = Number(limits[0] ?? EVENTS_DEFAULT_LIMIT);
+      }
+      const admission = collectionAdmission(env);
+      if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
+      const admitted = admission.enabled && productAdmission(env).includes(readId);
+      return json(raw ? await readProductEvents(env.DB, { project: readId, days, name, limit, admitted })
+        : await readProduct(env.DB, { project: readId, days, admitted }));
+    }
+    // Region hint for the SDK's consent defaults (USAGE_PLAN.md section 3): origin-checked, unauthenticated, stores nothing.
+    const consentMatch = /^\/v1\/consent\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (consentMatch) {
+      const consentProject = publicProject(consentMatch[1]);
+      if (url.search || !consentProject) return json({ error: 'not_found' }, 404);
+      if (request.headers.get('origin') !== consentProject.origin) return json({ error: 'origin' }, 403);
+      cors = { 'Access-Control-Allow-Origin': consentProject.origin, 'Vary': 'Origin' };
+      if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, ...cors,
+        'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '600' } });
+      if (request.method !== 'GET') return json({ error: 'method' }, 405, { ...cors, Allow: 'GET' });
+      return json({ v: 1, region: consentRegion(request) }, 200, { ...cors, 'Cache-Control': 'private, max-age=3600' });
+    }
+    // Product-event admission (USAGE_PLAN.md section 2): its own switch, budget key and table.
+    const productMatch = /^\/v1\/product\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (productMatch) {
+      const productId = productMatch[1], productProject = publicProject(productId);
+      if (url.search || !productProject) return json({ error: 'not_found' }, 404);
+      if (request.headers.get('origin') !== productProject.origin) return json({ error: 'origin' }, 403);
+      cors = { 'Access-Control-Allow-Origin': productProject.origin, 'Vary': 'Origin' };
+      if (request.method === 'OPTIONS') return preflight(cors);
+      if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
+      const productCheck = collectionAdmission(env);
+      if (!productCheck.valid || !productCheck.enabled || !productAdmission(env).includes(productId)) return json({ error: 'disabled' }, 503, cors);
+      if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers.get('content-type') || '')) return json({ error: 'media_type' }, 415, cors);
+      let productBody;
+      try { productBody = await readBounded(request); } catch { return json({ error: 'invalid_body' }, 400, cors); }
+      if (!validateProductBatch(productBody)) return json({ error: 'contract' }, 400, cors);
+      const productNow = Date.now(), productDay = new Date(productNow).toISOString().slice(0, 10), productReceipt = crypto.randomUUID();
+      const budgetKey = productId + ':product', productLimit = productProject.productLimit ?? PRODUCT_DEFAULT_LIMIT;
+      const size = productBody.events.length;
+      const productReserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) SELECT ?,?,?,? WHERE ?<=?
+        ON CONFLICT(project,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt
+        WHERE used+excluded.used<=? RETURNING used`)
+        .bind(budgetKey, productDay, size, productReceipt, size, productLimit, productLimit);
+      // Same request-derived values as the counts; the User-Agent is classified and dropped, the IP is never read.
+      const derived = serverDimensions(request, productNow);
+      const rows = productBody.events.map(e => {
+        const { props, redacted } = redactProps(e.props ?? {});
+        return env.DB.prepare(`INSERT INTO product_events(project,received,day,session,seq,name,route,release,ms,props,redacted,
+          country,region,browser,os,device) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?`)
+          .bind(productId, productNow, productDay, productBody.session, e.seq, e.name, e.route, productBody.release, Math.round(e.ms),
+            JSON.stringify(props), redacted, derived.country, derived.region, derived.browser, derived.os, productBody.context.device,
+            budgetKey, productDay, productReceipt);
+      });
+      // D1 batch is transactional; receipt gating makes a refused reservation store no event.
+      const productResult = await env.DB.batch([productReserve, ...rows]);
+      if (!productResult[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
+      return json({ accepted: true, meaning: 'product batch admitted; repeated requests store repeated rows' }, 202, cors);
     }
     // Read only on explicit desk action, never by the portfolio poll; its own contract keeps /v1/portfolio closed.
     if (url.pathname === '/v1/github-evidence' && request.method === 'GET') {
@@ -137,12 +229,11 @@ export async function handle(request, env) {
     if (statMatch) {
       const statId = statMatch[1];
       if (url.search) return json({ error: 'not_found' }, 404);
-      const statProject = Object.hasOwn(projects, statId) ? projects[statId] : null;
-      if (!statProject || !statProject.origin) return json({ error: 'not_found' }, 404);
+      const statProject = publicProject(statId);
+      if (!statProject) return json({ error: 'not_found' }, 404);
       if (request.headers.get('origin') !== statProject.origin) return json({ error: 'origin' }, 403);
       cors = { 'Access-Control-Allow-Origin': statProject.origin, 'Vary': 'Origin' };
-      if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, ...cors,
-        'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
+      if (request.method === 'OPTIONS') return preflight(cors);
       if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
       // COLLECT_ENABLED and a valid policy are required, but not COLLECT_PROJECTS membership: admitting a host's counts
       // must not also open its identifier-bearing /v1/collect/<id> session route.
@@ -167,13 +258,15 @@ export async function handle(request, env) {
         ON CONFLICT(project,day,event,route,release) DO UPDATE SET n=n+excluded.n,received=excluded.received`)
         .bind(statId, statDay, c.event, c.route, c.release, 1, statNow, statId, statDay, statReceipt));
       // One per-dimension total per admitted count, written in the same transaction and gated on the same receipt.
-      // A v1 batch carries no context, so its device, source and visit read 'unknown'.
-      const context = statBody.v === 2 ? statBody.context : { device: 'unknown', source: 'unknown', visit: 'unknown' };
-      const dimensionRows = [['country', statCountry(request)], ['device', context.device], ['source', context.source], ['visit', context.visit]]
-        .map(([dimension, value]) => env.DB.prepare(`INSERT INTO statistics_dimensions(project,day,dimension,value,n)
-          SELECT ?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
+      // Browser-derived values a batch's version does not carry read 'unknown'. Region, language, referrer and campaign
+      // keep at most DIMENSION_CAP distinct values per project and day; a later new value is stored as 'other'.
+      const dimensionRows = batchDimensions(statBody, request, statNow).map(([dimension, value]) =>
+        env.DB.prepare(`INSERT INTO statistics_dimensions(project,day,dimension,value,n)
+          SELECT ?,?,?,${CAP_SQL},? FROM budget WHERE project=? AND day=? AND receipt=?
           ON CONFLICT(project,day,dimension,value) DO UPDATE SET n=n+excluded.n`)
-          .bind(statId, statDay, dimension, value, statBody.counts.length, statId, statDay, statReceipt));
+          .bind(statId, statDay, dimension, value, CAPPED_DIMENSIONS.includes(dimension) ? 1 : 0,
+            statId, statDay, dimension, value, statId, statDay, dimension, value,
+            statBody.counts.length, statId, statDay, statReceipt));
       const statResult = await env.DB.batch([statReserve, ...aggregates, ...dimensionRows]);
       if (!statResult[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
       return json({ accepted: true, meaning: 'stat batch admitted; repeated requests count repeatedly' }, 202, cors);
@@ -245,11 +338,14 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
   }
 }
 export async function maintain(env, now = Date.now()) {
+  // Detailed rows (session and product events) are kept 90 days, daily aggregates 400 (USAGE_PLAN.md "Consent categories").
+  const dayBefore = days => new Date(now - days * 86400000).toISOString().slice(0, 10);
   await env.DB.batch([
-    env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 14 * 86400000),
-    env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
-    env.DB.prepare('DELETE FROM statistics_dimensions WHERE day<=?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
-    env.DB.prepare('DELETE FROM budget WHERE day<?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
+    env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 90 * 86400000),
+    env.DB.prepare('DELETE FROM product_events WHERE day<=?').bind(dayBefore(90)),
+    env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(dayBefore(400)),
+    env.DB.prepare('DELETE FROM statistics_dimensions WHERE day<=?').bind(dayBefore(400)),
+    env.DB.prepare('DELETE FROM budget WHERE day<?').bind(dayBefore(14)),
     env.DB.prepare('DELETE FROM probe_history WHERE checked<?').bind(now - 30 * 86400000),
   ]);
 }
