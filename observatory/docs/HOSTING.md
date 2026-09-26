@@ -200,7 +200,7 @@ A lost token is not a problem: rotate again.
   updates to Cron Triggers may take some time to take effect." The cron stays registered and needs
   no change; confirming the first unattended tick once the incident resolves is tracked as an agent
   follow-up. Until then the Desk shows every probe as `unknown` or `stale` and the GitHub canary is the
-  only unattended monitor.
+  only unattended monitor. **Superseded 2026-09-26:** unattended ticks run (receipt below, #43 closed).
 - `.github/workflows/collector-canary.yml` checks `/healthz`, `/readyz` and the closed
   `/v1/portfolio` from GitHub's runners at :07 and :37 each hour; a red run is the only
   out-of-band signal today.
@@ -232,7 +232,7 @@ this browser." Receipts, 2026-09-10 18:00–18:11Z, Alibi 0.11.1 (Chris0Jeky/Ali
   page sessions, `used` 2. Unticking stored `allow: false`; a further reload made no collect request
   and the total stayed at 2. Every other registered project still answers 503.
 - The Desk therefore shows Alibi with two opted-in page sessions and every probe still `unknown`
-  or `stale` until Cloudflare's cron incident clears (#43).
+  or `stale` until Cloudflare's cron incident clears (#43). (Resolved: see the 2026-09-26 cron receipt.)
 
 Check `/healthz` and `/readyz`, confirm unauthenticated `/v1/portfolio` returns 401, then use
 the Desk's Connect control with the read token. Run `tests/desk-browser.py --origin <url>` with
@@ -320,3 +320,11 @@ owner actions; no agent holds either.
 - #111 merged as `38164bf`. Production D1 was migrated with `migrations/0003-statistics-dimensions.sql` (additive, and `statistics_dimensions` is `WITHOUT ROWID`, confirmed in `sqlite_master`). Worker version `9a9fcfac-4d4c-4ca2-9d5c-e14264a2088b` was deployed from `38164bf` right after. `/healthz` and `/readyz` return 200, schema 3, statistics admitted `["alibi"]`.
 - At deploy time, production `statistics` held 3 rows and 4 counts, including earlier QA counts. The live Alibi embed still posts v1 batches, so its device, source and visit read `unknown` until slice 3 (#104). The country is recorded from the edge from now on.
 - Rollback: check out `859adb2` (the #109 merge: schema 2, and it admits Alibi 0.13.0), run `npx wrangler deploy` from `observatory/`, then `UPDATE schema_version SET version=2 WHERE id=1 AND version=3`. The table stays. Do not roll back to `bffba8a7…`: it was built before #109, so it rejects every Alibi 0.13.0 batch with a 400 `contract` response.
+
+### Unattended cron ticks confirmed, 2026-09-26 (#43)
+
+- Read-only query on production D1 (`npx wrangler d1 execute pulseboard-observatory --remote --command`
+  grouping `probe_history` by project) at about 20:20Z: 1,538 rows for each of the seven origins, first
+  2026-09-10 15:18:32Z, last 2026-09-26 20:15:31Z. That is about 96 ticks a day, which is what `*/15`
+  produces, so the scheduled handler runs without manual triggers. Probe history keeps 30 days, so the
+  count stops rising once retention catches up. #43 is closed.
