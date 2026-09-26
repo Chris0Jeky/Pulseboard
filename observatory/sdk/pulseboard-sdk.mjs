@@ -846,6 +846,8 @@ export function createPulseboard(config, runtime = globalThis) {
 
   function dispose({ preserveHandoffs = false } = {}) {
     try {
+      // A full dispose always removes the notice, even after a pagehide dispose left it for the leaving page.
+      if (!preserveHandoffs) { remove(ui.bar); remove(ui.panel); remove(ui.pill); ui.bar = ui.panel = ui.pill = null; }
       if (disposed) return;
       disposed = true;
       for (const [target, type, fn, options] of listeners) { try { target.removeEventListener(type, fn, options); } catch { /* Continue. */ } }
@@ -855,7 +857,6 @@ export function createPulseboard(config, runtime = globalThis) {
         clear(l.timer); l.timer = null; l.queue = [];
         for (const flight of l.flights) if (!preserveHandoffs || !flight.keepalive) cancel(flight);
       }
-      if (!preserveHandoffs) { remove(ui.bar); remove(ui.panel); remove(ui.pill); }
     } catch { /* Dispose never throws. */ }
   }
 

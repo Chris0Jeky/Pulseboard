@@ -42,7 +42,7 @@ globalThis.Pulseboard = Object.freeze({
   consent: Object.freeze({ get: () => sdk.consent.get(), set: choice => sdk.consent.set(choice), open: () => sdk.consent.open() }),
 });
 if (globalThis.document && globalThis.document.readyState === 'loading') globalThis.document.addEventListener('DOMContentLoaded', mount, { once: true }); else mount();
-globalThis.addEventListener?.('pageshow', event => { if (event.persisted && !sdk.resume()) { sdk = createPulseboard(config, globalThis); mount(); } });
+globalThis.addEventListener?.('pageshow', event => { if (event.persisted && !sdk.resume()) { sdk.dispose(); sdk = createPulseboard(config, globalThis); mount(); } });
 })();
 `;
   const content = `/* SPDX-License-Identifier: GPL-3.0-only
