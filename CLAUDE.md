@@ -86,7 +86,7 @@ T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-har
 binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO.md`; read it before
 merging anything. Hosted Cloudflare/D1 activation (q-2) and the Desk stack merge (q-3) were both
 authorised on 2026-09-10; q-3 carries the owner's condition that #15–#17 get a deep check and test
-pass first. Cloudflare access is verified (q-4). The Desk is hosted with aggregate counts and product events on for every public host (usage plan v2) and a 15-minute
+pass first. Cloudflare access is verified (q-4). The Desk is hosted with aggregate counts and product events on for every public host (usage plan v2; legacy session events stay Alibi-only, below) and a 15-minute
 probe cron over the seven origins; unattended ticks run about 96 times a day (1,538 rows per origin by
 2026-09-26, #43 closed; `observatory/docs/HOSTING.md`). The scratch-D1 admission
 gate passed the same day. Collection is on for Alibi only since the owner chose it as the first pilot and approved

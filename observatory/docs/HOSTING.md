@@ -350,14 +350,16 @@ owner actions; no agent holds either.
   CommitAtlas and IdleHarbor are admitted because their SDK 3.1 installs merged and published
   (Chris0Jeky/CommitAtlas#247, deployed by its Deploy workflow; Chris0Jeky/IdleHarbor#88 on GitHub Pages).
   The preview environment still admits none.
-- Neither change is live until the Worker is deployed from a `main` that contains it. Deploy before
-  Alibi 0.14.1 is published. Until then, the deployed collector rejects every 0.14.1 batch as an
-  unregistered release, and it answers 503 to Alibi product events.
+- History: at the time of writing, neither change was live until the Worker was deployed. Both went live in Worker
+  `2b1f13f8` (receipt below), before Alibi 0.14.1 was published.
 
 ### Usage plan v2 in production, 2026-09-26 to 27 (#115 to #135)
 
 Every Worker below was deployed from `main` on Kraspyon with `npx wrangler deploy` after `npm test` passed; each
-later version supersedes the previous one, and rollback is the previous version in this list.
+later version supersedes the previous one. Rollback limits: going back to the previous row is safe only within
+schema 4 (from `0c76dd15` on). Rolling back past `1b81b7fa` returns to schema 3 and needs the `schema_version`
+reset above. Never roll back below `2b1f13f8` once Alibi 0.14.1 is live: older Workers do not register 0.14.1 and
+return 400 `contract` for every 0.14.1 batch.
 
 | Worker | From | What went live |
 |---|---|---|
@@ -380,4 +382,4 @@ later version supersedes the previous one, and rollback is the previous version 
   CommitAtlas #247, #248 (deploys through its own workflow); IdleHarbor #88, #89; developer-lens #378, #379;
   wealthlens-hq #633, #634; MDviewer #105, #107; Alibi #391 (0.14.1). All sites except Alibi run SDK 3.2.0.
   Alibi 0.14.1 pins 3.1.0; its next release moves to 3.2 and needs a registered release.
-- MDviewer is admitted by the PR that adds this receipt; the collector refuses its data until that deploy.
+- MDviewer is admitted by #136, which adds this receipt; the collector refused its data until #136's deploy.
