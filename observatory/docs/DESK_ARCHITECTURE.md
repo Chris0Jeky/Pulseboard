@@ -102,11 +102,13 @@ Delivery is at most once; repeated requests store repeated rows.
 
 `GET /v1/product/<id>?days=` (authenticated, windows 1 to 90) returns `pulseboard.product/1`: totals
 by name, route, release and day; sessions (count, median events, median duration between the first
-and last received batch); the latest 100 journeys as ordered name lists (first 100 steps, no session
-id); exits (each session's last event inside the window); vitals as the nearest-rank p75 of raw
-`web.vital` values per metric and route, never an average of percentiles; and `js.error` groups by
-`kind` and `message`. `GET /v1/product/<id>/events?days=&name=&limit=` returns up to 5,000 raw rows
-newest first (default 500) as `pulseboard.product-events/1`. `GET /v1/consent/<id>` answers the SDK's
+and last received batch); the latest 100 journeys as `{ session, startedAt, durationMs,
+steps }` (first 200 step names); exits (each session's last event inside the window, summing to the
+session count); vitals as the nearest-rank p75 of raw, non-negative `web.vital` values per metric and
+route, never an average of percentiles; and the 100 most frequent `js.error` groups by `kind` (64
+characters, missing reads `unknown`) and `message` (160). Totals are uncapped, so each breakdown sums
+to `total`. `GET /v1/product/<id>/events?days=&name=&limit=` returns up to 5,000 raw rows
+newest first (default 500; `name` optional) as `pulseboard.product-events/1`. `GET /v1/consent/<id>` answers the SDK's
 region hint `{ v: 1, region: 'eea' | 'other' }` from the edge country (unknown reads `eea`) for the
 registered origin only, with `Cache-Control: private, max-age=3600`; it stores nothing and does not
 depend on admission. `/readyz` reports `product: { configured, admitted }` beside `statistics`.

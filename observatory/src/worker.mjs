@@ -165,7 +165,7 @@ export async function handle(request, env) {
       const admission = collectionAdmission(env);
       if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
       const admitted = admission.enabled && productAdmission(env).includes(readId);
-      return json(raw ? await readProductEvents(env.DB, { project: readId, days, name, limit, admitted })
+      return json(raw ? await readProductEvents(env.DB, { project: readId, days, name, limit })
         : await readProduct(env.DB, { project: readId, days, admitted }));
     }
     // Region hint for the SDK's consent defaults (USAGE_PLAN.md section 3): origin-checked, unauthenticated, stores nothing.

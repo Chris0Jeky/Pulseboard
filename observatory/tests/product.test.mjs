@@ -248,37 +248,57 @@ test('the product read aggregates totals, sessions, journeys, exits, p75 vitals 
   const r = await readProduct(DB, { project: 'alibi', days: 7, now: NOW, admitted: true });
   assert.equal(r.schema, 'pulseboard.product/1');
   assert.equal(r.window.startDay, '2026-09-19'); assert.equal(r.window.days, 7);
-  assert.equal(r.total, 22); assert.equal(r.redactedKeys, 2); assert.equal(r.observationStatus, 'observed');
-  assert.deepEqual(r.names.slice(0, 3), [{ name: 'web.vital', n: 13 }, { name: 'js.error', n: 3 }, { name: 'puzzle.started', n: 3 }]);
-  assert.deepEqual(r.releases, [{ release: '0.12.0', n: 1 }, { release: '0.13.0', n: 21 }]);
-  assert.deepEqual(r.daily, [{ day: '2026-09-24', n: 1 }, { day: '2026-09-25', n: 21 }]);
-  assert.deepEqual(r.sessions, { count: 3, medianEvents: 2, medianDurationMs: 0 });
+  // The exact shape the Desk (#119) validates.
+  assert.deepEqual(Object.keys(r), ['schema', 'project', 'generatedAt', 'window', 'collectionAdmitted', 'population', 'limitations', 'total',
+    'totals', 'sessions', 'journeys', 'exits', 'vitals', 'errors']);
+  assert.ok(r.population.length <= 120 && r.limitations.length <= 16 && r.limitations.every(line => line.length <= 500));
+  assert.equal(r.total, 22);
+  assert.deepEqual(r.totals.names.slice(0, 3), [{ name: 'web.vital', n: 13 }, { name: 'js.error', n: 3 }, { name: 'puzzle.started', n: 3 }]);
+  for (const list of Object.values(r.totals)) assert.equal(list.reduce((sum, row) => sum + row.n, 0), r.total);
+  assert.deepEqual(r.totals.releases, [{ release: '0.12.0', n: 1 }, { release: '0.13.0', n: 21 }]);
+  assert.deepEqual(r.totals.days, [{ day: '2026-09-24', n: 1 }, { day: '2026-09-25', n: 21 }]);
+  assert.deepEqual(r.sessions, { n: 3, medianEvents: 2, medianDurationMs: 0 });
+  assert.equal(r.exits.reduce((sum, row) => sum + row.n, 0), r.sessions.n);
   assert.deepEqual(r.journeys.map(j => j.steps), [['puzzle.started', 'puzzle.failed'], ['puzzle.started', 'hint.requested', 'puzzle.completed'], ['puzzle.started']]);
-  assert.equal(r.journeys[1].durationMs, 50000); assert.equal(r.journeys[1].events, 3); assert.equal(r.journeys[1].truncated, false);
-  assert.ok(!JSON.stringify(r).includes(A), 'journeys do not expose the session id');
+  assert.deepEqual(r.journeys[1], { session: A, startedAt: NOW - 60000, durationMs: 50000, steps: ['puzzle.started', 'hint.requested', 'puzzle.completed'] });
   assert.deepEqual(r.exits, [{ name: 'puzzle.completed', n: 1 }, { name: 'puzzle.failed', n: 1 }, { name: 'puzzle.started', n: 1 }]);
   // Nearest rank: LCP n=8 -> rank 6 -> 600; CLS n=3 -> rank 3 of [0.01, 0.05, 0.2] -> 0.2. Never an average.
   assert.deepEqual(r.vitals, [{ metric: 'CLS', route: 'home', p75: 0.2, n: 3 }, { metric: 'LCP', route: 'puzzle', p75: 600, n: 8 }]);
   assert.deepEqual(r.errors, [{ kind: 'TypeError', message: 'x is undefined', n: 2, lastSeen: NOW - 1000 }, { kind: 'RangeError', message: 'bad', n: 1, lastSeen: NOW - 3000 }]);
   assert.ok(r.limitations.some(line => /never an average of percentiles/.test(line)));
   const one = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
-  assert.equal(one.total, 21); assert.equal(one.sessions.count, 2); assert.equal(one.collectionAdmitted, false);
+  assert.equal(one.total, 21); assert.equal(one.sessions.n, 2); assert.equal(one.collectionAdmitted, false);
   const empty = await readProduct(DB, { project: 'commitatlas', days: 90, now: NOW });
-  assert.equal(empty.total, 0); assert.equal(empty.observationStatus, 'no-admitted-events');
-  assert.deepEqual(empty.sessions, { count: 0, medianEvents: null, medianDurationMs: null });
+  assert.equal(empty.total, 0);
+  assert.deepEqual(empty.sessions, { n: 0, medianEvents: null, medianDurationMs: null });
+  assert.deepEqual([empty.totals.names, empty.journeys, empty.exits, empty.vitals, empty.errors], [[], [], [], [], []]);
   await assert.rejects(readProduct(DB, { project: 'alibi', days: 3, now: NOW }), RangeError);
 });
 
-test('journeys keep the latest 100 sessions and their first 100 steps', async t => {
+test('error groups are cut to the Desk bounds before grouping, so kind and message pairs stay unique', async t => {
+  const DB = database(t);
+  await seed(DB, [
+    { name: 'js.error', props: { kind: 'K'.repeat(80), message: 'm'.repeat(200) + 'a' } },
+    { name: 'js.error', props: { kind: 'K'.repeat(80), message: 'm'.repeat(200) + 'b' } },
+    { name: 'js.error', props: { message: 'no kind' } },
+    { name: 'web.vital', props: { metric: 'LCP', value: -5 } },
+  ]);
+  const r = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
+  assert.deepEqual(r.errors.map(e => [e.kind.length, e.message.length, e.n]), [[64, 160, 2], [7, 7, 1]]);
+  assert.equal(r.errors[1].kind, 'unknown');
+  assert.deepEqual(r.vitals, [], 'a negative vital is not a timing');
+});
+
+test('journeys keep the latest 100 sessions and their first 200 steps', async t => {
   const DB = database(t);
   const list = [];
   for (let i = 0; i < 105; i++) list.push({ session: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, seq: 1, name: 'page.view', received: NOW - (105 - i) * 1000 });
-  for (let i = 1; i <= 101; i++) list.push({ session: 'ffffffff-ffff-4fff-8fff-ffffffffffff', seq: i, name: 'step', received: NOW });
+  for (let i = 1; i <= 201; i++) list.push({ session: 'ffffffff-ffff-4fff-8fff-ffffffffffff', seq: i, name: 'step', received: NOW });
   await seed(DB, list);
   const r = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
   assert.equal(r.journeys.length, 100);
-  assert.equal(r.journeys[0].steps.length, 100); assert.equal(r.journeys[0].truncated, true); assert.equal(r.journeys[0].events, 101);
-  assert.equal(r.sessions.count, 106); assert.equal(r.sessions.medianEvents, 1);
+  assert.equal(r.journeys[0].steps.length, 200);
+  assert.equal(r.sessions.n, 106); assert.equal(r.sessions.medianEvents, 1);
 });
 
 test('the raw events read is newest first, filtered, limited and authenticated', async t => {
@@ -286,6 +306,8 @@ test('the raw events read is newest first, filtered, limited and authenticated',
   await seed(DB, Array.from({ length: 12 }, (_, i) => ({ name: i % 2 ? 'js.error' : 'page.view', seq: i + 1, received: NOW - i * 1000, props: { i } })));
   const all = await readProductEvents(DB, { project: 'alibi', days: 1, now: NOW });
   assert.equal(all.schema, 'pulseboard.product-events/1'); assert.equal(all.events.length, 12); assert.equal(all.truncated, false);
+  assert.deepEqual(Object.keys(all), ['schema', 'project', 'generatedAt', 'window', 'name', 'limit', 'truncated', 'events']);
+  assert.equal(all.name, null); assert.equal(all.limit, 500);
   assert.deepEqual(all.events.map(e => e.props.i), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
   assert.deepEqual(Object.keys(all.events[0]), ['received', 'day', 'session', 'seq', 'name', 'route', 'release', 'ms', 'props', 'redacted', 'country', 'region', 'browser', 'os', 'device']);
   const errors = await readProductEvents(DB, { project: 'alibi', days: 1, now: NOW, name: 'js.error', limit: 5 });
@@ -319,7 +341,7 @@ test('retention keeps 90 days of product events, 14 of legacy session events and
   assert.deepEqual((await DB.prepare('SELECT name FROM product_events ORDER BY received').all()).results.map(r => r.name), ['kept', 'new']);
   assert.deepEqual((await DB.prepare('SELECT id FROM events').all()).results.map(r => r.id), ['kept']);
   const kept = await readProduct(DB, { project: 'alibi', days: 90, now });
-  assert.deepEqual(kept.names.map(n => n.name).sort(), ['kept', 'new'], 'the 90-day read window matches retention');
+  assert.deepEqual(kept.totals.names.map(n => n.name).sort(), ['kept', 'new'], 'the 90-day read window matches retention');
 });
 
 test('readiness reports schema 4 and the product switch, and fails without the product table', async t => {

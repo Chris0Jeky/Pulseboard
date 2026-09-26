@@ -18,13 +18,22 @@ export const DIMENSIONS = Object.freeze({
   source: Object.freeze(['direct', 'search', 'social', 'github', 'internal', 'other']),
   visit: Object.freeze(['new', 'returning']),
 });
+export const BROWSERS = Object.freeze(['chrome', 'edge', 'firefox', 'safari', 'samsung', 'opera', 'other']);
+export const OPERATING_SYSTEMS = Object.freeze(['windows', 'macos', 'ios', 'android', 'linux', 'chromeos', 'other']);
+/** The closed vocabularies added in collector v4, kept apart from DIMENSIONS so the Desk mirror of the v2 three
+ *  stays equal whichever of the collector and Desk PRs lands first. Missing values read 'unknown' as elsewhere. */
+export const EXTRA_DIMENSIONS = Object.freeze({
+  scheme: Object.freeze(['light', 'dark']),
+  browser: BROWSERS,
+  os: OPERATING_SYSTEMS,
+});
 /** A referrer host must contain a dot, so it can never collide with the `none` and `other` sentinels. */
 const REFERRER_HOST = /^(?=[a-z0-9.-]*\.)[a-z0-9.-]{3,64}$/;
 /** The six-key v3 context: the v2 keys plus colour scheme, referrer host and campaign tag (USAGE_PLAN.md section 1).
  *  A list is a closed vocabulary; a function is a bounded shape. */
 export const CONTEXT_V3 = Object.freeze({
   ...DIMENSIONS,
-  scheme: Object.freeze(['light', 'dark']),
+  scheme: EXTRA_DIMENSIONS.scheme,
   referrer: value => value === 'none' || value === 'other' || REFERRER_HOST.test(value),
   campaign: value => /^[a-z0-9_-]{1,40}$/.test(value),
 });
@@ -33,8 +42,6 @@ export const CAPPED_DIMENSIONS = Object.freeze(['region', 'language', 'referrer'
 export const DIMENSION_CAP = 50;
 /** Values that are never capped or counted towards the cap: they are missingness and overflow, not observations. */
 export const SENTINELS = Object.freeze(['unknown', 'none', 'other']);
-export const BROWSERS = Object.freeze(['chrome', 'edge', 'firefox', 'safari', 'samsung', 'opera', 'other']);
-export const OPERATING_SYSTEMS = Object.freeze(['windows', 'macos', 'ios', 'android', 'linux', 'chromeos', 'other']);
 /** Every stored dimension, in the order the reader returns them. Server-derived: country, region, browser, os,
  *  language, hour. Browser-derived (v2/v3 context): device, source, visit, scheme, referrer, campaign. */
 export const DIMENSION_NAMES = Object.freeze(['country', 'region', 'browser', 'os', 'language', 'hour',
