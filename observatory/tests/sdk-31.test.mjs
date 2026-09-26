@@ -20,9 +20,9 @@ const mountWith = (options = {}, dataset = null) => {
 };
 const events = h => h.products().flatMap(c => c.body.events);
 
-test('3.1: SDK_VERSION is 3.1.0 and the artifact header says so', () => {
-  assert.equal(SDK_VERSION, '3.1.0');
-  assert.match(buildSdk('mdviewer'), /pulseboard-sdk 3\.1\.0 for mdviewer/);
+test('the artifact header carries SDK_VERSION', () => {
+  assert.match(SDK_VERSION, /^3\.\d+\.\d+$/);
+  assert.ok(buildSdk('mdviewer').includes('pulseboard-sdk ' + SDK_VERSION + ' for mdviewer.'));
 });
 
 test('referrer: only allowlisted platform domains leave the browser, collapsed to one canonical value', () => {

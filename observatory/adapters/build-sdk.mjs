@@ -22,7 +22,7 @@ export function buildSdk(id, { release } = {}) {
   if (typeof chosen !== 'string' || !releases.includes(chosen)) throw new Error('Release must be one of the registered releases for ' + id + ': ' + releases.join(', '));
   // Only the client-side contract is published: probe URLs, markers and budgets stay operator data.
   const config = { id, label: project.label, origin: project.origin, collector: SDK_COLLECTOR, release: chosen, route: 'home',
-    project: { events: project.events, routes: project.routes, releases } };
+    project: { events: project.events, routes: project.routes, releases, campaigns: project.campaigns ?? [] } };
   const json = JSON.stringify(config).replaceAll('<', '\\u003c');
   // The referrer allowlist is one module shared with the collector (stat-contract.mjs); it is inlined first.
   const inline = name => readFileSync(new URL('../sdk/' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
