@@ -94,7 +94,8 @@ export function campaignOf(search) {
 /** Error text for js.error: e-mails, URLs and digit runs of six or more are masked before truncation. */
 export function maskMessage(text) {
   let value = '';
-  try { value = String(text ?? ''); } catch { value = ''; }
+  // Capped before masking: only the first 160 characters survive, and the regexes stay cheap on hostile text.
+  try { value = String(text ?? '').slice(0, 512); } catch { value = ''; }
   return value.replace(EMAIL_RE, '[email]').replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>)]+/gi, '[url]')
     .replace(/\d{6,}/g, '[number]').replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, 160);
 }
@@ -136,7 +137,8 @@ export function scrubString(text) {
 /** Remove personal keys and scrub strings (scrubString), recursively. Returns a fresh value; never mutates input. */
 export function scrubProps(value, depth = 0) {
   if (depth > 8) return undefined;
-  if (typeof value === 'string') return scrubString(value);
+  // Over-long strings fail validProps anyway; skipping the regexes keeps a hostile string from costing quadratic time.
+  if (typeof value === 'string') return value.length > 256 ? value : scrubString(value);
   if (Array.isArray(value)) return value.map(item => scrubProps(item, depth + 1));
   if (isPlain(value)) {
     const out = {};
@@ -850,7 +852,16 @@ export function createPulseboard(config, runtime = globalThis) {
   function onStorage(event) {
     try {
       if (disposed || (event?.key !== KEYS.consent && event?.key !== null)) return;
-      stored = readChoice();
+      const next = readChoice();
+      // A clear or removal elsewhere is not a choice: keep this tab's decision (stored or page-only) and never
+      // fall back to region defaults. Only a record that is actually present is adopted.
+      if (next === null) {
+        const mine = memoryChoice ?? stored;
+        if (mine?.decided) memoryChoice = mine;
+        stored = null;
+        return;
+      }
+      stored = next;
       memoryChoice = null;
       refresh();
       const choice = stored;
@@ -916,7 +927,7 @@ export function createPulseboard(config, runtime = globalThis) {
   function dispose({ preserveHandoffs = false } = {}) {
     try {
       // A full dispose always removes the notice, even after a pagehide dispose left it for the leaving page.
-      if (!preserveHandoffs) { remove(ui.bar); remove(ui.panel); remove(ui.pill); ui.bar = ui.panel = ui.pill = null; }
+      if (!preserveHandoffs) { remove(ui.bar); remove(ui.panel); remove(ui.pill); ui.bar = ui.panel = ui.pill = null; releasePlaceholder(ui.doc ?? runtime.document); }
       if (disposed) return;
       disposed = true;
       for (const [target, type, fn, options] of listeners) { try { target.removeEventListener(type, fn, options); } catch { /* Continue. */ } }

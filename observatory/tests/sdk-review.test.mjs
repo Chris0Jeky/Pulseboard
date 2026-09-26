@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createPulseboard, SDK_VERSION } from '../sdk/pulseboard-sdk.mjs';
+import { createPulseboard, SDK_VERSION, validProps, scrubProps, maskMessage } from '../sdk/pulseboard-sdk.mjs';
 import { buildSdk } from '../adapters/build-sdk.mjs';
 import { config, makeRuntime, storage, byClass, settle } from './sdk-fakes.mjs';
 
@@ -168,4 +168,58 @@ test('Codex P2: route() returns true when only the journeys page.view was queued
   assert.equal(h.sdk.route('puzzle'), true);
   const none = start({ local: storage({ [CONSENT]: record(false, false, false) }) });
   assert.equal(none.sdk.route('puzzle'), false);
+});
+
+test('round 2 HIGH: a storage clear or key removal elsewhere never revives defaults after Turn all off', async () => {
+  for (const clearing of ['clear', 'remove']) {
+    const local = storage();
+    const h = start({ region: 'other', local });
+    await settle();
+    byClass(h.body, 'pb-choose')[0].emit('click');
+    byClass(h.body, 'pb-off')[0].emit('click');
+    if (clearing === 'clear') { local.map.clear(); h.runtime.emit('storage', { key: null }); }
+    else { local.map.delete(CONSENT); h.runtime.emit('storage', { key: CONSENT, newValue: null }); }
+    const c = h.sdk.consent.get();
+    assert.deepEqual([c.counts, c.diagnostics, c.journeys, c.decided], [false, false, false, true], clearing);
+    assert.equal(h.sdk.track('step.done'), false, clearing);
+    assert.equal(byClass(h.body, 'pb-bar').length, 0, clearing + ': no bar comes back');
+    // A real record written later by another tab is still adopted.
+    local.map.set(CONSENT, record(true, false, false));
+    h.runtime.emit('storage', { key: CONSENT });
+    assert.equal(h.sdk.consent.get().counts, true, clearing);
+  }
+});
+
+test('round 2 HIGH: a page-only choice (storage refused) survives another tab clearing storage', async () => {
+  const refusing = storage();
+  refusing.setItem = () => { throw new Error('quota'); };
+  const h = start({ region: 'other', local: refusing });
+  await settle();
+  byClass(h.body, 'pb-choose')[0].emit('click');
+  byClass(h.body, 'pb-off')[0].emit('click');
+  h.runtime.emit('storage', { key: null });
+  const c = h.sdk.consent.get();
+  assert.deepEqual([c.counts, c.diagnostics, c.journeys, c.decided], [false, false, false, true]);
+});
+
+test('round 2 LOW: over-long strings are rejected before the scrubbing regexes run', () => {
+  const hostile = 'a.'.repeat(50000) + 'a';
+  const started = process.hrtime.bigint();
+  assert.equal(validProps(scrubProps({ s: hostile })), false);
+  assert.ok(Number(process.hrtime.bigint() - started) / 1e6 < 50, 'linear time on a long dotted string');
+});
+
+test('round 2 LOW: a full dispose while the bar shows releases the placeholder', async () => {
+  const h = start({ region: 'eea', barHolder: true });
+  await settle();
+  assert.equal(h.holder.children.length, 1);
+  h.sdk.dispose();
+  assert.equal(h.holder.style.height, '0');
+  assert.equal(h.holder.children.length, 0);
+});
+
+test('round 2 LOW: error messages are capped before masking', () => {
+  const started = process.hrtime.bigint();
+  assert.equal(maskMessage('a.'.repeat(50000)).length, 160);
+  assert.ok(Number(process.hrtime.bigint() - started) / 1e6 < 50);
 });

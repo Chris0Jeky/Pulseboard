@@ -75,6 +75,8 @@ host. Unknown events are dropped; an unknown route becomes `other` when the voca
   to its host (`https://x.test/private/path?q=1` becomes `x.test`, credentials and port dropped), and
   IPv4- or IPv6-looking text becomes `[ip]` (IPv6 needs `::` or five or more groups, so clock times survive).
   The server repeats the key removal and e-mail masking.
+  Known over-masking: the IP patterns are deliberately broad, so version-like dotted quads (`1.2.3.4`) and
+  some hex-with-colons text also become `[ip]`. Strings over 256 characters skip scrubbing and fail validation.
 
 **Host rule: props never carry user-entered free text or identity.** No names, handles, player names, typed
 answers, search text, document text, file names or export contents. Send ids from the product's own closed
@@ -99,7 +101,8 @@ permission.
   `{counts, diagnostics, journeys, decided, month}` (month of the decision, UTC). A corrupt record counts as
   all-off and shows the bar again. If storage refuses the write, the choice holds for this page only.
   A choice recorded in another tab (the `storage` event on this key) is applied to every open tab at once,
-  with the same clearing, dropping and aborting as below.
+  with the same clearing, dropping and aborting as below. Clearing storage or removing the key in another tab is not a choice: each
+  open tab keeps the decision it already had and never falls back to the region defaults.
 - Turning a category off clears its keys (counts: the visit marker `pulseboard:visit:<id>` in both
   storages; journeys: `pulseboard:session:<id>`), drops its queued items and aborts its in-flight requests (any product request
   carrying a session id counts as Journeys).
