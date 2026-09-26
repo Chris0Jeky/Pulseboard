@@ -2,7 +2,7 @@ import { projects } from './projects.mjs';
 import { collectionAdmission, productAdmission } from './admission.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
 import { validateStatBatch, statAdmission, batchDimensions, serverDimensions, CAPPED_DIMENSIONS, DIMENSION_CAP, SENTINELS } from './stat-contract.mjs';
-import { validateProductBatch, redactProps, consentRegion, PRODUCT_DEFAULT_LIMIT, PRODUCT_NAME } from './product-contract.mjs';
+import { validateProductBatch, redactProps, consentRegion, PRODUCT_DEFAULT_LIMIT, PRODUCT_GLOBAL_LIMIT, PRODUCT_GLOBAL_KEY, PRODUCT_NAME } from './product-contract.mjs';
 import { readStatistics, READ_WINDOWS, AGGREGATE_RETENTION_DAYS } from './statistics.mjs';
 import { readProduct, readProductEvents, EVENTS_DEFAULT_LIMIT } from './product.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
@@ -198,10 +198,19 @@ export async function handle(request, env) {
       const productNow = Date.now(), productDay = new Date(productNow).toISOString().slice(0, 10), productReceipt = crypto.randomUUID();
       const budgetKey = productId + ':product', productLimit = productProject.productLimit ?? PRODUCT_DEFAULT_LIMIT;
       const size = productBody.events.length;
-      const productReserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) SELECT ?,?,?,? WHERE ?<=?
+      // Two budgets, one decision: the project row is reserved only if the global row (every project's product events,
+      // sized for D1's 500 MB free-plan cap) also has room, and the global row is then charged only if the project
+      // reservation carries this receipt. Either one full refuses the batch and neither is charged.
+      const globalRoom = `(SELECT COALESCE(MAX(used),0) FROM budget WHERE project='${PRODUCT_GLOBAL_KEY}' AND day=?)+?<=?`;
+      const productReserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) SELECT ?,?,?,? WHERE ?<=? AND ${globalRoom}
         ON CONFLICT(project,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt
-        WHERE used+excluded.used<=? RETURNING used`)
-        .bind(budgetKey, productDay, size, productReceipt, size, productLimit, productLimit);
+        WHERE used+excluded.used<=? AND ${globalRoom} RETURNING used`)
+        .bind(budgetKey, productDay, size, productReceipt, size, productLimit, productDay, size, PRODUCT_GLOBAL_LIMIT,
+          productLimit, productDay, size, PRODUCT_GLOBAL_LIMIT);
+      const globalReserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt)
+        SELECT ?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
+        ON CONFLICT(project,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt`)
+        .bind(PRODUCT_GLOBAL_KEY, productDay, size, productReceipt, budgetKey, productDay, productReceipt);
       // Same request-derived values as the counts; the User-Agent is classified and dropped, the IP is never read.
       const derived = serverDimensions(request, productNow);
       const rows = productBody.events.map(e => {
@@ -213,7 +222,7 @@ export async function handle(request, env) {
             budgetKey, productDay, productReceipt);
       });
       // D1 batch is transactional; receipt gating makes a refused reservation store no event.
-      const productResult = await env.DB.batch([productReserve, ...rows]);
+      const productResult = await env.DB.batch([productReserve, globalReserve, ...rows]);
       if (!productResult[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
       return json({ accepted: true, meaning: 'product batch admitted; repeated requests store repeated rows' }, 202, cors);
     }

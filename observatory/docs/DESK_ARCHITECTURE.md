@@ -93,10 +93,15 @@ serialized bytes; a batch outside those bounds is refused whole. Personal keys (
 nickname, display name, player, user, handle and name-part keys, user and client ids, IP address
 keys, `url` and `href`; a bare `name` stays) are removed at every depth and counted in `redacted`. In
 strings, e-mail-looking text becomes `[email]`, IPv4 and IPv6 addresses become `[ip]`, and `scheme://`
-URLs are cut to their host. Redaction never rejects. `page.view` is an ordinary product name. Admission needs `COLLECT_ENABLED`, a valid session policy and the id in
+URLs are cut to their host, including IPv4 before a full stop and IPv4-mapped IPv6. A key that is itself an
+address is dropped and counted. After redaction strings are cut back to 256 characters, and props that
+redaction grew past 2,048 bytes are dropped whole and counted. Redaction never rejects. `page.view` is an ordinary product name. Admission needs `COLLECT_ENABLED`, a valid session policy and the id in
 `COLLECT_PRODUCT_PROJECTS` (the same exact-list parser as `COLLECT_STAT_PROJECTS`, not `COLLECT_PROJECTS`
 membership), the registered origin, `application/json` and 16 KiB. Its daily budget is its own row
-`<id>:product` in `budget`, limited by the registry's `productLimit` (20,000). Rows go to
+`<id>:product` in `budget`, limited by the registry's `productLimit` (1,000), and every project also
+draws on one global row `*:product` (1,500 a day), reserved in the same D1 batch: the project row is
+reserved only if the global row has room, and the global row is charged only against that receipt,
+so either budget full returns 429 and charges neither. Rows go to
 `product_events(project, received, day, session, seq, name, route, release, ms, props, redacted,
 country, region, browser, os, device)` in the same D1 batch as the reservation, gated on its receipt.
 Delivery is at most once; repeated requests store repeated rows.
@@ -104,11 +109,21 @@ Delivery is at most once; repeated requests store repeated rows.
 `GET /v1/product/<id>?days=` (authenticated, windows 1 to 90) returns `pulseboard.product/1`: totals
 by name, route, release and day; sessions (count, median events, median duration between the first
 and last received batch); the latest 100 journeys as `{ session, startedAt, durationMs,
-steps }` (first 200 step names); exits (each session's last event inside the window, summing to the
+steps, stepsTruncated }` (first 60 step names); exits (each session's last event inside the window, summing to the
 session count); vitals as the nearest-rank p75 of raw, non-negative `web.vital` values per metric and
 route, never an average of percentiles; and the 100 most frequent `js.error` groups by `kind` (64
-characters, missing reads `unknown`) and `message` (160). Totals are uncapped, so each breakdown sums
-to `total`. `GET /v1/product/<id>/events?days=&name=&limit=` returns up to 5,000 raw rows
+characters, missing reads `unknown`) and `message` (160). Names, routes and releases keep the top 512,
+256 and 64 rows by count (ties by value) and report `totals.truncated`; a truncated list sums to less
+than `total`, and days are never truncated. Error text is cleaned of control characters and cut by
+UTF-16 length in JavaScript without splitting a surrogate pair.
+
+**Storage sizing.** The account is on Cloudflare's free plan (HUMAN_TODO q-6), where one D1 database
+holds at most 500 MB, and a full database refuses every write, Alibi's counts included. A stored
+product event is about 2.3 KB with its indexes at the 2,048-byte props bound. The global budget of
+1,500 events a day over 90 days of retention is therefore at most about 1,500 x 2.3 KB x 90 = 310 MB,
+leaving room for the aggregates, legacy events and probe history. The per-project 1,000 keeps one
+project from taking the whole global budget alone. Raise either only after measuring D1's reported
+size or moving to a paid plan. `GET /v1/product/<id>/events?days=&name=&limit=` returns up to 5,000 raw rows
 newest first (default 500; `name` optional) as `pulseboard.product-events/1`. `GET /v1/consent/<id>` answers the SDK's
 region hint `{ v: 1, region: 'eea' | 'other' }` from the edge country (unknown reads `eea`) for the
 registered origin only, with `Cache-Control: private, max-age=3600`; it stores nothing and does not

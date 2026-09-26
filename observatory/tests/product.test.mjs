@@ -5,8 +5,8 @@ import { openDatabase } from '../src/sqlite.mjs';
 import { projects } from '../src/projects.mjs';
 import { handle, maintain } from '../src/worker.mjs';
 import { productAdmission, exactProjectList } from '../src/admission.mjs';
-import { validateProductBatch, validateProps, redactProps, consentRegion, EEA } from '../src/product-contract.mjs';
-import { readProduct, readProductEvents } from '../src/product.mjs';
+import { validateProductBatch, validateProps, redactProps, scrubText, consentRegion, EEA, PRODUCT_DEFAULT_LIMIT, PRODUCT_GLOBAL_LIMIT, PRODUCT_GLOBAL_KEY } from '../src/product-contract.mjs';
+import { readProduct, readProductEvents, JOURNEY_STEPS, TOTALS_CAPS, cutText, cleanText } from '../src/product.mjs';
 import { startLocalRunner } from '../src/local.mjs';
 
 const ORIGIN = projects.alibi.origin, TOKEN = 't'.repeat(32);
@@ -132,6 +132,43 @@ test('identifier and link keys are removed; IP addresses and URLs in text are re
   assert.equal((await rows(DB))[1].props, '{"from":"www.search.example"}');
 });
 
+test('IP addresses before a full stop or inside IPv6 are masked, and address-shaped keys are dropped', () => {
+  const cases = [
+    ['connect ECONNREFUSED 10.0.0.1.', 'connect ECONNREFUSED [ip].'],
+    ['from 10.0.0.1, then 10.0.0.2; done', 'from [ip], then [ip]; done'],
+    ['peer ::ffff:192.168.1.10 closed', 'peer [ip] closed'],
+    ['peer ::FFFF:192.168.1.10.', 'peer [ip].'],
+    ['64:ff9b::203.0.113.5', '[ip]'],
+    ['listen 10.0.0.1:8080', 'listen [ip]:8080'],
+    ['v 1.2.3.4.5 build', 'v 1.2.3.4.5 build'],
+    ['release 0.13.0', 'release 0.13.0'],
+    ['at 12:30:45', 'at 12:30:45'],
+  ];
+  for (const [input, output] of cases) assert.equal(scrubText(input), output, input);
+  const { props, redacted } = redactProps({ '10.0.0.1': 1, '192.168.001.1x': 2, keep: 3, nested: { '203.0.113.9': { deep: 1 }, ok: 'fine' } });
+  assert.deepEqual(props, { '192.168.001.1x': 2, keep: 3, nested: { ok: 'fine' } });
+  assert.equal(redacted, 2);
+});
+
+test('stored props never exceed the bounds, even when redaction makes text longer', async t => {
+  const DB = database(t);
+  // 'a@b.cd' is six characters and becomes the seven-character '[email]'.
+  const grow = Array.from({ length: 42 }, () => 'a@b.cd').join(' ');
+  const long = { s: grow.slice(0, 256) };
+  assert.equal(validateProps(long), true);
+  const scrubbed = redactProps(long);
+  assert.ok(scrubbed.props.s.length <= 256, 'strings are cut back to 256');
+  // Twenty-seven strings of nine short e-mail addresses sit just under the byte bound; after redaction they are past 2,048 bytes and are dropped whole.
+  const many = Object.fromEntries(Array.from({ length: 27 }, (_, i) => ['k' + String(i).padStart(2, '0'), Array.from({ length: 9 }, () => 'a@b.cd').join(' ')]));
+  assert.equal(validateProps(many), true);
+  const dropped = redactProps(many);
+  assert.deepEqual(dropped, { props: {}, redacted: 27 });
+  assert.equal((await handle(post(batch({ events: [event({ props: many })] })), env(DB))).status, 202);
+  const [row] = await rows(DB);
+  assert.equal(row.props, '{}'); assert.equal(row.redacted, 27);
+  assert.ok(new TextEncoder().encode(row.props).byteLength <= 2048);
+});
+
 test('origin, id, method, media type, size and admission are checked in order with CORS after the origin', async t => {
   const DB = database(t);
   assert.equal((await handle(post(batch(), { origin: 'https://evil.test' }), env(DB))).status, 403);
@@ -166,7 +203,7 @@ test('origin, id, method, media type, size and admission are checked in order wi
 
 test('the product budget is separate, per project, and a refused batch stores nothing', async t => {
   const DB = database(t), today = new Date().toISOString().slice(0, 10);
-  await DB.prepare('INSERT INTO budget VALUES(?,?,?,?)').bind('alibi:product', today, 19999, 'old').run();
+  await DB.prepare('INSERT INTO budget VALUES(?,?,?,?)').bind('alibi:product', today, 999, 'old').run();
   const refused = await handle(post(batch({ events: [event(), event({ seq: 2 })] })), env(DB));
   assert.equal(refused.status, 429); assert.equal(refused.headers.get('Retry-After'), '3600');
   assert.equal(refused.headers.get('Access-Control-Allow-Origin'), ORIGIN);
@@ -184,7 +221,37 @@ test('the product budget is separate, per project, and a refused batch stores no
     assert.equal((await DB.prepare("SELECT COUNT(*) n FROM budget WHERE project='alibi:product'").first()).n, 0);
     assert.equal((await handle(post(batch()), env(DB))).status, 202);
   } finally { projects.alibi.productLimit = original; }
-  for (const [id, p] of Object.entries(projects)) if (p.origin) assert.equal(p.productLimit, 20000, id);
+  for (const [id, p] of Object.entries(projects)) if (p.origin) assert.equal(p.productLimit, 1000, id);
+  assert.equal(PRODUCT_DEFAULT_LIMIT, 1000);
+});
+
+test('a global product budget across every project refuses a batch that would pass its own project budget', async t => {
+  const DB = database(t), today = new Date().toISOString().slice(0, 10);
+  const e = env(DB, { COLLECT_PRODUCT_PROJECTS: 'alibi,mdviewer' });
+  const md = body => handle(post(body, { id: 'mdviewer', origin: projects.mdviewer.origin }), e);
+  const used = async key => (await DB.prepare('SELECT used FROM budget WHERE project=? AND day=?').bind(key, today).first())?.used ?? null;
+  assert.equal(PRODUCT_GLOBAL_LIMIT, 1500); assert.equal(PRODUCT_GLOBAL_KEY, '*:product');
+  // Both projects are charged to the one global row.
+  assert.equal((await handle(post(batch({ events: [event(), event({ seq: 2 })] })), e)).status, 202);
+  assert.equal((await md(batch())).status, 202);
+  assert.equal(await used('*:product'), 3); assert.equal(await used('alibi:product'), 2); assert.equal(await used('mdviewer:product'), 1);
+  // Global room for one more event: a two-event batch is refused and neither budget is charged.
+  await DB.prepare('UPDATE budget SET used=1499 WHERE project=?').bind('*:product').run();
+  const refused = await md(batch({ events: [event(), event({ seq: 2 })] }));
+  assert.equal(refused.status, 429); assert.equal(refused.headers.get('Retry-After'), '3600');
+  assert.equal(await used('*:product'), 1499); assert.equal(await used('mdviewer:product'), 1);
+  assert.equal((await rows(DB)).length, 3);
+  // A project with no row yet today is refused the same way, and gets no row.
+  await DB.prepare('DELETE FROM budget WHERE project=?').bind('alibi:product').run();
+  await DB.prepare('UPDATE budget SET used=1500 WHERE project=?').bind('*:product').run();
+  assert.equal((await handle(post(batch()), e)).status, 429);
+  assert.equal(await used('alibi:product'), null);
+  // Exactly filling the global budget is admitted.
+  await DB.prepare('UPDATE budget SET used=1499 WHERE project=?').bind('*:product').run();
+  assert.equal((await md(batch())).status, 202);
+  assert.equal(await used('*:product'), 1500); assert.equal(await used('mdviewer:product'), 2);
+  // Counts are never charged to either product budget.
+  assert.equal((await DB.prepare("SELECT COUNT(*) n FROM budget WHERE project NOT LIKE '%:product'").first()).n, 0);
 });
 
 test('the consent hint answers eea or other from the edge country, origin-checked and privately cacheable', async t => {
@@ -254,13 +321,15 @@ test('the product read aggregates totals, sessions, journeys, exits, p75 vitals 
   assert.ok(r.population.length <= 120 && r.limitations.length <= 16 && r.limitations.every(line => line.length <= 500));
   assert.equal(r.total, 22);
   assert.deepEqual(r.totals.names.slice(0, 3), [{ name: 'web.vital', n: 13 }, { name: 'js.error', n: 3 }, { name: 'puzzle.started', n: 3 }]);
-  for (const list of Object.values(r.totals)) assert.equal(list.reduce((sum, row) => sum + row.n, 0), r.total);
-  assert.deepEqual(r.totals.releases, [{ release: '0.12.0', n: 1 }, { release: '0.13.0', n: 21 }]);
+  const { truncated, ...lists } = r.totals;
+  assert.deepEqual(truncated, { names: false, routes: false, releases: false });
+  for (const list of Object.values(lists)) assert.equal(list.reduce((sum, row) => sum + row.n, 0), r.total);
+  assert.deepEqual(r.totals.releases, [{ release: '0.13.0', n: 21 }, { release: '0.12.0', n: 1 }]);
   assert.deepEqual(r.totals.days, [{ day: '2026-09-24', n: 1 }, { day: '2026-09-25', n: 21 }]);
   assert.deepEqual(r.sessions, { n: 3, medianEvents: 2, medianDurationMs: 0 });
   assert.equal(r.exits.reduce((sum, row) => sum + row.n, 0), r.sessions.n);
   assert.deepEqual(r.journeys.map(j => j.steps), [['puzzle.started', 'puzzle.failed'], ['puzzle.started', 'hint.requested', 'puzzle.completed'], ['puzzle.started']]);
-  assert.deepEqual(r.journeys[1], { session: A, startedAt: NOW - 60000, durationMs: 50000, steps: ['puzzle.started', 'hint.requested', 'puzzle.completed'] });
+  assert.deepEqual(r.journeys[1], { session: A, startedAt: NOW - 60000, durationMs: 50000, steps: ['puzzle.started', 'hint.requested', 'puzzle.completed'], stepsTruncated: false });
   assert.deepEqual(r.exits, [{ name: 'puzzle.completed', n: 1 }, { name: 'puzzle.failed', n: 1 }, { name: 'puzzle.started', n: 1 }]);
   // Nearest rank: LCP n=8 -> rank 6 -> 600; CLS n=3 -> rank 3 of [0.01, 0.05, 0.2] -> 0.2. Never an average.
   assert.deepEqual(r.vitals, [{ metric: 'CLS', route: 'home', p75: 0.2, n: 3 }, { metric: 'LCP', route: 'puzzle', p75: 600, n: 8 }]);
@@ -293,7 +362,7 @@ test('error groups are cut to the Desk bounds before grouping, so kind and messa
   assert.deepEqual(r.vitals, [], 'a negative vital is not a timing');
 });
 
-test('journeys keep the latest 100 sessions and their first 200 steps', async t => {
+test('journeys keep the latest 100 sessions and their first 60 steps', async t => {
   const DB = database(t);
   const list = [];
   for (let i = 0; i < 105; i++) list.push({ session: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, seq: 1, name: 'page.view', received: NOW - (105 - i) * 1000 });
@@ -301,8 +370,33 @@ test('journeys keep the latest 100 sessions and their first 200 steps', async t 
   await seed(DB, list);
   const r = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
   assert.equal(r.journeys.length, 100);
-  assert.equal(r.journeys[0].steps.length, 200);
+  assert.equal(r.journeys[0].steps.length, JOURNEY_STEPS); assert.equal(JOURNEY_STEPS, 60);
+  assert.equal(r.journeys[0].stepsTruncated, true); assert.equal(r.journeys[1].stepsTruncated, false);
   assert.equal(r.sessions.n, 106); assert.equal(r.sessions.medianEvents, 1);
+  // Worst case stays well under 1 MiB: 100 journeys of 60 steps with 64-character names.
+  assert.ok(100 * JOURNEY_STEPS * (64 + 3) < 1024 * 1024 / 2);
+});
+
+test('totals lists are capped by count, ties by value, and report truncation; days never are', async t => {
+  const DB = database(t);
+  const list = [];
+  for (let i = 0; i < 520; i++) list.push({ name: 'n' + String(i).padStart(3, '0'), route: 'r' + String(i % 260).padStart(3, '0'), release: '1.' + (i % 70) });
+  list.push({ name: 'n999', route: 'r999', release: '9.9' }, { name: 'n999', route: 'r999', release: '9.9' });
+  await seed(DB, list);
+  const r = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
+  assert.deepEqual(r.totals.truncated, { names: true, routes: true, releases: true });
+  assert.equal(r.totals.names.length, TOTALS_CAPS.names); assert.equal(r.totals.routes.length, TOTALS_CAPS.routes); assert.equal(r.totals.releases.length, TOTALS_CAPS.releases);
+  assert.deepEqual(r.totals.names.slice(0, 3), [{ name: 'n999', n: 2 }, { name: 'n000', n: 1 }, { name: 'n001', n: 1 }], 'top by n, then by value');
+  assert.ok(r.totals.names.reduce((s, row) => s + row.n, 0) < r.total);
+  assert.deepEqual(r.totals.days, [{ day: '2026-09-25', n: r.total }]);
+});
+
+test('error text is cut by UTF-16 length without splitting a surrogate pair', () => {
+  assert.equal(cutText('a'.repeat(63) + '😀', 64), 'a'.repeat(63));
+  assert.equal(cutText('😀'.repeat(40), 64), '😀'.repeat(32));
+  assert.equal(cutText('short', 64), 'short');
+  assert.equal(cleanText('x\n'.repeat(100), 160).length, 160);
+  assert.equal(cleanText('', 160), 'unknown'); assert.equal(cleanText(null, 64), 'unknown');
 });
 
 test('the raw events read is newest first, filtered, limited and authenticated', async t => {
