@@ -22,6 +22,8 @@ const CIRCUIT_FAILURES = 3;
 const ERROR_LIMIT = 10;
 const ENGAGED_CAP = 3600;
 const PROPS_BYTES = 2048;
+const SESSION_IDLE_MS = 30 * 60 * 1000;
+const SESSION_MAX_MS = 24 * 60 * 60 * 1000;
 const RESERVED = ['web.vital', 'js.error', 'page.engaged'];
 const CATEGORIES = ['counts', 'diagnostics', 'journeys'];
 const NAME_RE = /^[a-z][a-z0-9_.:-]{0,63}$/;
@@ -225,6 +227,7 @@ export function createPulseboard(config, runtime = globalThis) {
   const timer = (fn, ms) => { try { return runtime.setTimeout(fn, ms); } catch { return null; } };
   const clear = id => { if (id === null || id === undefined) return; try { runtime.clearTimeout(id); } catch { /* Never blocks. */ } };
   const now = () => { try { const value = runtime.performance?.now?.(); return typeof value === 'number' && Number.isFinite(value) ? value : 0; } catch { return 0; } };
+  const wall = () => { try { const value = runtime.Date?.now?.() ?? Date.now(); return Number.isFinite(value) ? value : Date.now(); } catch { return Date.now(); } };
   const blocked = () => { try { const n = runtime.navigator; return n?.globalPrivacyControl === true || n?.doNotTrack === '1'; } catch { return true; } };
   const utcMonth = () => { const d = new Date(); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'); };
 
@@ -235,7 +238,7 @@ export function createPulseboard(config, runtime = globalThis) {
   let stored = readChoice();
   let current = { counts: false, diagnostics: false, journeys: false };
   let currentRoute = cfg.route;
-  let visitAnswer = null, sessionRecord = null, pageSeq = 0, errorsSent = 0;
+  let visitAnswer = null, sessionRecord = null, pageSeq = 0, errorsSent = 0, journeyViewPending = false;
   let requests = 0, keepaliveBytes = 0;
   const stats = { sent: 0, dropped: 0 };
   const lanes = { counts: lane('/v1/collect-stat/' + cfg.id, COUNT_BATCH), product: lane('/v1/product/' + cfg.id, PRODUCT_BATCH) };
@@ -283,6 +286,8 @@ export function createPulseboard(config, runtime = globalThis) {
     current = effective();
     for (const category of CATEGORIES) if (before[category] && !current[category]) withdraw(category);
     if (!before.diagnostics && current.diagnostics) { emitVital('FCP'); emitVital('TTFB'); }
+    // The page's view reached Counts but not Journeys (the region hint or an OK arrived after it): send it once now.
+    if (!before.journeys && current.journeys && journeyViewPending && product('journeys', 'page.view', {})) journeyViewPending = false;
     paint();
   }
 
@@ -344,24 +349,34 @@ export function createPulseboard(config, runtime = globalThis) {
     return null;
   }
 
-  function session() {
+  /** A tab session lasts until 30 minutes without activity or 24 hours in total, whichever comes first; a restored
+   * tab's sessionStorage copy obeys the same limits. `touch` marks activity (an event), a flush only reads. */
+  function session(touch = false) {
     if (!current.journeys) return null;
-    if (sessionRecord) return sessionRecord;
-    try {
-      const value = JSON.parse(tab.get(KEYS.session) ?? 'null');
-      if (isPlain(value) && typeof value.id === 'string' && UUID_RE.test(value.id) && Number.isInteger(value.seq)
-        && value.seq >= 0 && value.seq < 1000000) return (sessionRecord = { id: value.id, seq: value.seq });
-    } catch { /* Start a new one. */ }
-    const id = uuid();
-    if (!id) return null;
-    sessionRecord = { id, seq: 0 };
-    tab.set(KEYS.session, JSON.stringify(sessionRecord));
+    const t = wall();
+    const fresh = value => isPlain(value) && typeof value.id === 'string' && UUID_RE.test(value.id) && Number.isInteger(value.seq)
+      && value.seq >= 0 && value.seq < 1000000 && Number.isFinite(value.started) && Number.isFinite(value.last)
+      && t >= value.last && t - value.last < SESSION_IDLE_MS && t - value.started < SESSION_MAX_MS;
+    if (!fresh(sessionRecord)) {
+      sessionRecord = null;
+      try {
+        const value = JSON.parse(tab.get(KEYS.session) ?? 'null');
+        if (fresh(value)) sessionRecord = { id: value.id, seq: value.seq, started: value.started, last: value.last };
+      } catch { /* Start a new one. */ }
+    }
+    if (!sessionRecord) {
+      const id = uuid();
+      if (!id) return null;
+      sessionRecord = { id, seq: 0, started: t, last: t };
+      touch = true;
+    }
+    if (touch) { sessionRecord.last = t; tab.set(KEYS.session, JSON.stringify(sessionRecord)); }
     return sessionRecord;
   }
 
   /** The sequence continues across pages of one tab session with Journeys on; otherwise it is per page. */
   function nextSeq() {
-    const record = session();
+    const record = session(true);
     if (record) {
       if (record.seq >= 1000000) return 0;
       record.seq += 1;
@@ -386,11 +401,11 @@ export function createPulseboard(config, runtime = globalThis) {
     return current[category] === true;
   }
 
-  function enqueue(name, category, item) {
+  function enqueue(name, category, item, sid = null) {
     try {
       const l = lanes[name];
       if (!admit(category) || l.open || requests >= REQUEST_LIMIT || queued() >= QUEUE_LIMIT) { stats.dropped += 1; return false; }
-      l.queue.push({ category, item });
+      l.queue.push({ category, item, sid });
       if (mounted && l.queue.length >= l.batch) flushLane(l, false);
       else schedule(l);
       return true;
@@ -409,18 +424,19 @@ export function createPulseboard(config, runtime = globalThis) {
         referrer: context.referrer, campaign: context.campaign }, counts: items.map(entry => entry.item) });
       return { items, body };
     }
-    const record = session();
-    const head = { v: 1, session: record ? record.id : null, release: cfg.release, context: { device: device() } };
+    const sid = l.queue[0]?.sid ?? null;
+    const head = { v: 1, session: current.journeys ? sid : null, release: cfg.release, context: { device: device() } };
     const items = [];
     let body = '';
     for (const entry of l.queue.slice(0, PRODUCT_BATCH)) {
+      if ((entry.sid ?? null) !== sid) break;
       const candidate = JSON.stringify({ ...head, events: [...items, entry].map(e => e.item) });
       if (byteLength(candidate, runtime) > PRODUCT_BODY_LIMIT) break;
       items.push(entry);
       body = candidate;
     }
     if (!items.length) { l.queue.shift(); stats.dropped += 1; return null; }
-    return { items, body };
+    return { items, body, session: head.session };
   }
 
   function flushLane(l, hide) {
@@ -448,7 +464,9 @@ export function createPulseboard(config, runtime = globalThis) {
     requests += 1;
     let controller = null;
     try { const AC = runtime.AbortController ?? globalThis.AbortController; if (typeof AC === 'function') controller = new AC(); } catch { controller = null; }
-    const flight = { categories: new Set(batch.items.map(entry => entry.category)), controller, cancelled: false,
+    const categories = new Set(batch.items.map(entry => entry.category));
+    if (batch.session) categories.add('journeys');
+    const flight = { categories, controller, cancelled: false,
       timer: null, bytes: keepalive ? bytes : 0, settled: false, keepalive };
     l.flights.add(flight);
     keepaliveBytes += flight.bytes;
@@ -511,7 +529,7 @@ export function createPulseboard(config, runtime = globalThis) {
   function pageView() {
     let ok = false;
     if (cfg.events.includes('page.view')) ok = count('page.view');
-    if (current.journeys) product('journeys', 'page.view', {});
+    journeyViewPending = !(current.journeys && product('journeys', 'page.view', {}));
     return ok;
   }
 
@@ -528,8 +546,9 @@ export function createPulseboard(config, runtime = globalThis) {
     if (!admit(category)) return false;
     const seq = nextSeq();
     if (!seq) { stats.dropped += 1; return false; }
+    const sid = sessionRecord && current.journeys ? sessionRecord.id : null;
     const ms = Math.min(86400000, Math.max(0, Math.round(now())));
-    return enqueue('product', category, { name, route: productRoute(), seq, ms, props });
+    return enqueue('product', category, { name, route: productRoute(), seq, ms, props }, sid);
   }
 
   function track(name, props) {
@@ -791,7 +810,9 @@ export function createPulseboard(config, runtime = globalThis) {
 
   function decide(choice) {
     const record = { counts: choice.counts === true, diagnostics: choice.diagnostics === true, journeys: choice.journeys === true, decided: true, month: utcMonth() };
-    if (local.set(KEYS.consent, JSON.stringify(record))) { stored = record; memoryChoice = null; }
+    // Under GPC or DNT everything is forced off already: nothing is written, and an earlier stored choice survives.
+    if (blocked()) memoryChoice = record;
+    else if (local.set(KEYS.consent, JSON.stringify(record))) { stored = record; memoryChoice = null; }
     else memoryChoice = record; // Storage refused: the choice holds for this page only.
     refresh();
     // A category that is off leaves no local key behind, even one written before this decision.
@@ -821,6 +842,22 @@ export function createPulseboard(config, runtime = globalThis) {
   const listen = (target, type, fn, options) => {
     try { target.addEventListener(type, fn, options); listeners.push([target, type, fn, options]); } catch { /* Best-effort. */ }
   };
+
+  /** Another tab recorded (or cleared) a choice: re-read it and apply it here, withdrawing whatever it turns off. */
+  function onStorage(event) {
+    try {
+      if (disposed || (event?.key !== KEYS.consent && event?.key !== null)) return;
+      stored = readChoice();
+      memoryChoice = null;
+      refresh();
+      const choice = stored;
+      if (choice?.decided) {
+        if (!choice.counts) { local.remove(KEYS.visit); tab.remove(KEYS.visit); visitAnswer = null; }
+        if (!choice.journeys) { tab.remove(KEYS.session); sessionRecord = null; }
+        if (ui.bar) collapse();
+      }
+    } catch { /* Never throws. */ }
+  }
 
   function onHide() {
     try { finalizeDiagnostics(); flushAll(true); } catch { /* Never throws. */ }
@@ -859,6 +896,7 @@ export function createPulseboard(config, runtime = globalThis) {
       listen(doc, 'visibilitychange', onVisibility);
       listen(runtime, 'error', onError);
       listen(runtime, 'unhandledrejection', onError);
+      listen(runtime, 'storage', onStorage);
       listen(runtime, 'scroll', measureScroll, { passive: true });
       if (visible()) visibleSince = now();
       if (!blocked()) {

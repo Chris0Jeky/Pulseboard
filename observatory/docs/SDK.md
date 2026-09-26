@@ -93,12 +93,16 @@ permission.
   Until it answers, and whenever it fails, times out (5 s) or is malformed, the visitor is treated as EEA
   and nothing is cached.
 - Global Privacy Control or Do Not Track turns every category off, silently: no bar, no request of any
-  kind, and the pill's switches are disabled with a one-line explanation.
+  kind, and the pill's switches are disabled with a one-line explanation. Nothing is written while the signal
+  is on: Turn all off or `consent.set` apply to the page only, and an earlier stored choice is left intact.
 - The choice is stored in `localStorage` as `pulseboard:consent:v3:<id>` =
   `{counts, diagnostics, journeys, decided, month}` (month of the decision, UTC). A corrupt record counts as
   all-off and shows the bar again. If storage refuses the write, the choice holds for this page only.
+  A choice recorded in another tab (the `storage` event on this key) is applied to every open tab at once,
+  with the same clearing, dropping and aborting as below.
 - Turning a category off clears its keys (counts: the visit marker `pulseboard:visit:<id>` in both
-  storages; journeys: `pulseboard:session:<id>`), drops its queued items and aborts its in-flight requests.
+  storages; journeys: `pulseboard:session:<id>`), drops its queued items and aborts its in-flight requests (any product request
+  carrying a session id counts as Journeys).
 
 ### The bar and the pill
 
@@ -141,8 +145,11 @@ Counts (`v: 3`): `{ v, context: { device, source, visit, scheme, referrer, campa
 Product events (`v: 1`): `{ v, session, release, context: { device }, events: [{ name, route, seq, ms, props }] }`.
 
 - `session` is a random UUID v4 kept in `sessionStorage` for one tab only while Journeys is on; otherwise
-  `null`. `seq` continues across the pages of that tab session (per page without Journeys); `ms` is time
-  since the page loaded.
+  `null`. The stored record is `{id, seq, started, last}`; a new id starts after 30 minutes without an event
+  or 24 hours in total, including in a restored tab. A batch never mixes sessions. `seq` continues across
+  the pages of that tab session (per page without Journeys); `ms` is time since the page loaded. When
+  Journeys turns on after the page loaded (the region hint answers `other`, or the visitor clicks OK), the
+  current route's `page.view` is sent to Journeys once.
 - `web.vital` `{ metric, value, rating }` once per page per metric: FCP and TTFB as soon as known, LCP, CLS
   and INP on the first hide. Ratings use the web.dev thresholds. **INP is an approximation**: the longest
   Event Timing duration of any interaction, not the high-percentile INP definition.
