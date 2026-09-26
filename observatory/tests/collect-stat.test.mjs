@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { openDatabase } from '../src/sqlite.mjs';
 import { projects } from '../src/projects.mjs';
 import { handle, maintain } from '../src/worker.mjs';
-import { validateStatBatch, statAdmission, statCountry, DIMENSIONS } from '../src/stat-contract.mjs';
+import { validateStatBatch, statAdmission, statCountry, DIMENSIONS, DIMENSION_NAMES } from '../src/stat-contract.mjs';
 import { DIMENSION_VALUES } from '../public/desk-usage.mjs';
 
 const ALIBI_ORIGIN = projects.alibi.origin;
@@ -195,12 +195,12 @@ test('the first stat batch of a day is refused when it alone exceeds the daily l
   }
 });
 
-test('migrations are idempotent and readiness tracks version 3', async t => {
+test('migrations are idempotent and readiness tracks version 4', async t => {
   const DB = database(t);
   const ready = await handle(new Request('https://collector.example/readyz'), statEnv(DB));
   assert.equal(ready.status, 200);
-  assert.equal((await ready.json()).schema, 3);
-  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3);
+  assert.equal((await ready.json()).schema, 4);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 4);
   const dimensionColumns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics_dimensions') ORDER BY cid").all()).results.map(r => r.name);
   assert.deepEqual(dimensionColumns, ['project', 'day', 'dimension', 'value', 'n'], 'no timestamp finer than the day');
   const withoutRowid = (await DB.prepare("SELECT sql FROM sqlite_master WHERE name='statistics_dimensions'").first()).sql;
@@ -209,7 +209,8 @@ test('migrations are idempotent and readiness tracks version 3', async t => {
   const columns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics') ORDER BY cid").all()).results.map(r => r.name);
   assert.deepEqual(columns, ['project', 'day', 'event', 'route', 'release', 'n', 'received']);
 
-  // An unmigrated v1 database (no statistics tables, version 1) is not ready.
+  // An unmigrated v1 database (no statistics or product tables, version 1) is not ready.
+  DB.exec('DROP TABLE product_events');
   DB.exec('DROP TABLE statistics_dimensions');
   DB.exec('DROP TABLE statistics');
   DB.exec('UPDATE schema_version SET version=1');
@@ -227,16 +228,26 @@ test('migrations are idempotent and readiness tracks version 3', async t => {
   DB.exec(migration3);
   DB.exec(migration3);
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3);
+  assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 503, 'schema 3 is not ready for a schema 4 Worker');
+  const migration4 = readFileSync(new URL('../migrations/0004-product-events.sql', import.meta.url), 'utf8');
+  DB.exec(migration4);
+  DB.exec(migration4);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 4);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
   assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 200);
   DB.exec(migration);
-  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3,
+  DB.exec(migration3);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 4,
     'an old migration cannot downgrade a newer schema marker');
+  // The documented rollback marker is exact: it only moves 4 to 3.
+  DB.exec('UPDATE schema_version SET version=3 WHERE id=1 AND version=4');
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3);
 });
 
 test('aggregate retention removes old counts without touching in-window counts', async t => {
   const DB = database(t);
   const now = Date.UTC(2026, 8, 25, 12);
+  // Aggregates keep AGGREGATE_RETENTION_DAYS (14) while the old notice is deployed: 2026-09-25 minus 14 days is 2026-09-11.
   for (const statDay of ['2026-09-10', '2026-09-11', '2026-09-12', '2026-09-25']) {
     await DB.prepare('INSERT INTO statistics VALUES(?,?,?,?,?,?,?)')
       .bind('alibi', statDay, 'page.view', 'home', '0.11.6', 1, now).run();
@@ -323,13 +334,19 @@ test('a v2 batch records per-dimension totals, never crossed with events', async
   const context = { device: 'mobile', source: 'github', visit: 'new' };
   assert.equal((await handle(withCountry(statRequest({ v: 2, context, counts: [count(), count('puzzle.completed')] }), 'MD'), statEnv(DB))).status, 202);
   assert.equal((await handle(withCountry(statRequest({ v: 1, counts: [count()] }), 'T1'), statEnv(DB))).status, 202);
-  assert.deepEqual(await dimensionTotals(DB), {
+  const totals = await dimensionTotals(DB), hour = new Date().toISOString().slice(11, 13);
+  // The hour is the receipt hour; both requests may straddle an hour boundary, so only its sum is pinned.
+  assert.equal(Object.entries(totals).filter(([key]) => key.startsWith('hour:')).reduce((sum, [, n]) => sum + n, 0), 3);
+  assert.ok(totals['hour:' + hour] >= 1);
+  assert.deepEqual(Object.fromEntries(Object.entries(totals).filter(([key]) => !key.startsWith('hour:'))), {
     'country:MD': 2, 'country:unknown': 1, 'device:mobile': 2, 'device:unknown': 1,
     'source:github': 2, 'source:unknown': 1, 'visit:new': 2, 'visit:unknown': 1,
+    'region:unknown': 3, 'browser:unknown': 3, 'os:unknown': 3, 'language:unknown': 3,
+    'scheme:unknown': 3, 'referrer:unknown': 3, 'campaign:unknown': 3,
   });
   // The statistics rows carry no dimension, and the dimension rows carry no event.
   const statColumns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics')").all()).results.map(r => r.name);
-  assert.ok(!statColumns.some(name => ['country', 'device', 'source', 'visit', 'dimension'].includes(name)));
+  assert.ok(!statColumns.some(name => [...DIMENSION_NAMES, 'dimension'].includes(name)));
   const reading = await (await handle(new Request('https://desk.test/v1/statistics/alibi?days=1', { headers: { authorization: 'Bearer ' + 'r'.repeat(32) } }),
     { ...statEnv(DB), READ_TOKEN: 'r'.repeat(32) })).json();
   assert.deepEqual(reading.dimensions.country, [{ value: 'MD', n: 2 }, { value: 'unknown', n: 1 }]);
@@ -347,6 +364,7 @@ test('a malformed context refuses the whole batch and writes nothing', async t =
     { v: 2, context: { ...good, source: 'https://news.example/' }, counts: [count()] },
     { v: 1, context: good, counts: [count()] },
     { v: 3, context: good, counts: [count()] },
+    { v: 4, context: good, counts: [count()] },
   ]) assert.equal((await handle(statRequest(body), statEnv(DB))).status, 400, JSON.stringify(body));
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM statistics_dimensions').first()).n, 0);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM statistics').first()).n, 0);

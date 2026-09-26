@@ -36,3 +36,17 @@ export function collectionAdmission(env = {}, projects = registry) {
   return Object.freeze({ enabled, valid,
     configured: frozen(configured), admitted: frozen(admitted), invalid: frozen(invalid) });
 }
+
+/** A per-channel producer switch is an exact comma list of registered public ids: no spaces, case changes, empty
+ *  entries or duplicates. Any malformed entry disables the whole switch, so a typo never widens admission.
+ *  Shared by COLLECT_STAT_PROJECTS (aggregate counts) and COLLECT_PRODUCT_PROJECTS (product events). */
+export function exactProjectList(raw, projects = registry) {
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_POLICY_BYTES) return [];
+  const ids = raw.split(',');
+  if (ids.length > MAX_PROJECTS || new Set(ids).size !== ids.length) return [];
+  if (!ids.every(id => /^[a-z0-9-]{1,64}$/.test(id) && Object.hasOwn(projects, id) && projects[id]?.origin)) return [];
+  return ids;
+}
+/** Product events (USAGE_PLAN.md section 2). Independent of COLLECT_PROJECTS and COLLECT_STAT_PROJECTS;
+ *  COLLECT_ENABLED and a valid session policy still gate it. */
+export const productAdmission = (env = {}, projects = registry) => exactProjectList(env.COLLECT_PRODUCT_PROJECTS, projects);

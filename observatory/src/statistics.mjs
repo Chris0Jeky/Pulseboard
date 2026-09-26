@@ -1,10 +1,15 @@
 /** Aggregate-only statistics reader for one project. It never reads the legacy session events table. */
-import { WINDOWS } from './portfolio.mjs';
 import { DIMENSION_NAMES } from './stat-contract.mjs';
+/** Statistics and product reads (USAGE_PLAN.md section 4); /v1/portfolio keeps its own 1, 7 and 14. */
+export const READ_WINDOWS = Object.freeze([1, 7, 14, 30, 90]);
+/** Daily aggregates (statistics, statistics_dimensions) keep this many UTC dates including today. It stays 14 while any
+ *  deployed host still shows the old notice promising 14-day aggregates, and becomes 400 (USAGE_PLAN.md v2) once the host
+ *  wave (#105) has replaced that notice everywhere. A 30- or 90-day read window reads only what retention has kept. */
+export const AGGREGATE_RETENTION_DAYS = 14;
 
 export async function readStatistics(db, { project = 'alibi', days = 7, now = Date.now(), admitted = false } = {}) {
   if (typeof project !== 'string' || !/^[a-z0-9-]{1,64}$/.test(project)) throw new RangeError('Unsupported project');
-  if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < 0) throw new RangeError('Unsupported window');
+  if (!READ_WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < 0) throw new RangeError('Unsupported window');
   const endDay = new Date(now).toISOString().slice(0, 10);
   const startDay = new Date(now - (days - 1) * 86400000).toISOString().slice(0, 10);
   const grouped = (columns, order = columns) => db.prepare(`SELECT ${columns},SUM(n) AS n FROM statistics
@@ -15,7 +20,7 @@ export async function readStatistics(db, { project = 'alibi', days = 7, now = Da
       WHERE project=? AND day>=? AND day<=? GROUP BY dimension,value ORDER BY dimension,n DESC,value`).bind(project, startDay, endDay),
   ])).map(result => result.results);
   const total = events.reduce((sum, row) => sum + Number(row.n), 0);
-  // Counts admitted before schema 3 have no dimension rows; they are shown as 'unknown', never dropped or guessed.
+  // Counts admitted before a dimension was recorded (schema 3 or 4) have no row for it; they are shown as 'unknown', never dropped or guessed.
   const dimensions = Object.fromEntries(DIMENSION_NAMES.map(name => {
     const rows = dimensionRows.filter(row => row.dimension === name).map(row => ({ value: row.value, n: Number(row.n) }));
     const missing = total - rows.reduce((sum, row) => sum + row.n, 0);
@@ -24,7 +29,7 @@ export async function readStatistics(db, { project = 'alibi', days = 7, now = Da
     return [name, rows];
   }));
   return {
-    schema: 'pulseboard.statistics/3', project, generatedAt: now,
+    schema: 'pulseboard.statistics/4', project, generatedAt: now,
     window: { startDay, endDay, days, timezone: 'UTC', partialToday: true },
     collectionAdmitted: admitted, observationStatus: events.length ? 'observed' : 'no-admitted-counts',
     population: 'aggregate browser counts',
@@ -34,8 +39,11 @@ export async function readStatistics(db, { project = 'alibi', days = 7, now = Da
       'Daily buckets are UTC calendar days and today is partial.',
       'These counts are separate from the legacy opt-in portfolio and must not be added to its journey or flow metrics.',
       'When collection is not admitted, a zero is not evidence of no traffic.',
+      `Aggregates are kept for ${AGGREGATE_RETENTION_DAYS} UTC days; days older than that are deleted, so a longer window shows only what is kept.`,
       'No paired flows, unique visitors, retention, or conversion rates can be measured from these counts.',
-      'Country, device, source and visit are separate totals, never crossed with each other or with events; counts from before they were recorded read unknown.',
+      'Every dimension is a separate total, never crossed with another dimension or with events; counts from before it was recorded read unknown.',
+      'Browser and operating system are classified from the User-Agent on the server, which is not kept; language is the first Accept-Language tag; hour is the UTC hour the collector received the batch.',
+      'Region is the first-level subdivision Cloudflare reports and reads unknown where the edge gives none.',
     ],
     total,
     events: events.map(row => ({ event: row.event, n: Number(row.n) })),

@@ -68,6 +68,8 @@ export async function startLocalRunner({
   READ_TOKEN,
   COLLECT_ENABLED = 'false',
   COLLECT_PROJECTS = '',
+  COLLECT_STAT_PROJECTS = '',
+  COLLECT_PRODUCT_PROJECTS = '',
   ASSETS = localAssets(),
   GITHUB_EVIDENCE = null,
   requestHandler = handle,
@@ -76,7 +78,8 @@ export async function startLocalRunner({
   if (!DB) throw new TypeError('DB is required');
   if (typeof requestHandler !== 'function') throw new TypeError('requestHandler is required');
 
-  const env = { DB, READ_TOKEN, COLLECT_ENABLED, COLLECT_PROJECTS, ASSETS, ...(GITHUB_EVIDENCE ? { GITHUB_EVIDENCE } : {}) };
+  // The per-channel switches are passed through verbatim; the handler applies the same exact-list rules as the Worker.
+  const env = { DB, READ_TOKEN, COLLECT_ENABLED, COLLECT_PROJECTS, COLLECT_STAT_PROJECTS, COLLECT_PRODUCT_PROJECTS, ASSETS, ...(GITHUB_EVIDENCE ? { GITHUB_EVIDENCE } : {}) };
   let origin = null;
   const server = createServer(SERVER_OPTIONS, async (req, res) => {
     try {
@@ -160,6 +163,8 @@ export async function main(envVars = process.env, logger = console) {
       READ_TOKEN: token,
       COLLECT_ENABLED: collectEnabled ? 'true' : 'false',
       COLLECT_PROJECTS: collectProjects,
+      COLLECT_STAT_PROJECTS: envVars.COLLECT_STAT_PROJECTS || '',
+      COLLECT_PRODUCT_PROJECTS: envVars.COLLECT_PRODUCT_PROJECTS || '',
       GITHUB_EVIDENCE,
     });
     for (const line of runnerBanner({ origin: runner.origin, token, supplied, collectEnabled, collectProjects, githubEvidence: !!GITHUB_EVIDENCE })) logger.log(line);

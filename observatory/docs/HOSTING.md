@@ -43,8 +43,16 @@ before deploying a Worker that requires schema 2. For schema 3 (per-dimension to
 `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0003-statistics-dimensions.sql`
 before deploying; it only adds `statistics_dimensions`. Rolling back to a schema-2 Worker needs
 `UPDATE schema_version SET version=2 WHERE id=1 AND version=3` after the deploy, and the table stays. The migration creates only an
-aggregate table and preserves historical session event rows. Confirm `/readyz`
-returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103). The `/v1/collect-stat/<id>` route is
+aggregate table and preserves historical session event rows. For schema 4 (product events, collector v4), run
+`npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0004-product-events.sql`
+before deploying; it only adds `product_events` and its three indexes. Rolling back to a schema-3
+Worker needs `UPDATE schema_version SET version=3 WHERE id=1 AND version=4` after the deploy; the
+table stays, and nothing writes to it while `COLLECT_PRODUCT_PROJECTS` is empty (as committed).
+Aggregate retention stays 14 days (`AGGREGATE_RETENTION_DAYS` in `src/statistics.mjs`) until no deployed
+host shows the old 14-day statistics notice; raising it to 400 is its own reviewed change. Deploy the schema-4 Worker only together with a Desk that accepts
+`pulseboard.statistics/4`: the Desk and the Worker ship from the same build, and a Desk that still
+validates `/3` refuses the Usage read. Confirm `/readyz`
+returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103, 4 since collector v4). The `/v1/collect-stat/<id>` route is
 disabled for every id not listed in `COLLECT_STAT_PROJECTS` (an exact comma list since #102; it was exactly `alibi` before). Production now
 admits that project following issue #89's browser, notice and opt-out checks;
 the deployment and first accepted payload are recorded below. Alibi's client

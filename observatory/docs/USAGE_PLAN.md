@@ -136,8 +136,9 @@ This is the "plug in anything" channel: diagnostics and journeys both travel her
   safety net, not the guarantee. Any string that looks like an e-mail
   address becomes `[email]`, an IPv4 or IPv6 address `[ip]`, and a URL (`scheme://…`) is cut to
   its host. The stored event records how many keys it lost in `redacted`.
-- 1–20 events per batch, 16 KiB per request, and a separate daily budget per project
-  (`productLimit`, default 20,000 events).
+- 1–20 events per batch, 16 KiB per request, a daily budget per project (`productLimit`, default
+  1,000 events) and a global daily budget across all projects (1,500 events, budget key `*:product`),
+  sized so 90 days of product events fit D1's 500 MB free-plan cap (`DESK_ARCHITECTURE.md`).
 - The server stores `(project, received, day, session, seq, name, route, release, ms, props,
   redacted, country, region, browser, os, device)`; `device` comes from the batch `context`, the rest
   from the request as for counts. The product budget reuses the `budget` table under the key

@@ -5,7 +5,6 @@ import { openDatabase } from '../src/sqlite.mjs';
 import { readStatistics } from '../src/statistics.mjs';
 import { assets } from '../src/assets.mjs';
 import { requestStatistics, assertStatistics, usageReading, usageQuestions, makeStatisticsDemo, foldTop, hourSeries, STATISTICS_SCHEMA, STATISTICS_LEGACY_SCHEMA, USAGE_DIMENSIONS } from '../public/desk-usage.mjs';
-
 const now = Date.parse('2026-09-25T12:00:00Z');
 async function reader(t, rows) {
   const db = openDatabase();
