@@ -1,4 +1,5 @@
 import { projects as registry } from './projects.mjs';
+import { VOICE_REGISTRY } from './surveys.mjs';
 
 const MAX_POLICY_BYTES = 4096;
 const MAX_PROJECTS = 64;
@@ -39,7 +40,7 @@ export function collectionAdmission(env = {}, projects = registry) {
 
 /** A per-channel producer switch is an exact comma list of registered public ids: no spaces, case changes, empty
  *  entries or duplicates. Any malformed entry disables the whole switch, so a typo never widens admission.
- *  Shared by COLLECT_STAT_PROJECTS (aggregate counts) and COLLECT_PRODUCT_PROJECTS (product events). */
+ *  Shared by COLLECT_STAT_PROJECTS (aggregate counts), COLLECT_PRODUCT_PROJECTS (product events) and COLLECT_VOICE_PROJECTS. */
 export function exactProjectList(raw, projects = registry) {
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_POLICY_BYTES) return [];
   const ids = raw.split(',');
@@ -50,3 +51,7 @@ export function exactProjectList(raw, projects = registry) {
 /** Product events (USAGE_PLAN.md section 2). Independent of COLLECT_PROJECTS and COLLECT_STAT_PROJECTS;
  *  COLLECT_ENABLED and a valid session policy still gate it. */
 export const productAdmission = (env = {}, projects = registry) => exactProjectList(env.COLLECT_PRODUCT_PROJECTS, projects);
+/** Voices: player feedback, surveys and ratings (docs/VOICES.md). Same exact-list rules; an id must also have a voice
+ *  registry entry in src/surveys.mjs, or the whole list fails closed. COLLECT_ENABLED and a valid session policy gate it. */
+export const voiceAdmission = (env = {}, projects = registry, voices = VOICE_REGISTRY) => exactProjectList(env.COLLECT_VOICE_PROJECTS,
+  Object.fromEntries(Object.entries(projects).filter(([id]) => Object.hasOwn(voices, id))));

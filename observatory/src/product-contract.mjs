@@ -38,6 +38,8 @@ const IPV6_V4 = new RegExp(`(?<![0-9a-z:])(?:[0-9a-f]{0,4}:){2,6}${IPV4_TEXT}(?!
 // Full eight-group form, or a compressed form with `::` and at least one group. A clock time such as 12:30:45 has neither.
 const H = '[0-9a-f]{1,4}';
 const IPV6 = new RegExp(`(?<![0-9a-z:])(?:(?:${H}:){7}${H}|(?:${H}:){1,7}:(?:${H}(?::${H}){0,6})?|::${H}(?::${H}){0,6})(?![0-9a-z:])`, 'gi');
+/** Shared with the Voices text redactor (src/voice-contract.mjs), which counts each replacement. All are global regexes. */
+export const ADDRESS_PATTERNS = Object.freeze({ EMAIL, IPV6_V4, IPV4, IPV6 });
 /** Free text keeps its words but loses links (cut to the host), e-mail addresses and IP addresses. */
 export const scrubText = value => value.replace(URL_TEXT, (_, bracketed, host) => bracketed ?? host).replace(EMAIL, '[email]')
   .replace(IPV6_V4, '[ip]').replace(IPV4, '[ip]').replace(IPV6, '[ip]');
