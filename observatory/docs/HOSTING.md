@@ -282,3 +282,9 @@ owner actions; no agent holds either.
   `a3b48da`) and deployed to `alibi-after-hours-preview` as Worker version `3d83bc77…`: the served
   `assets/observatory.1e4e10824d07.js` lists `puzzle.failed` and `0.11.5`, and 291/291 public files match the
   build. No consented production journey event has been observed yet.
+
+### Usage view deployed, 2026-09-26
+
+- #100 merged as `2bd2bcd`: statistics reader schema 2 (route, release and per-day event totals) and the Desk's Usage view.
+- Production Worker version `5bb0321e-a80a-47ab-bba1-06cd57318fa2` deployed from `2bd2bcd` on Kraspyon. Bindings and schema are unchanged (`COLLECT_ENABLED` `"true"`, `COLLECT_PROJECTS` and `COLLECT_STAT_PROJECTS` `"alibi"`, D1 schema 2). `/healthz` and `/readyz` return 200, `/desk-usage.mjs` 200, and `/v1/statistics/alibi` 401 unauthenticated. Rollback goes to `51871cc3…`.
+- Not verified: an authenticated hosted read. This machine's DPAPI token copy predates the 2026-09-23 rotation (HUMAN_TODO q-18).
