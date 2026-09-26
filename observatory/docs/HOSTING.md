@@ -47,7 +47,8 @@ aggregate table and preserves historical session event rows. For schema 4 (produ
 `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0004-product-events.sql`
 before deploying; it only adds `product_events` and its three indexes. Rolling back to a schema-3
 Worker needs `UPDATE schema_version SET version=3 WHERE id=1 AND version=4` after the deploy; the
-table stays, and nothing writes to it while `COLLECT_PRODUCT_PROJECTS` is empty (as committed).
+table stays, and nothing writes to it while `COLLECT_PRODUCT_PROJECTS` is empty (it was empty at schema 4's first deploy;
+`wrangler.jsonc` holds the current list).
 Aggregate retention stays 14 days (`AGGREGATE_RETENTION_DAYS` in `src/statistics.mjs`) until no deployed
 host shows the old 14-day statistics notice; raising it to 400 is its own reviewed change. Deploy the schema-4 Worker only together with a Desk that accepts
 `pulseboard.statistics/4`: the Desk and the Worker ship from the same build, and a Desk that still
@@ -344,8 +345,11 @@ owner actions; no agent holds either.
   registering commit with `node adapters/build-sdk.mjs alibi <root> observatory/pulseboard.js 0.14.1`,
   the artifact's SHA-256 is `902e40ecc209bcf88dc9d8faec2c8002791a5d1f677bdadcdb3bc250144d3446`. That
   matches the lock in #391.
-- Production `COLLECT_PRODUCT_PROJECTS` is `portfolio,alibi` (owner decisions q-13, q-20, q-21). The
-  preview environment still admits none.
+- Production `COLLECT_PRODUCT_PROJECTS` becomes `portfolio,alibi,commitatlas,idleharbor` and
+  `COLLECT_STAT_PROJECTS` becomes `alibi,portfolio,commitatlas,idleharbor` (owner decisions q-13, q-20, q-21).
+  CommitAtlas and IdleHarbor are admitted because their SDK 3.1 installs merged and published
+  (Chris0Jeky/CommitAtlas#247, deployed by its Deploy workflow; Chris0Jeky/IdleHarbor#88 on GitHub Pages).
+  The preview environment still admits none.
 - Neither change is live until the Worker is deployed from a `main` that contains it. Deploy before
   Alibi 0.14.1 is published. Until then, the deployed collector rejects every 0.14.1 batch as an
   unregistered release, and it answers 503 to Alibi product events.

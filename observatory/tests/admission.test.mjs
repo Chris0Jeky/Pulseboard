@@ -52,6 +52,15 @@ test('every committed product allowlist admits exactly the ids it lists, and pro
   assert.deepEqual(lists, ['portfolio,alibi,commitatlas,idleharbor', ''], 'production admits the shipped SDK v3 hosts (q-13, q-20, q-21); preview admits none');
 });
 
+test('every committed statistics allowlist parses exactly, so a typo can never silently admit nothing', async () => {
+  const { statAdmission } = await import('../src/stat-contract.mjs');
+  const source = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const lists = [...source.matchAll(/"COLLECT_STAT_PROJECTS"\s*:\s*"([^"]*)"/g)].map(match => match[1]);
+  assert.equal(lists.length, 2);
+  for (const value of lists) assert.deepEqual(statAdmission({ COLLECT_STAT_PROJECTS: value }), value.split(','), value);
+  assert.deepEqual(lists, ['alibi,portfolio,commitatlas,idleharbor', 'alibi'], 'production counts the shipped hosts; preview counts Alibi');
+});
+
 test('readiness exposes admission and rejects an invalid allowlist', async t => {
   const DB = database(t);
   const good = await handle(new Request('https://desk.test/readyz'), { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi' });
