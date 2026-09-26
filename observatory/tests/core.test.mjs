@@ -108,7 +108,7 @@ test('funnel counts ordered sessions, not ratios of independent event totals', w
 }));
 test('retention removes old rows and keeps current records', withDB(async DB => {
   await handle(request([event()]), env(DB)); const now = Date.now();
-  await DB.prepare('UPDATE events SET received=?').bind(now - 91 * 86400000).run();
+  await DB.prepare('UPDATE events SET received=?').bind(now - 15 * 86400000).run();
   await handle(request([event()]), env(DB)); await maintain(env(DB), now);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
 }));

@@ -8,8 +8,8 @@
   // Alibi's separate aggregate route is admitted only after its reviewed browser notice and transport are ready.
   // COLLECT_PRODUCT_PROJECTS admits /v1/product/<id> (USAGE_PLAN.md section 2); it stays empty until the owner rolls a host out.
   "vars": { "COLLECT_ENABLED": "true", "COLLECT_PROJECTS": "alibi", "COLLECT_STAT_PROJECTS": "alibi", "COLLECT_PRODUCT_PROJECTS": "" },
-  // Each tick runs probeAll() over the fixed targets in src/projects.mjs and then maintain() (90-day session and product
-  // events, 400-day aggregates, 14-day budget, 30-day probe history). COLLECT_ENABLED gates browser admission only, never probing.
+  // Each tick runs probeAll() over the fixed targets in src/projects.mjs and then maintain() (90-day product
+  // events, 14-day session events and budget, 400-day aggregates, 30-day probe history). COLLECT_ENABLED gates browser admission only, never probing.
   "triggers": { "crons": ["*/15 * * * *"] },
   "d1_databases": [{ "binding": "DB", "database_name": "pulseboard-observatory", "database_id": "9dfae806-0948-4fa8-9cd6-ab14fa48728e" }],
   // Same-account Workers cannot be fetched through their public hostname from a Worker (error 1042); src/projects.mjs

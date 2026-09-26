@@ -66,8 +66,9 @@ session or receipt identifier is returned. Projects without data remain present.
 
 The reader performs nine SELECTs in one D1-compatible transactional batch. Its
 range is `[start, end)`: the lower bound is included, the upper bound and future
-rows are excluded. Daily buckets use UTC; both edge days may be partial. Session and product
-event retention is 90 days, aggregates 400 days, budget rows 14 days and probe history 30 days
+rows are excluded. Daily buckets use UTC; both edge days may be partial. Product
+event retention is 90 days, aggregates 400 days, legacy session events and budget rows 14 days (the
+deployed opt-in notice promises 14 days) and probe history 30 days
 (collector v4, `USAGE_PLAN.md`). Counts are admitted events,
 not offered traffic or verified people. The contract bounds possible groups;
 SQL still scans the selected window. This is not a high-volume analytics engine.

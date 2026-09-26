@@ -338,10 +338,11 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
   }
 }
 export async function maintain(env, now = Date.now()) {
-  // Detailed rows (session and product events) are kept 90 days, daily aggregates 400 (USAGE_PLAN.md "Consent categories").
+  // Product events are kept 90 days and daily aggregates 400 (USAGE_PLAN.md "Consent categories"). Legacy session events keep
+  // 14 days: the deployed opt-in embed tells people "Raw events expire after 14 days" (adapters/embed.mjs).
   const dayBefore = days => new Date(now - days * 86400000).toISOString().slice(0, 10);
   await env.DB.batch([
-    env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 90 * 86400000),
+    env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 14 * 86400000),
     env.DB.prepare('DELETE FROM product_events WHERE day<=?').bind(dayBefore(90)),
     env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(dayBefore(400)),
     env.DB.prepare('DELETE FROM statistics_dimensions WHERE day<=?').bind(dayBefore(400)),

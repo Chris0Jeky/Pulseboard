@@ -293,11 +293,12 @@ test('the raw events read is newest first, filtered, limited and authenticated',
   await assert.rejects(readProductEvents(DB, { project: 'alibi', now: NOW, name: 'Bad' }), RangeError);
 });
 
-test('retention keeps 90 days of detailed rows and 400 of aggregates', async t => {
+test('retention keeps 90 days of product events, 14 of legacy session events and 400 of aggregates', async t => {
   const DB = database(t), now = Date.UTC(2026, 8, 25, 12);
   await seed(DB, [{ name: 'old', received: now - 90 * DAY }, { name: 'kept', received: now - 89 * DAY }, { name: 'new', received: now }]);
   const legacy = (id, received) => DB.prepare('INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?)').bind('alibi', id, received, 's', 1, 'page.view', 'home', 'unattributed', null).run();
-  await legacy('old', now - 91 * DAY); await legacy('kept', now - 89 * DAY);
+  // Legacy session events keep the 14 days their deployed notice promises.
+  await legacy('old', now - 15 * DAY); await legacy('kept', now - 13 * DAY);
   await maintain({ DB }, now);
   assert.deepEqual((await DB.prepare('SELECT name FROM product_events ORDER BY received').all()).results.map(r => r.name), ['kept', 'new']);
   assert.deepEqual((await DB.prepare('SELECT id FROM events').all()).results.map(r => r.id), ['kept']);
