@@ -292,3 +292,11 @@ owner actions; no agent holds either.
 - Production Worker version `5bb0321e-a80a-47ab-bba1-06cd57318fa2` deployed from `2bd2bcd` on Kraspyon. Bindings and schema are unchanged (`COLLECT_ENABLED` `"true"`, `COLLECT_PROJECTS` and `COLLECT_STAT_PROJECTS` `"alibi"`, D1 schema 2). `/healthz` and `/readyz` return 200, `/desk-usage.mjs` 200, and `/v1/statistics/alibi` 401 unauthenticated. Rollback goes to `51871cc3…`.
 - Not verified: an authenticated hosted read. This machine's DPAPI token copy predates the 2026-09-23 rotation (HUMAN_TODO q-18).
 - #110 merged as `934f29f` (per-project statistics routes; statistics admission separated from `COLLECT_PROJECTS`) and deployed as Worker version `bffba8a7-d066-46a8-887a-bf1c916f2648`. Bindings are unchanged. `/readyz` returns 200 with `"statistics":{"configured":true,"admitted":["alibi"]}`, and `/v1/statistics/alibi` and `/v1/statistics/mdviewer` both return 401 unauthenticated. Rollback goes to `5bb0321e…`.
+
+### Schema 3 dimension gate on preview, 2026-09-26 (#103)
+
+- Scratch D1 `pulseboard-observatory-scratch` went from schema 2 to 3 with `migrations/0002-alibi-statistics.sql` (no-op) and then `0003-statistics-dimensions.sql`.
+- Preview Worker `a50d8201-df7a-4b2e-a2f7-456988df34b1` from `feat/usage-dimensions`. `/readyz` returned 200, schema 3.
+- Alibi-origin requests: a v2 batch with context `desktop/direct/new` and two counts returned 202; a v1 batch with one count (the live embed's shape) returned 202; a v2 batch with `device: phone` returned 400.
+- Scratch rows afterwards: `country GB 3`, taken from Cloudflare's edge country with no IP read; `device desktop 2 / unknown 1`, `source direct 2 / unknown 1`, `visit new 2 / unknown 1`. Every dimension sums to the three admitted counts.
+- The preview Worker was deleted afterwards (`/healthz` 404). Production D1 is not migrated yet; that happens at deploy time, after merge.
