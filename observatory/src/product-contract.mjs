@@ -1,7 +1,7 @@
 /** Product-event admission contract `pulseboard.product-batch/1` (USAGE_PLAN.md section 2).
  * Body is exactly { v: 1, session: <uuid v4> | null, release, context: { device }, events: [1..20] } and each event
  * exactly { name, route, seq, ms } plus an optional bounded `props` object. Shape and size are closed; property
- * content is open, so personal keys and e-mail-looking strings are redacted on the server before storage.
+ * content is open, so personal keys, e-mail and IP addresses and URL paths are redacted on the server before storage.
  * Redaction is never a rejection: a batch that only needed redacting is admitted and records what it lost. */
 export const PRODUCT_VERSION = 1;
 export const PRODUCT_MAX_BATCH = 20;
@@ -20,8 +20,19 @@ export const PERSONAL_KEYS = Object.freeze(new Set(['email', 'emailaddress', 'pa
   'mobile', 'token', 'accesstoken', 'refreshtoken', 'secret', 'apikey', 'ip', 'ipaddress', 'address', 'streetaddress', 'postcode',
   'zipcode', 'ssn', 'iban', 'cardnumber', 'cvv', 'dob', 'dateofbirth', 'firstname', 'lastname', 'fullname', 'username',
   // Added after the plan review: names a product might hold for a person. A bare `name` stays allowed (puzzle names).
-  'nickname', 'displayname', 'player', 'playername', 'user', 'handle', 'realname', 'surname', 'givenname']));
+  'nickname', 'displayname', 'player', 'playername', 'user', 'handle', 'realname', 'surname', 'givenname',
+  // Added after the Codex review of the plan: identifiers, addresses and links.
+  'userid', 'uid', 'clientip', 'ipaddr', 'remoteaddr', 'url', 'href']));
 const EMAIL = /[^\s@<>()[\]",;:]+@[^\s@<>()[\]",;:]+\.[A-Za-z]{2,}/g;
+/** `scheme://[user@]host[:port]/path?query#fragment` keeps only the host. */
+const URL_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/(?:[^\s/?#@]*@)?(?:\[([0-9a-f:.]+)\]|([^\s/?#:[\]]+))[^\s]*/gi;
+const OCTET = '(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+const IPV4 = new RegExp(`(?<![\\d.])(?:${OCTET}\\.){3}${OCTET}(?![\\d.])`, 'g');
+// Full eight-group form, or a compressed form with `::` and at least one group. A clock time such as 12:30:45 has neither.
+const H = '[0-9a-f]{1,4}';
+const IPV6 = new RegExp(`(?<![0-9a-z:])(?:(?:${H}:){7}${H}|(?:${H}:){1,7}:(?:${H}(?::${H}){0,6})?|::${H}(?::${H}){0,6})(?![0-9a-z:])`, 'gi');
+/** Free text keeps its words but loses links (cut to the host), e-mail addresses and IP addresses. */
+export const scrubText = value => value.replace(URL_TEXT, (_, bracketed, host) => bracketed ?? host).replace(EMAIL, '[email]').replace(IPV6, '[ip]').replace(IPV4, '[ip]');
 const plain = value => !!value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 const exactKeys = (value, required, optional = []) => {
   const keys = Object.keys(value);
@@ -44,12 +55,13 @@ export function validateProps(props) {
   return new TextEncoder().encode(JSON.stringify(props)).byteLength <= PROPS_BOUNDS.bytes;
 }
 export const personalKey = key => PERSONAL_KEYS.has(key.toLowerCase().replace(/[_.-]/g, ''));
-/** Returns { props, redacted }: personal keys removed at every depth (counted), e-mail-looking text replaced by `[email]`.
+/** Returns { props, redacted }: personal keys removed at every depth (counted); in strings, e-mail-looking text becomes
+ *  `[email]`, IPv4 and IPv6 addresses `[ip]`, and `scheme://` URLs their host.
  *  Object.fromEntries defines own properties, so a `__proto__` key stays data and never reaches a prototype. */
 export function redactProps(props) {
   let redacted = 0;
   const walk = value => {
-    if (typeof value === 'string') return value.replace(EMAIL, '[email]');
+    if (typeof value === 'string') return scrubText(value);
     if (Array.isArray(value)) return value.map(walk);
     if (plain(value)) return Object.fromEntries(Object.entries(value).filter(([key]) => {
       if (!personalKey(key)) return true;

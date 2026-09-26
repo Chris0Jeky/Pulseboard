@@ -89,9 +89,10 @@ requests count repeatedly because aggregate-only payloads have no dedupe key.
 `null` for Diagnostics-only batches. `props` is open JSON bounded to depth 4, 32 keys per object, keys
 `^[A-Za-z0-9_.-]{1,48}$`, strings of 256 characters, arrays of 32 items, finite numbers and 2,048
 serialized bytes; a batch outside those bounds is refused whole. Personal keys (the plan's list plus
-nickname, display name, player, user, handle and name-part keys; a bare `name` stays) are removed at
-every depth and counted in `redacted`, and e-mail-looking text becomes `[email]`: redaction never
-rejects. Admission needs `COLLECT_ENABLED`, a valid session policy and the id in
+nickname, display name, player, user, handle and name-part keys, user and client ids, IP address
+keys, `url` and `href`; a bare `name` stays) are removed at every depth and counted in `redacted`. In
+strings, e-mail-looking text becomes `[email]`, IPv4 and IPv6 addresses become `[ip]`, and `scheme://`
+URLs are cut to their host. Redaction never rejects. `page.view` is an ordinary product name. Admission needs `COLLECT_ENABLED`, a valid session policy and the id in
 `COLLECT_PRODUCT_PROJECTS` (the same exact-list parser as `COLLECT_STAT_PROJECTS`, not `COLLECT_PROJECTS`
 membership), the registered origin, `application/json` and 16 KiB. Its daily budget is its own row
 `<id>:product` in `budget`, limited by the registry's `productLimit` (20,000). Rows go to

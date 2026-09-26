@@ -116,6 +116,22 @@ test('personal keys and e-mail-looking strings are redacted, never rejected', as
   assert.deepEqual(redactProps({ apiKey: 1, 'ip-address': 2, ZIP_CODE: 3, keep: 'a@b' }), { props: { keep: 'a@b' }, redacted: 3 });
 });
 
+test('identifier and link keys are removed; IP addresses and URLs in text are reduced', async t => {
+  const DB = database(t);
+  const props = { userId: 1, UID: 'u', client_ip: 'x', ipAddr: 'x', remote_addr: 'x', URL: 'x', href: 'x', kind: 'TypeError',
+    message: 'fetch https://user:pw@api.example.com:8443/v1/users/42?token=abc failed from 203.0.113.7 via 2001:db8::7 at 12:30:45',
+    source: 'app.min.js', list: ['see http://[::1]:3000/admin', 'fe80:0000:0000:0000:0204:61ff:fe9d:f156', 'v 0.13.0', 'std::vector'] };
+  assert.equal((await handle(post(batch({ events: [event({ name: 'js.error', props })] })), env(DB))).status, 202);
+  const [row] = await rows(DB);
+  assert.equal(row.redacted, 7);
+  assert.deepEqual(JSON.parse(row.props), { kind: 'TypeError', message: 'fetch api.example.com failed from [ip] via [ip] at 12:30:45',
+    source: 'app.min.js', list: ['see [ip]', '[ip]', 'v 0.13.0', 'std::vector'] });
+  assert.ok(!row.props.includes('users/42') && !row.props.includes('token=abc'));
+  // page.view is an ordinary product name.
+  assert.equal((await handle(post(batch({ events: [event({ name: 'page.view', route: 'home', props: { from: 'https://www.search.example/q?x=1' } })] })), env(DB))).status, 202);
+  assert.equal((await rows(DB))[1].props, '{"from":"www.search.example"}');
+});
+
 test('origin, id, method, media type, size and admission are checked in order with CORS after the origin', async t => {
   const DB = database(t);
   assert.equal((await handle(post(batch(), { origin: 'https://evil.test' }), env(DB))).status, 403);
