@@ -24,6 +24,15 @@ Changed evidence resurfaces because review keys include an evidence fingerprint.
 This is not a shared incident-management system. Clear the site's local storage
 to reset these preferences; neither tokens nor snapshots are stored there.
 
+The **Usage** view (`5`) shows how Alibi is used: page views, puzzle starts,
+completions, hints, errors, a day-by-day chart, and route, event and release mixes.
+It reads the aggregate statistics endpoint only while the view is open, so the
+30-second portfolio poll costs one extra read per refresh on this view and none
+elsewhere. Its "questions worth asking" are leads computed from independent
+counts, never per-player rates. Its coverage table shows, for every registered
+site, what is measured today; a site marked "not measured" needs an owner decision
+(notice review plus a host adapter), not a code change.
+
 Prepare a field note or a task handoff. Read the exact file, acknowledge the
 sharing boundary, then download. No GitHub issue, Taskdeck card or agent action is
 created automatically. An agent receiving a handoff must review scope, validate
@@ -31,7 +40,7 @@ its evidence against current state and propose work before applying anything.
 
 ## Keyboard and connection behaviour
 
-`Ctrl/Cmd+K` opens the command palette. `1` through `4` switch views outside text
+`Ctrl/Cmd+K` opens the command palette. `1` through `5` switch views outside text
 inputs and dialogs. `/` focuses search. Escape closes the active native dialog.
 The density button switches between comfortable and compact spacing.
 
