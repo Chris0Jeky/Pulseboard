@@ -102,12 +102,12 @@ async def run(args):
         await page.keyboard.press('Escape')
         results.append('demo, search, evidence drawer and synthetic GitHub notebook')
         await page.locator('[data-view=releases]').click()
-        await expect(page.locator('#page-title')).to_have_text('Release lab.')
+        await expect(page.locator('#page-title')).to_have_text('Releases')
         await expect(page.locator('#view')).to_contain_text('percentage points')
         await page.locator('#release-baseline').select_option('0.6.1')
         await expect(page.locator('#view')).to_contain_text('Choose two different')
         await page.locator('[data-view=overview]').click()
-        await expect(page.locator('#page-title')).to_have_text('The desk.')
+        await expect(page.locator('#page-title')).to_have_text('Overview')
         await page.locator('#replay').fill('0')
         assert await page.locator('#view .state-chip.down').count() == 0
         await page.locator('#replay').fill('1')
@@ -116,13 +116,13 @@ async def run(args):
         # Number keys switch views only outside form controls; the replay slider still has focus here.
         await page.locator('#page-title').focus()
         await page.keyboard.press('5')
-        await expect(page.locator('#page-title')).to_have_text('Usage.')
+        await expect(page.locator('#page-title')).to_have_text('Usage')
         await page.locator('#usage-window').select_option('90')
         await expect(page.locator('#view')).to_contain_text('Hour of day')
         await expect(page.locator('#view')).to_contain_text('Referrer host')
         await page.locator('#page-title').focus()
         await page.keyboard.press('6')
-        await expect(page.locator('#page-title')).to_have_text('Product.')
+        await expect(page.locator('#page-title')).to_have_text('Product')
         await expect(page.locator('#view')).to_contain_text('SYNTHETIC')
         await expect(page.locator('#view')).to_contain_text('INP (approximate)')
         assert await page.locator('.journey').count() > 0
@@ -144,12 +144,12 @@ async def run(args):
         assert not any('/v1/' in url for url in requests[demo_mark:]), 'Replay and demo interaction must not read or write the collector'
         results.append('synthetic usage dimensions, product view, Alibi panel and explorer write nothing to the collector')
         await page.locator('[data-view=signals]').click()
-        await expect(page.locator('#page-title')).to_have_text('Signal inbox.')
+        await expect(page.locator('#page-title')).to_have_text('Alerts')
         before = await page.locator('.signal').count()
         await page.get_by_role('button', name='Review', exact=True).first.click()
         assert await page.locator('.signal').count() == before - 1
         await page.locator('[data-view=overview]').click()
-        await expect(page.locator('#page-title')).to_have_text('The desk.')
+        await expect(page.locator('#page-title')).to_have_text('Overview')
         await page.locator('#brief').click()
         await expect(page.locator('#export-preview')).to_contain_text('SYNTHETIC DEMO')
         await expect(page.locator('#download-export')).to_be_disabled()
@@ -170,7 +170,7 @@ async def run(args):
         await page.keyboard.press('/')
         await expect(page.locator('#search')).to_be_focused()
         await page.locator('[data-view=connections]').click()
-        await expect(page.locator('#page-title')).to_have_text('Connections.')
+        await expect(page.locator('#page-title')).to_have_text('Connections')
         # The payload sits in a projected field the desk renders (ci.workflow), so the markup assertion is not vacuous.
         payload = '<img src=x onerror=alert(1)>'
         catalog = {'version': 2, 'generator': 'CommitAtlas', 'source': 'github-public-rest', 'user': 'example-builder',
@@ -219,7 +219,7 @@ async def run(args):
         await expect(page.locator('#mode')).to_have_text('CONNECTED')
         assert await page.locator('#token').input_value() == ''
         await page.locator('[data-view=overview]').click()
-        await expect(page.locator('#page-title')).to_have_text('The desk.')
+        await expect(page.locator('#page-title')).to_have_text('Overview')
         await page.evaluate('window.deskTestStatus = 503')
         await page.locator('#refresh').click()
         await expect(page.locator('#mode')).to_have_text('STALE SNAPSHOT')
@@ -306,7 +306,7 @@ async def run(args):
             results.append('no token or imported payload persisted; import URLs never fetched')
         await page.locator('#demo').click()
         await page.locator('[data-view=overview]').click()
-        await expect(page.locator('#page-title')).to_have_text('The desk.')
+        await expect(page.locator('#page-title')).to_have_text('Overview')
         if args.screenshots:
             args.screenshots.mkdir(parents=True, exist_ok=True)
             await page.screenshot(path=str(args.screenshots / 'desk-desktop.png'), full_page=True)

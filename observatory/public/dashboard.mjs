@@ -15,14 +15,39 @@ const state = { snapshot: null, token: '', days: 7, scenario: 'release', phase: 
   stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null, usage: null, product: null, errors: { usage: '', product: '' }, reads: { usage: null, product: null }, usageProject: 'alibi', usageDays: 7,
   explorer: null, explorerName: '', plugin: null };
 const views = {
-  overview: ['The desk.', 'A clear place to see what needs you.'],
-  signals: ['Signal inbox.', 'Observations you can inspect, park, or turn into a next step.'],
-  releases: ['Release lab.', 'Compare what changed. Be careful about why.'],
-  connections: ['Connections.', 'Small contracts between useful tools. No surprise data routes.'],
-  usage: ['Usage.', 'How your sites are used: aggregate counts, never people.'],
-  product: ['Product.', 'What happens inside a site: events, journeys and diagnostics.'],
+  overview: ['Overview', 'Every site at a glance: which are up, how busy they are, and what needs you.'],
+  signals: ['Alerts', 'Things the rules noticed. Open one to see why, then mark it reviewed or snooze it.'],
+  releases: ['Releases', 'Compare two versions of a site: did reported failures go up or down?'],
+  connections: ['Connections', 'Where the numbers come from, and the other tools this desk can read.'],
+  usage: ['Usage', 'How much each site is used, and by what kind of visitor. Counts, never people.'],
+  product: ['Product', 'What visitors do inside a site: steps, speed and errors.'],
 };
-const labels = { up: 'Probe up', down: 'Probe down', stale: 'Stale probe', unknown: 'No probe evidence', local: 'Local boundary' };
+/** One short "how to read this page" per view. Plain words; every claim here matches what the view computes. */
+const guides = {
+  overview: ['The four cards sum up every site over the window chosen at the top right.',
+    'What needs you lists the most important alerts. The Alerts page has all of them.',
+    'Your sites: Status is whether the 15-minute check reached the site. Events and sessions come from visitors\u2019 browsers. Click a site name for its details.',
+    'Every number counts events or browser tabs. None identifies a person.'],
+  signals: ['Each alert comes from a fixed rule, such as a failed site check. Nothing is guessed.',
+    'See evidence shows the exact numbers behind an alert.',
+    'Review hides an alert on this browser for 7 days; Snooze hides it for an hour. It comes back sooner if the numbers change.',
+    'Red is critical, amber is a warning, grey is a note.'],
+  releases: ['Pick a site, then two versions: the baseline (the one you trust) and the candidate (usually the newer one).',
+    'Each line shows the share of reported failures, with a range of plausible values. A wide range means too little data to tell.',
+    'A difference is a lead to look into, not proof that the new code caused it.'],
+  connections: ['Live data comes from the collector. Connect with your read token (Connect live data, top right).',
+    'The CommitAtlas and Developer Lens cards read a file you choose. Nothing is uploaded.',
+    'Public pulse builds a small file you can share. You see the whole file before it downloads.'],
+  usage: ['Pick a site and a window. Each number counts events that visitors\u2019 browsers sent, so a busy visitor counts several times.',
+    'The top cards show page views and the site\u2019s main action. Day by day shows the trend; Questions worth asking points at things worth a look.',
+    'Who and where splits the counts by country, device, browser, where visitors came from and more. With few visitors, one row can be one person.',
+    'Counts come only from browsers that allow the Counts category. Visitors can switch it off in the site\u2019s bar.'],
+  product: ['Product events are the named steps a site reports, such as puzzle.started. They and the journeys need the Journeys category; speed and errors need Diagnostics.',
+    'A session is one browser tab. Journeys lists the steps each tab took, newest first. Last step before leaving shows where tabs stopped.',
+    'Speed and errors: page speed (web vitals, rated Good, Needs work or Poor by web.dev thresholds) and errors grouped by message.',
+    'Explorer reads the raw events for one name so you can see every property. Some sites add their own panel, like Alibi\u2019s puzzle view.'],
+};
+const labels = { up: 'Online', down: 'Offline', stale: 'Check overdue', unknown: 'Not checked', local: 'Local only' };
 const e = (tag, attrs = {}, ...children) => {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
@@ -53,6 +78,12 @@ const signals = () => signalSet().filter(s => !state.query || `${s.label} ${s.ti
 function notify(message) { const toast = $('#toast'); toast.textContent = message; toast.hidden = false; clearTimeout(notify.timer); notify.timer = setTimeout(() => { toast.hidden = true; }, 4500); }
 function showDialog(id) { const dialog = $(id); if (!dialog.open) dialog.showModal(); }
 function empty(title, detail, action = null) { return e('section', { class: 'empty' }, e('div', { class: 'empty-mark', 'aria-hidden': true }, '⌁'), e('h2', {}, title), e('p', {}, detail), action); }
+function guide(view) {
+  if (state.guidesHidden || !guides[view]) return null;
+  return e('details', { class: 'guide', open: true }, e('summary', {}, 'How to read this page'),
+    e('div', { class: 'guide-body' }, e('ul', {}, guides[view].map(text => e('li', {}, text))),
+      e('p', { class: 'guide-foot' }, button('Hide all guides', toggleGuides), e('span', { class: 'tiny' }, 'Bring them back from the menu on the left.'))));
+}
 function stat(title, value, note, accent = '') { return e('article', { class: 'stat' }, e('div', { class: 'stat-title' }, title), e('strong', { class: `stat-value ${accent}` }, value), e('div', { class: 'stat-note' }, note)); }
 /** A failed refresh makes the reading unknown; it never erases a last-known failure or invents a probe claim. */
 function chip(p) {
@@ -75,6 +106,7 @@ function readSettings() {
         && ['acknowledged', 'snoozed'].includes(value.state) && Number.isFinite(value.until) && value.until > Date.now()));
     }
     if (localStorage.getItem('pulseboard.desk.density') === 'compact') document.body.dataset.density = 'compact';
+    state.guidesHidden = localStorage.getItem('pulseboard.desk.guides') === 'hidden';
   } catch { /* Restricted storage is a supported mode. */ }
 }
 function review(signal, kind) {
@@ -124,7 +156,7 @@ function chart(projects, mini = false) {
     image.append(svg('rect', { x, y: 148 - height, width: Math.max(1, plot / days.length - 10), height, rx: 2, class: 'chart-bar' }, svg('title', {}, `${new Date(days[i] * DAY).toISOString().slice(0, 10)}: ${count(n)} admitted events`)));
     if (days.length <= 9 || i % 2 === 0) image.append(svg('text', { x: x + (plot / days.length - 10) / 2, y: 175, 'text-anchor': 'middle', class: 'chart-text' }, new Date(days[i] * DAY).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })));
   });
-  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', {}, 'Admitted events · all projects'), e('span', {}, 'UTC · edge days may be partial')),
+  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', { class: 'chart-legend' }, 'Events received, all sites'), e('span', {}, 'UTC days; the first and last can be partial')),
     e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'Admitted events'], days.map((day, i) => [new Date(day * DAY).toISOString().slice(0, 10), count(totals[i])]))));
 }
 function projectTable() {
@@ -135,30 +167,30 @@ function projectTable() {
       : priority(b) - priority(a) || a.label.localeCompare(b.label));
   const headerButton = (text, sort) => button(text + (state.sort === sort ? ' ↓' : ''), () => { state.sort = sort; render(); });
   const content = e('table', {}, e('thead', {}, e('tr', {},
-    e('th', { scope: 'col', 'aria-sort': state.sort === 'name' ? 'ascending' : 'none' }, headerButton('PROJECT', 'name')),
-    e('th', { scope: 'col', 'aria-sort': state.sort === 'attention' ? 'descending' : 'none' }, headerButton('PROBE / BOUNDARY', 'attention')),
-    e('th', { scope: 'col', class: 'right', 'aria-sort': state.sort === 'events' ? 'descending' : 'none' }, headerButton('EVENTS', 'events')),
-    e('th', { scope: 'col', class: 'right' }, 'SESSIONS'), e('th', { scope: 'col', class: 'right' }, 'OUTCOMES'), e('th', { scope: 'col', class: 'right' }, 'DAILY ALLOWANCE'))),
+    e('th', { scope: 'col', 'aria-sort': state.sort === 'name' ? 'ascending' : 'none' }, headerButton('Site', 'name')),
+    e('th', { scope: 'col', 'aria-sort': state.sort === 'attention' ? 'descending' : 'none' }, headerButton('Status', 'attention')),
+    e('th', { scope: 'col', class: 'right', 'aria-sort': state.sort === 'events' ? 'descending' : 'none' }, headerButton('Events', 'events')),
+    e('th', { scope: 'col', class: 'right' }, 'Sessions'), e('th', { scope: 'col', class: 'right' }, 'Success rate'), e('th', { scope: 'col', class: 'right' }, 'Daily budget used'))),
     e('tbody', {}, projects.map(p => e('tr', {},
-      e('td', {}, e('div', { class: 'project-name' }, e('span', { class: 'project-glyph', 'aria-hidden': true }, p.label.slice(0, 2).toUpperCase()), e('div', {}, button(p.label, () => projectDetail(p)), e('small', {}, p.probeExpected ? relative(p.totals.last) : 'No external probe by design')))),
-      e('td', {}, chip(p), e('div', { class: 'tiny muted' }, p.collectionEligible ? (p.collectionAdmitted ? 'Collection admitted' : 'Collection not admitted') : 'Local-only; no browser collection')), e('td', { class: 'right mono' }, count(p.totals.events), chart([p], true)),
+      e('td', {}, e('div', { class: 'project-name' }, e('span', { class: 'project-glyph', 'aria-hidden': true }, p.label.slice(0, 2).toUpperCase()), e('div', {}, button(p.label, () => projectDetail(p)), e('small', {}, p.probeExpected ? `Last event ${relative(p.totals.last).toLowerCase()}` : 'Not checked from outside, by design')))),
+      e('td', {}, chip(p), e('div', { class: 'tiny muted' }, p.collectionEligible ? (p.collectionAdmitted ? 'Collecting' : 'Not collecting') : 'Nothing collected, by design')), e('td', { class: 'right mono' }, count(p.totals.events), chart([p], true)),
       e('td', { class: 'right mono' }, count(p.totals.sessions)),
-      e('td', { class: 'right' }, e('span', { class: 'mono' }, percent(fraction(p.totals.completed, p.totals.completed + p.totals.failed).value)), e('div', { class: 'tiny muted' }, `${count(p.totals.completed + p.totals.failed)} reported`)),
+      e('td', { class: 'right' }, e('span', { class: 'mono' }, percent(fraction(p.totals.completed, p.totals.completed + p.totals.failed).value)), e('div', { class: 'tiny muted' }, `of ${count(p.totals.completed + p.totals.failed)} actions`)),
       e('td', { class: 'right' }, e('span', { class: 'mono' }, `${count(p.budget.used)} / ${count(p.budget.limit)}`), e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, p.budget.limit), value: p.budget.used, 'aria-label': `${p.label}: ${p.budget.used} of ${p.budget.limit} daily admission units used` }))))));
-  return e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Project register'), e('p', {}, `${projects.length} shown · success / reported outcomes · no cross-project identity`)),
+  return e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Your sites'), e('p', {}, `${projects.length} shown. Click a column name to sort, or a site name for its details.`)),
     projects.length ? e('div', { class: 'table-shell', tabindex: '0', role: 'region', 'aria-label': 'Project register; scroll horizontally on small screens' }, content) : empty('No matches.', 'Try another project name or clear the search.'));
 }
 function overview() {
   const s = state.snapshot, ps = s.projects, ss = signals(), open = ss.filter(signal => reviewState(signal, state.reviews) === 'open');
   const completed = sum(ps, p => p.totals.completed), outcomes = completed + sum(ps, p => p.totals.failed);
   return [e('section', { class: 'stats-grid', 'aria-label': 'Whole portfolio summary' },
-    stat('Receiving evidence', `${ps.filter(p => p.totals.events > 0).length} / ${ps.length}`, 'Projects with admitted browser events', 'lime'),
-    stat('Needs a look', count(signalSet().filter(x => x.severity !== 'note').length), 'Warnings and critical observations', 'orange'),
-    stat('Reported sessions', count(sum(ps, p => p.totals.sessions)), 'Summed per project. Not unique people.'),
-    stat('Completed outcomes', percent(fraction(completed, outcomes).value), `${count(outcomes)} reported action outcomes`)),
+    stat('Sites sending data', `${ps.filter(p => p.totals.events > 0).length} / ${ps.length}`, 'Sites with at least one event in this window', 'lime'),
+    stat('Needs a look', count(signalSet().filter(x => x.severity !== 'note').length), 'Warnings and critical alerts', 'orange'),
+    stat('Sessions', count(sum(ps, p => p.totals.sessions)), 'Browser tabs, added up across sites. Not unique people.'),
+    stat('Actions that succeeded', percent(fraction(completed, outcomes).value), `Of ${count(outcomes)} reported actions that finished or failed`)),
     e('div', { class: 'overview-grid' }, panel('What needs you', open.length ? e('div', {}, open.slice(0, 2).map(x => signalCard(x, true)))
-      : e('p', { class: 'muted' }, 'No open observations in this view. Uninstrumented journeys still need checking.'), button('All signals →', () => navigate('signals'))),
-      panel('The last few days', chart(ps), e('span', { class: 'mini-label' }, 'EVENT RECEIPTS'))), projectTable()];
+      : e('p', { class: 'muted' }, 'Nothing open right now. Parts of a site that send no events can still break unnoticed.'), button('All alerts →', () => navigate('signals'))),
+      panel('Events per day', chart(ps), e('span', { class: 'mini-label' }, 'ALL SITES'))), projectTable()];
 }
 function projectDetail(p) {
   // The drawer, its deployment leads and any pin all read the snapshot it opened with, not a later poll.
@@ -229,9 +261,9 @@ function pinGithub(id) {
 }
 function inbox() {
   const ss = signals().filter(s => state.reviewed || reviewState(s, state.reviews) === 'open');
-  return [e('div', { class: 'filter-row' }, e('p', { class: 'muted' }, `${ss.length} observations · deterministic rules · no automatic paging`),
-    e('label', {}, e('input', { type: 'checkbox', checked: state.reviewed, onChange: event => { state.reviewed = event.target.checked; render(); } }), 'Include reviewed / snoozed')),
-    ss.length ? e('section', { class: 'panel signal-list' }, ss.map(s => signalCard(s))) : empty('Inbox clear.', 'No open matching observations. Acknowledgements stay on this browser and changed evidence resurfaces.')];
+  return [e('div', { class: 'filter-row' }, e('p', { class: 'muted' }, `${ss.length} alert${ss.length === 1 ? '' : 's'} from fixed rules. Nothing pages you automatically.`),
+    e('label', {}, e('input', { type: 'checkbox', checked: state.reviewed, onChange: event => { state.reviewed = event.target.checked; render(); } }), 'Show reviewed and snoozed')),
+    ss.length ? e('section', { class: 'panel signal-list' }, ss.map(s => signalCard(s))) : empty('No open alerts.', 'Nothing needs you right now. Reviewed alerts come back if their numbers change.')];
 }
 function selectControl(label, id, options, value, change) {
   return e('label', { for: id }, label, e('select', { id, onChange: event => change(event.target.value) }, options.map(([val, text]) => e('option', { value: val, selected: val === value }, text))));
@@ -247,8 +279,8 @@ function releaseLab() {
   const options = releases.map(r => [r.release, r.release]);
   const controls = e('div', { class: 'comparison-selects' },
     selectControl('Project', 'release-project', ps.map(p => [p.id, p.label]), p.id, id => { state.releaseProject = id; state.baseline = ''; state.candidate = ''; render(); }),
-    selectControl('Baseline cohort', 'release-baseline', options, baseline?.release, value => { state.baseline = value; render(); }),
-    selectControl('Candidate cohort', 'release-candidate', options, candidate?.release, value => { state.candidate = value; render(); }));
+    selectControl('Baseline (the version you trust)', 'release-baseline', options, baseline?.release, value => { state.baseline = value; render(); }),
+    selectControl('Candidate (the version to check)', 'release-candidate', options, candidate?.release, value => { state.candidate = value; render(); }));
   if (releases.length < 2) return [controls, empty('Give each release a name.', 'Comparison needs two attributed release cohorts inside this window. Register release labels in the collector and the client SDK; events labelled unattributed cannot tell this story.')];
   const result = compareReleases(baseline, candidate);
   if (!result.baseline) return [controls, e('div', { class: 'notice' }, result.reason)];
@@ -262,7 +294,7 @@ function releaseLab() {
   return [controls, e('div', { class: 'comparison-stats' }, stat('Baseline: reported failures', percent(result.baseline.value), `${result.baseline.numerator} / ${result.baseline.denominator} outcomes`),
     stat('Candidate: reported failures', percent(result.candidate.value), `${result.candidate.numerator} / ${result.candidate.denominator} outcomes`, 'orange'),
     stat('Difference', result.delta === null ? 'Not enough data' : `${result.delta >= 0 ? '+' : ''}${(result.delta * 100).toFixed(1)} pp`, 'Candidate minus baseline; percentage points')),
-    panel('The interval matters', e('div', {}, image, e('p', { class: 'tiny muted' }, '95% Wilson intervals are descriptive. Overlap is not used as a significance test.'))),
+    panel('Failure share, with its uncertainty', e('div', {}, image, e('p', { class: 'tiny muted' }, '95% Wilson intervals are descriptive. Overlap is not used as a significance test.'))),
     e('div', { class: 'notice' }, result.reason),
     panel('Before calling it a regression', e('p', { class: 'muted' }, 'Check route mix, the time window, retries, instrumentation changes, and how much traffic each release saw. A deployment timestamp or a contribution spike cannot establish that a code change caused an outcome.'))];
 }
@@ -394,7 +426,7 @@ function usageChart(reading) {
       svg('rect', { x: x + w * 0.3, y: 148 - hs, width: w * 0.4, height: hs, rx: 1, class: 'chart-bar-accent' }));
     if (i % every(totals.length) === 0) image.append(svg('text', { x: x + w / 2, y: 175, 'text-anchor': 'middle', class: 'chart-text' }, new Date(reading.days[i] + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })));
   });
-  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', {}, `All counts · inner bar: ${reading.journey} starts`), e('span', {}, 'UTC · today is partial')),
+  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', { class: 'chart-legend' }, 'All counts'), e('span', { class: 'chart-legend inner' }, `${reading.journey[0].toUpperCase()}${reading.journey.slice(1)} starts`), e('span', {}, 'UTC days; today is partial')),
     e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'All counts', 'Page views', 'Starts', 'Completions'],
       reading.days.map((d, i) => [d, count(totals[i]), count(reading.series.views[i]), count(starts[i]), count(reading.series.completed[i])]))));
 }
@@ -414,16 +446,17 @@ function barChart(values, labels, aria, caption, heading = 'Bucket') {
 function share(rows, key, total, heading = key[0].toUpperCase() + key.slice(1), fold = false) {
   if (!rows.length) return e('p', { class: 'muted' }, 'No counts in this window.');
   const shown = fold ? foldTop(rows) : { rows, other: null };
-  const meter = (label, n) => e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, total), value: n, 'aria-label': `${label}: ${n} of ${total}` });
+  const meter = (label, n) => e('div', { class: 'share-cell' }, e('meter', { class: 'share-meter', min: 0, max: Math.max(1, total), value: n, 'aria-label': `${label}: ${n} of ${total}` }),
+    e('span', { class: 'share-pct' }, total > 0 ? `${Math.round(n / total * 100)}%` : '—'));
   return e('div', { class: 'table-shell' }, table([heading, 'Counts', 'Share'], [...shown.rows.map(r => [r[key], count(r.n), meter(r[key], r.n)]),
     ...(shown.other ? [[`All others (${count(shown.other.values)} values)`, count(shown.other.n), meter('All others', shown.other.n)]] : [])]));
 }
 function coverage() {
-  const describe = p => p.id === state.usage?.project && state.usage.collectionAdmitted ? 'Aggregate counts admitted (shown above)'
-    : !p.collectionEligible ? 'Local-only by design; no browser collection'
-      : p.collectionAdmitted ? 'Collection admitted. Pick it above to read its aggregate counts' : 'Not measured yet. Needs its host adapter and admission';
-  return panel('Coverage across your sites', e('div', { class: 'table-shell' }, table(['Site', 'Usage measurement', 'Opt-in events (window)', 'Reachability'],
-    state.snapshot.projects.map(p => [p.label, describe(p), count(p.totals.events), chip(p)]))), e('span', { class: 'mini-label' }, 'WHAT IS MEASURED'));
+  const describe = p => p.id === state.usage?.project && state.usage.collectionAdmitted ? 'Measured (shown above)'
+    : !p.collectionEligible ? 'Not measured: runs only on your computer'
+      : p.collectionAdmitted ? 'Measured. Pick it in Site to see its numbers' : 'Not measured yet: the site needs the Pulseboard script and approval';
+  return panel('Which sites are measured', e('div', { class: 'table-shell' }, table(['Site', 'Usage', 'Events in this window', 'Status'],
+    state.snapshot.projects.map(p => [p.label, describe(p), count(p.totals.events), chip(p)]))), e('span', { class: 'mini-label' }, 'ALL SITES'));
 }
 /** Site and window are shared by Usage and Product; changing either drops every read and on-demand result for the old pair. */
 function resetSiteReads() {
@@ -441,21 +474,26 @@ function sitePicker(detail) {
     selectControl('Window', 'usage-window', USAGE_WINDOWS.map(d => [String(d), d === 1 ? '24 hours' : `${d} days`]), String(state.usageDays), d => { state.usageDays = Number(d); resetSiteReads(); })),
   e('p', { class: 'muted' }, detail));
 }
+/** Which data this is, in one line: sample or live, which site, which days, when it was read. */
+function readingLine(mode, label, window, population, at, error) {
+  return e('p', { class: 'reading-line' }, e('span', { class: `pill${mode === 'demo' ? ' demo' : ''}` }, mode === 'demo' ? 'SYNTHETIC sample data' : 'Live data'),
+    `${label} · ${window.startDay} to ${window.endDay} (UTC) · ${population} · read ${date(at)}`, error ? e('span', { class: 'pill demo' }, 'Last read failed; showing the previous one') : null);
+}
 const siteLabel = () => state.snapshot.projects.find(p => p.id === state.usageProject)?.label ?? state.usageProject;
 function siteMissing(kind, noun) {
   return state.reads[kind] !== null || !state.errors[kind] ? empty(`Reading ${kind}…`, `Fetching ${siteLabel()} ${noun} for this window.`)
     : empty(`${kind[0].toUpperCase()}${kind.slice(1)} unavailable.`, state.errors[kind], button('Try again', () => { readSite(kind); render(); }, 'primary'));
 }
 const tag = text => e('span', { class: 'mini-label' }, text);
-const DIMENSION_PANELS = [['country', 'Country', 'FROM THE EDGE · NO IP KEPT', true], ['region', 'Region', 'FROM THE EDGE · TOP 10', true],
-  ['device', 'Device', 'VIEWPORT CLASS'], ['browser', 'Browser', 'CLASSIFIED ON THE SERVER · UA NOT KEPT'], ['os', 'Operating system', 'CLASSIFIED ON THE SERVER'],
-  ['scheme', 'Colour scheme', 'PREFERS-COLOR-SCHEME'], ['source', 'Came from', 'CATEGORY · NO URLS'], ['referrer', 'Referrer host', 'HOST ONLY · TOP 10', true],
-  ['visit', 'New or returning', 'THIS MONTH · NO ID'], ['campaign', 'Campaign', 'UTM_CAMPAIGN · TOP 10', true], ['language', 'Language', 'ACCEPT-LANGUAGE · TOP 10', true]];
+const DIMENSION_PANELS = [['country', 'Country', 'FROM THE NETWORK · IP NOT KEPT', true], ['region', 'Region', 'FROM THE NETWORK · TOP 10', true],
+  ['device', 'Device', 'BY SCREEN WIDTH'], ['browser', 'Browser', 'NAME ONLY · NO VERSION'], ['os', 'Operating system', 'NAME ONLY'],
+  ['scheme', 'Light or dark mode', 'BROWSER SETTING'], ['source', 'How visitors arrived', 'SEARCH, SOCIAL, DIRECT…'], ['referrer', 'Referrer host', 'SITE NAME ONLY · TOP 10', true],
+  ['visit', 'New or returning', 'THIS MONTH · NO ID KEPT'], ['campaign', 'Campaign', 'FROM LINK TAGS · TOP 10', true], ['language', 'Language', 'BROWSER LANGUAGE · TOP 10', true]];
 function dimensionPanels(u) {
   const panels = DIMENSION_PANELS.filter(([name]) => u.dimensions[name]).map(([name, title, label, fold]) => panel(title, share(u.dimensions[name], 'value', u.total, title, fold), tag(label)));
   if (u.dimensions.hour) {
     const { hours, unknown } = hourSeries(u.dimensions.hour), labels = hours.map((_, h) => String(h).padStart(2, '0'));
-    panels.push(panel('Hour of day', barChart(hours, labels, 'Counts by UTC hour of receipt', ['UTC hour of receipt', unknown ? `${count(unknown)} without an hour` : 'Every count has an hour'], 'UTC hour'), tag('SERVER CLOCK')));
+    panels.push(panel('Hour of day', barChart(hours, labels, 'Counts by UTC hour of receipt', ['UTC hour of receipt', unknown ? `${count(unknown)} without an hour` : 'Every count has an hour'], 'UTC hour'), tag('UTC · SERVER CLOCK')));
   }
   return Array.from({ length: Math.ceil(panels.length / 2) }, (_, i) => e('div', { class: 'overview-grid' }, panels.slice(i * 2, i * 2 + 2)));
 }
@@ -464,8 +502,7 @@ function usageView() {
   const picker = sitePicker('Aggregate counts for one site at a time. Counts are events, never people.');
   if (!u) return [picker, siteMissing('usage', 'aggregate counts'), coverage()];
   const r = usageReading(u), qs = usageQuestions(u, r);
-  const synthetic = u.mode === 'demo' ? 'SYNTHETIC · ' : '';
-  return [picker, e('p', { class: 'tiny muted' }, `${synthetic}${label} · ${u.window.startDay} to ${u.window.endDay} UTC · ${u.population} · read ${date(u.generatedAt)}${state.errors.usage ? ' · last read failed, showing previous' : ''}`),
+  return [picker, readingLine(u.mode, label, u.window, u.population, u.generatedAt, state.errors.usage), guide('usage'),
     e('section', { class: 'stats-grid', 'aria-label': `${label} usage summary` },
       stat('Page views', count(r.views), r.busiest ? `Busiest day ${r.busiest.day} (${count(r.busiest.n)} counts)` : 'No counts in this window', 'lime'),
       stat(r.journey === 'puzzle' ? 'Puzzle starts' : 'Action starts', count(r.started), `${count(r.failed)} reported failures`),
@@ -515,7 +552,7 @@ function explorer() {
     button(x?.busy ? 'Reading…' : 'Read events', () => readExplorer(), 'primary'));
   const body = !names.length ? [e('p', { class: 'muted' }, 'No product events in this window.')] : !x ? [e('p', { class: 'muted' }, 'Not read. Raw events load only when you ask; their properties are summarised in this tab and never sent anywhere.')]
     : x.busy ? [e('p', { class: 'muted' }, 'Reading raw events…')] : x.error ? [e('p', { class: 'notice' }, x.error)] : explorerResult(x);
-  return panel('Explorer', e('div', {}, names.length ? controls : null, ...body), tag('ANY EVENT · ANY PROPERTY'));
+  return panel('Explorer', e('div', {}, names.length ? controls : null, ...body), tag('RAW EVENTS · ON DEMAND'));
 }
 function pluginSection(plugin) {
   const x = state.plugin, ui = { e, table, panel, count, percent };
@@ -536,7 +573,7 @@ function productView() {
   const days = [];
   for (let t = Date.parse(p.window.startDay); t <= Date.parse(p.window.endDay); t += 86400000) days.push(new Date(t).toISOString().slice(0, 10));
   const perDay = days.map(d => p.totals.days.find(r => r.day === d)?.n ?? 0), s = p.sessions;
-  return [picker, e('p', { class: 'tiny muted' }, `${p.mode === 'demo' ? 'SYNTHETIC · ' : ''}${label} · ${p.window.startDay} to ${p.window.endDay} UTC · ${p.population} · read ${date(p.generatedAt)}${state.errors.product ? ' · last read failed, showing previous' : ''}`),
+  return [picker, readingLine(p.mode, label, p.window, p.population, p.generatedAt, state.errors.product), guide('product'),
     e('section', { class: 'stats-grid', 'aria-label': `${label} product summary` },
       stat('Product events', count(p.total), `${count(p.totals.names.length)} event names`, 'lime'),
       stat('Sessions', count(s.n), 'Browser tabs with Journeys allowed. Not people.'),
@@ -552,11 +589,11 @@ function productView() {
           j.stepsTruncated ? e('span', { class: 'tiny muted' }, ' · later steps capped by the collector') : null))))
         : e('p', { class: 'muted' }, 'No sessions in this window. Journeys need the Journeys category allowed.'), tag(`LATEST ${p.journeys.length}`)),
       panel('Last step before leaving', e('div', {}, share(p.exits, 'name', s.n, 'Last event'), p.exitsTruncated ? e('p', { class: 'tiny muted' }, 'The collector capped this list; rarer last steps are not shown.') : null), tag(p.exitsTruncated ? 'CAPPED LIST' : 'EXITS · PER SESSION'))),
-    e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Diagnostics'), e('p', {}, 'p75 from raw values per metric and route; web.dev thresholds. INP is approximate in this SDK.')),
+    e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Speed and errors'), e('p', {}, 'Speed is the 75th percentile (three in four page loads were this fast or faster), rated with web.dev thresholds. INP is approximate in this SDK.')),
       e('div', { class: 'overview-grid' },
         panel('Web vitals', p.vitals.length ? e('div', { class: 'table-shell' }, table(['Metric', 'Route', 'p75', 'Samples', 'Rating'], p.vitals.map(v => {
           const rating = vitalRating(v.metric, v.p75);
-          return [v.metric === 'INP' ? 'INP (approximate)' : v.metric, v.route, vitalValue(v.metric, v.p75), count(v.n), e('span', { class: `state-chip ${vitalClass[rating]}` }, rating)];
+          return [v.metric === 'INP' ? 'INP (approximate)' : v.metric, v.route, e('span', { class: 'nowrap' }, vitalValue(v.metric, v.p75)), count(v.n), e('span', { class: `state-chip ${vitalClass[rating]}` }, ({ good: 'Good', 'needs-improvement': 'Needs work', poor: 'Poor' })[rating] ?? 'Unknown')];
         })), p.vitalsTruncated ? e('p', { class: 'tiny muted' }, 'The collector capped this list; metric and route pairs with fewer samples are not shown.') : null) : e('p', { class: 'muted' }, 'No web vitals in this window.'), tag(p.vitalsTruncated ? 'P75 · CAPPED LIST' : 'P75 · NEVER AVERAGED')),
         panel('Errors', p.errors.length ? e('div', { class: 'table-shell' }, table(['Kind', 'Message', 'Count', 'Last seen'], p.errors.map(x => [x.kind, x.message, count(x.n), date(x.lastSeen)])))
           : e('p', { class: 'muted' }, 'No errors reported in this window.'), tag('GROUPED BY KIND AND MESSAGE')))),
@@ -568,24 +605,35 @@ function render() {
   const [title, subtitle] = views[state.view];
   $('#page-title').textContent = title; $('#page-subtitle').textContent = subtitle; $('#breadcrumb').textContent = state.view.toUpperCase();
   for (const link of document.querySelectorAll('nav a')) { if (link.dataset.view === state.view) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); }
-  $('#signal-count').textContent = state.snapshot ? String(signalSet().filter(s => reviewState(s, state.reviews) === 'open').length) : '0';
+  const openAlerts = state.snapshot ? signalSet().filter(s => reviewState(s, state.reviews) === 'open').length : 0;
+  $('#signal-count').textContent = String(openAlerts); $('#signal-count').classList.toggle('hot', openAlerts > 0);
   $('#density').textContent = document.body.dataset.density === 'compact' ? 'Comfortable view' : 'Compact view';
+  $('#guides').textContent = state.guidesHidden ? 'Show page guides' : 'Hide page guides';
   $('#brief').disabled = !state.snapshot; $('#refresh').disabled = state.busy || (!state.token && !state.snapshot);
   // The portfolio window does not drive the site views, which carry their own.
   $('#window').closest('label').hidden = Object.hasOwn(siteReads, state.view);
   $('#disconnect').hidden = !state.snapshot && !state.token && !Object.keys(state.imported).length; $('#demo-controls').hidden = state.snapshot?.mode !== 'demo';
   const mode = $('#mode'); mode.className = 'badge';
-  if (!state.snapshot) { mode.textContent = state.busy ? 'CONNECTING' : 'NOT CONNECTED'; $('#message').textContent = state.busy ? 'Reading this origin’s protected API…' : state.error || 'Your desk is empty. No health claims until there is evidence.'; }
-  else if (state.snapshot.mode === 'demo') { mode.textContent = 'SYNTHETIC DEMO'; mode.classList.add('demo'); $('#message').textContent = `${SCENARIOS[state.scenario]}. Invented observations, not your production numbers.`; }
-  else { mode.textContent = state.stale ? 'STALE SNAPSHOT' : 'CONNECTED'; mode.classList.add(state.stale ? 'stale' : 'live'); $('#message').textContent = state.stale ? 'Refresh failed. The last successful snapshot is still shown; current health is unknown.' : `Protected aggregate read · collection ${state.snapshot.collectionEnabled ? 'enabled' : 'disabled'} · ${document.hidden ? 'refresh paused while hidden' : `refresh every ${REFRESH_MS / 1000}s`}.`; }
-  $('#stamp').textContent = state.snapshot ? `READ ${date(state.snapshot.generatedAt)} · ${state.snapshot.window.days}D WINDOW` : 'No snapshot loaded';
+  if (!state.snapshot) { mode.textContent = state.busy ? 'CONNECTING' : 'NOT CONNECTED'; $('#message').textContent = state.busy ? 'Reading your live data…' : state.error || 'No data loaded yet. Connect your live data, or try sample data first.'; }
+  else if (state.snapshot.mode === 'demo') { mode.textContent = 'SYNTHETIC DEMO'; mode.classList.add('demo'); $('#message').textContent = `Sample data: ${SCENARIOS[state.scenario]}. Every number is invented, not from your sites.`; }
+  else { mode.textContent = state.stale ? 'STALE SNAPSHOT' : 'CONNECTED'; mode.classList.add(state.stale ? 'stale' : 'live'); $('#message').textContent = state.stale ? 'The last refresh failed. You are seeing the previous reading; current status is unknown.' : `Live data · collection ${state.snapshot.collectionEnabled ? 'enabled' : 'disabled'} · ${document.hidden ? 'updates paused while this tab is hidden' : `updates every ${REFRESH_MS / 1000} s`}.`; }
+  $('#stamp').textContent = state.snapshot ? `Read ${date(state.snapshot.generatedAt)} · ${state.snapshot.window.days}-day window` : 'No data loaded';
   $('#replay-label').textContent = ['Before', 'Incident', 'Recovery'][state.phase];
   const view = $('#view');
-  if (state.view === 'connections') view.replaceChildren(...connections());
-  else if (!state.snapshot) view.replaceChildren(empty('Your projects have a story. Start with a reading.',
-    'Connect the collector for real evidence, or explore a deterministic scenario. Nothing is collected by opening this page.',
-    e('div', { class: 'onramp-actions' }, button('Explore the desk →', () => beginDemo(), 'primary'), button('Connect my data', () => showDialog('#connect-dialog')))));
-  else { const content = state.view === 'overview' ? overview() : state.view === 'signals' ? inbox() : state.view === 'usage' ? usageView() : state.view === 'product' ? productView() : releaseLab(); view.replaceChildren(...(Array.isArray(content) ? content : [content])); }
+  if (state.view === 'connections') view.replaceChildren(...[guide('connections'), ...connections()].filter(Boolean));
+  else if (!state.snapshot) view.replaceChildren(empty('See how your sites are doing.',
+    'Pulseboard shows how your sites are used and whether they are healthy, without identifying anyone. Opening this page collects nothing.',
+    e('ol', { class: 'steps' },
+      e('li', {}, e('strong', {}, 'Connect'), 'Paste your read token to load live numbers, or try sample data first.'),
+      e('li', {}, e('strong', {}, 'Scan the overview'), 'See which sites are online, how busy they are, and which alerts are open.'),
+      e('li', {}, e('strong', {}, 'Dig into a site'), 'Usage shows who visits and from where; Product shows what they do inside.')),
+    e('div', { class: 'onramp-actions' }, button('Connect live data', () => showDialog('#connect-dialog'), 'primary'), button('Try sample data', () => beginDemo()))));
+  else {
+    const content = state.view === 'overview' ? overview() : state.view === 'signals' ? inbox() : state.view === 'usage' ? usageView() : state.view === 'product' ? productView() : releaseLab();
+    const list = Array.isArray(content) ? content : [content];
+    // Usage and Product place their guide under the site picker, where the reading starts.
+    view.replaceChildren(...(Object.hasOwn(siteReads, state.view) ? list : [guide(state.view), ...list]).filter(Boolean));
+  }
   if (focusId && document.activeElement === document.body) document.getElementById(focusId)?.focus({ preventScroll: true });
 }
 function navigate(view) { if (!Object.hasOwn(views, view)) return; if (location.hash === '#' + view) { state.view = view; render(); } else location.hash = view; }
@@ -617,13 +665,14 @@ async function refresh() {
 }
 function preview(text, name, type = 'text/markdown') { state.export = { text, name, type }; $('#export-confirm').checked = false; $('#download-export').disabled = true; $('#export-preview').textContent = text; $('#export-warning').textContent = `${demoPrefix() || 'PRIVATE AGGREGATE EXPORT. '}Review the complete file below. Nothing is uploaded; sharing it later is your decision.`; showDialog('#export-dialog'); }
 function fieldNote() { if (state.snapshot) preview(makeBrief(state.snapshot, signalSet(), state.stale), `pulseboard-${state.snapshot.mode}-field-note.md`); }
+function toggleGuides() { state.guidesHidden = !state.guidesHidden; try { localStorage.setItem('pulseboard.desk.guides', state.guidesHidden ? 'hidden' : 'shown'); } catch { /* In-memory setting works. */ } render(); }
 function density() { document.body.dataset.density = document.body.dataset.density === 'compact' ? 'comfortable' : 'compact'; try { localStorage.setItem('pulseboard.desk.density', document.body.dataset.density); } catch { /* In-memory setting works. */ } render(); }
 readSettings();
 for (const close of document.querySelectorAll('.close-dialog')) close.addEventListener('click', () => close.closest('dialog').close());
 $('#open-connect').addEventListener('click', () => showDialog('#connect-dialog'));
 $('#connect').addEventListener('submit', event => { event.preventDefault(); const token = $('#token').value.trim(); if (token.length < 32 || token.length > 256) return; disconnect(); state.token = token; refresh(); });
 $('#disconnect').addEventListener('click', disconnect); $('#demo').addEventListener('click', beginDemo); $('#refresh').addEventListener('click', refresh);
-$('#brief').addEventListener('click', fieldNote); $('#density').addEventListener('click', density);
+$('#brief').addEventListener('click', fieldNote); $('#density').addEventListener('click', density); $('#guides').addEventListener('click', toggleGuides);
 $('#search').addEventListener('input', event => { state.query = event.target.value.toLowerCase().trim(); render(); });
 $('#scenario').addEventListener('change', event => { state.scenario = event.target.value; beginDemo(); });
 $('#replay').addEventListener('input', event => { state.phase = Number(event.target.value); if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } });
@@ -648,7 +697,7 @@ $('#download-export').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000); $('#export-dialog').close(); notify('Reviewed file downloaded. Nothing was uploaded.');
 });
 $('#command-list').replaceChildren(...Object.entries(views).map(([view, [title]]) => button(title, () => { $('#palette').close(); navigate(view); })),
-  button('Explore a synthetic scenario', () => { $('#palette').close(); beginDemo(); }), button('Prepare a field note', () => { $('#palette').close(); fieldNote(); }), button('Toggle density', () => { $('#palette').close(); density(); }));
+  button('Try sample data', () => { $('#palette').close(); beginDemo(); }), button('Export a summary', () => { $('#palette').close(); fieldNote(); }), button('Toggle density', () => { $('#palette').close(); density(); }), button('Show or hide page guides', () => { $('#palette').close(); toggleGuides(); }));
 $('#commands').addEventListener('click', () => showDialog('#palette'));
 window.addEventListener('hashchange', () => { state.view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; if (Object.hasOwn(siteReads, state.view)) readSite(state.view); render(); $('#page-title').focus({ preventScroll: true }); });
 document.addEventListener('keydown', event => {
