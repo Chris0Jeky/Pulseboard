@@ -7,5 +7,6 @@ export const ALIBI_RELEASES = Object.freeze([
   "0.11.5",
   "0.11.6",
   "0.12.0",
-  "0.13.0"
+  "0.13.0",
+  "0.14.0"
 ]);

@@ -96,7 +96,7 @@ Versions 1 and 2 stay accepted. Counts are unchanged: `{ event, route, release, 
 | source | browser, from `document.referrer`'s host against a fixed list | `direct search social github internal other` |
 | visit | browser, month marker (below) | `new returning` |
 | scheme | browser, `prefers-color-scheme` | `light dark` |
-| referrer | browser, referrer host lowercased, `www.` stripped; `none` when direct or internal | a host containing a dot, `^[a-z0-9.-]{3,64}$`; `other` when invalid |
+| referrer | browser, the referrer's registrable platform domain from a fixed allowlist (`sdk/referrers.mjs`, shared by the SDK and the collector); subdomains collapse to the platform (`jane.github.io` → `github.io`, `t.co` → `x.com`); `none` when direct or internal | one of the allowlisted domains, else `other`; the collector stores `other` for any off-list host, including from SDK 3.0 builds |
 | campaign | browser, `utm_campaign` lowercased | `^[a-z0-9_-]{1,40}$`; `none` when absent; `other` when invalid |
 
 Server-derived dimensions apply to every version. For v1 every browser-derived dimension reads
@@ -211,8 +211,9 @@ retired once no host loads the old embed.
 
 - Default-on now covers usage counts everywhere, and diagnostics and journeys outside the EEA, with
   the bar as notice and objection. Session-level data is no longer opt-in only.
-- Referral categories, referrer hosts and campaign tags are default-on inside aggregate counts;
-  referrer URLs and paths are still never sent.
+- Referral categories, allowlisted referrer platform domains and campaign tags are default-on inside
+  aggregate counts; referrer URLs, paths and any off-list host (which can carry a name) are never sent or
+  stored (SDK 3.1, CommitAtlas#247).
 - Product events carry bounded open JSON properties, not a closed vocabulary. Their contract bounds
   shape and size and removes personal keys; it does not make them content-free.
 - Retention: detailed data (session events and product events) 90 days, aggregates 400 days.

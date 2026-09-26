@@ -98,7 +98,8 @@ test('each version records twelve dimensions: v1 no browser context, v2 its thre
   assert.equal(all['os:windows'], 6); assert.equal(all['language:en'], 6);
   assert.equal(all['device:unknown'], 1); assert.equal(all['device:mobile'], 2); assert.equal(all['device:desktop'], 3);
   assert.equal(all['scheme:unknown'], 3); assert.equal(all['scheme:dark'], 3);
-  assert.equal(all['referrer:unknown'], 3); assert.equal(all['referrer:news.example.com'], 3);
+  // An off-list referrer host is admitted (3.0 builds send hosts) but stored as `other` (SDK 3.1, CommitAtlas#247).
+  assert.equal(all['referrer:unknown'], 3); assert.equal(all['referrer:other'], 3); assert.equal(all['referrer:news.example.com'], undefined);
   assert.equal(all['campaign:unknown'], 3); assert.equal(all['campaign:launch_1'], 3);
   // The User-Agent and Accept-Language strings are nowhere in storage.
   const dump = JSON.stringify((await DB.prepare('SELECT * FROM statistics_dimensions').all()).results);
@@ -136,17 +137,17 @@ test('region, language, referrer and campaign keep at most 50 distinct values pe
   // Sentinels on the day do not count towards the cap.
   await seed.bind('alibi', today, 'referrer', 'none', 1).run();
   const cf = { country: 'GB', regionCode: 'ENG' }, headers = { 'Accept-Language': 'en' };
-  assert.equal((await handle(post({ v: 3, context: context({ referrer: 'new.example', campaign: 'fresh' }), counts: [count()] }, { headers, cf }), env(DB))).status, 202);
+  assert.equal((await handle(post({ v: 3, context: context({ referrer: 'github.com', campaign: 'fresh' }), counts: [count()] }, { headers, cf }), env(DB))).status, 202);
   let all = await totals(DB);
   assert.equal(all['referrer:other'], 1); assert.equal(all['campaign:other'], 1); assert.equal(all['language:other'], 1); assert.equal(all['region:other'], 1);
-  assert.equal(all['referrer:new.example'], undefined); assert.equal(all['region:GB-ENG'], undefined);
+  assert.equal(all['referrer:github.com'], undefined); assert.equal(all['region:GB-ENG'], undefined);
   assert.equal(all['device:desktop'], 1, 'closed vocabularies are not capped');
   // A value already stored that day keeps counting under its own name; sentinels always do.
-  assert.equal((await handle(post({ v: 3, context: context({ referrer: 'site7.example', campaign: 'none' }), counts: [count()] }, { headers, cf }), env(DB))).status, 202);
+  assert.equal((await handle(post({ v: 3, context: context({ referrer: 'none', campaign: 'c7' }), counts: [count()] }, { headers, cf }), env(DB))).status, 202);
   all = await totals(DB);
-  assert.equal(all['referrer:site7.example'], 2); assert.equal(all['campaign:none'], 1); assert.equal(all['campaign:other'], 1);
+  assert.equal(all['campaign:c7'], 2); assert.equal(all['referrer:none'], 2); assert.equal(all['campaign:other'], 1);
   // Another project, or another day, has its own cap.
   await DB.prepare("UPDATE statistics_dimensions SET day='2000-01-01'").run();
-  assert.equal((await handle(post({ v: 3, context: context({ referrer: 'new.example' }), counts: [count()] }, { headers, cf }), env(DB))).status, 202);
-  assert.equal((await totals(DB))['referrer:new.example'], 1);
+  assert.equal((await handle(post({ v: 3, context: context({ referrer: 'github.com' }), counts: [count()] }, { headers, cf }), env(DB))).status, 202);
+  assert.equal((await totals(DB))['referrer:github.com'], 1);
 });

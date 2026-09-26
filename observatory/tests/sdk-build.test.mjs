@@ -18,7 +18,7 @@ test('the artifact is deterministic, LF-only, hash-stamped and carries only the 
   assert.equal(a, b);
   assert.equal(a.includes('\r'), false);
   const [header] = a.split('(function () {');
-  assert.match(header, /pulseboard-sdk 3\.0\.0 for alibi\./);
+  assert.match(header, /pulseboard-sdk 3\.1\.0 for alibi\./);
   const hash = /sha256 of the body below: ([0-9a-f]{64})/.exec(header)[1];
   assert.equal(createHash('sha256').update(a.slice(header.length)).digest('hex'), hash);
   assert.equal(isPristineSdk(a), true);
@@ -53,12 +53,13 @@ test('the artifact parses under node --check and runs as a classic script exposi
   vm.runInContext(code, context);
   const api = context.Pulseboard;
   assert.deepEqual(Object.keys(api), ['version', 'route', 'count', 'track', 'consent']);
-  assert.equal(api.version, '3.0.0');
+  assert.equal(api.version, '3.1.0');
   assert.equal(Object.isFrozen(api), true);
   assert.equal(h.body.children.length, 0, 'waits for DOMContentLoaded');
   h.document.emit('DOMContentLoaded');
   assert.equal(h.body.children[0].className, 'pb-bar');
   assert.equal(api.count('export.print_requested'), true);
+  await new Promise(resolve => setImmediate(resolve)); // the region hint answers `eea`
   assert.equal(api.track('export.done', {}), false, 'journeys wait for OK in the EEA');
   byClass(h.body, 'pb-ok')[0].emit('click');
   assert.equal(api.consent.get().journeys, true);

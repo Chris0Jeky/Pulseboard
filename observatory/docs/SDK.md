@@ -16,7 +16,7 @@ npm run build:sdk -- alibi ../../Alibi public/pulseboard.js 0.12.0   # pin a reg
 
 - The project must be registered in `src/projects.mjs` with a public origin. The release defaults to the
   newest registered release and must be one of them (counts only accept the registry's closed list).
-- The output is deterministic and LF-only. Its header names `pulseboard-sdk 3.0.0`, the project, and the
+- The output is deterministic and LF-only. Its header names `pulseboard-sdk 3.1.0`, the project, and the
   SHA-256 of the body below the header. The writer refuses absolute paths, `..`, symlinked parents that
   leave the repository, symlink targets, the installer's reserved paths, and any existing file that is not
   an unedited SDK artifact (the header hash must match), so it never overwrites host code.
@@ -53,12 +53,23 @@ Pulseboard.track('puzzle.completed', { puzzle: 'castle-3', seconds: 212, hints: 
 Pulseboard.consent.get();   // { counts, diagnostics, journeys, decided, region, blocked }
 Pulseboard.consent.set({ journeys: false });     // records a decision, as the switches do
 Pulseboard.consent.open();  // opens the switches (for a "Privacy choices" link)
-Pulseboard.version;         // '3.0.0'
+Pulseboard.version;         // '3.1.0'
 ```
 
 Every call returns `true` when the item was queued and `false` when it was dropped. Nothing throws into the
 host. Unknown events are dropped; an unknown route becomes `other` when the vocabulary has it, else `home`.
 `page.view` is recorded on load and on every `route()` call.
+
+The landing route defaults to `home`. A page that is not the home route names its own so a direct visit
+records one view for the right route, not `home` and then the real one:
+
+```html
+<html data-pulseboard-route="studio">
+```
+
+The attribute is read once at mount and used only when it names a registered route; an explicit
+`Pulseboard.route()` before mount wins; before mount it only picks the landing route, so the page still
+records exactly one first view.
 
 ### What `track` accepts
 
@@ -93,7 +104,10 @@ permission.
 
 - The region comes from `GET /v1/consent/<id>`, cached in `sessionStorage` (`pulseboard:region:<id>`).
   Until it answers, and whenever it fails, times out (5 s) or is malformed, the visitor is treated as EEA
-  and nothing is cached.
+  and nothing is cached. While it is pending (no cached region, no recorded choice, no privacy signal),
+  `track` events and error reports are held in memory, sharing the 100-item queue cap, so `track` returns
+  `true`. When it answers they are sent if their category is on for that region or for the choice the
+  visitor recorded meanwhile, and dropped otherwise; a failed hint counts as EEA and drops them.
 - Global Privacy Control or Do Not Track turns every category off, silently: no bar, no request of any
   kind, and the pill's switches are disabled with a one-line explanation. Nothing is written while the signal
   is on: Turn all off or `consent.set` apply to the page only, and an earlier stored choice is left intact.
@@ -137,11 +151,16 @@ prepended to `body` in normal flow and a fixed header can cover it.
 Counts (`v: 3`): `{ v, context: { device, source, visit, scheme, referrer, campaign }, counts: [{ event, route, release, n: 1 }] }`.
 
 - `device` from the viewport width: under 768 `mobile`, under 1024 `tablet`, else `desktop`.
-- `source` from the referrer's host: `direct` (none), `internal` (same origin), `search` (google, bing,
-  duckduckgo, yahoo, ecosia, brave, yandex, baidu), `social` (twitter, x.com, t.co, facebook, instagram,
-  linkedin, reddit, mastodon, bsky, youtube, tiktok, discord), `github` (github.com, *.github.io), else `other`.
-- `referrer` is that host lowercased with `www.` removed, only if it matches
-  `^(?=[a-z0-9.-]*\.)[a-z0-9.-]{3,64}$` (else `other`); `none` for direct or internal. Never a path or query.
+- `referrer` is the referrer's registrable platform domain from a fixed allowlist, or `other`; `none` for
+  direct or internal. A host can carry a person's name (`jane.github.io`, `janedoe.com`), so no other host
+  is ever sent. Subdomains collapse to the platform (`news.google.co.uk` → `google.com`, `t.co` and
+  `twitter.com` → `x.com`, `lnkd.in` → `linkedin.com`, `gist.github.com` → `github.com`, `*.github.io` →
+  `github.io`, `janeco.slack.com` → `slack.com`). The list: google.com, bing.com, duckduckgo.com, yahoo.com, ecosia.org, brave.com, yandex.com, baidu.com, x.com, facebook.com, instagram.com, linkedin.com, reddit.com, news.ycombinator.com, lobste.rs, mastodon.social, bsky.app, youtube.com, tiktok.com, discord.com, slack.com, medium.com, dev.to, producthunt.com, github.com, github.io, gitlab.com, stackoverflow.com.
+  It lives in `sdk/referrers.mjs`, which the builder inlines and the collector imports, and the collector
+  stores `other` for any off-list value, so the two cannot drift. Never a path or query.
+- `source` follows the same list: `search` (the eight search engines), `github` (github.com, github.io),
+  `social` (the other platforms except gitlab.com and stackoverflow.com, which are `other`), `direct`,
+  `internal` (same origin), else `other`.
 - `campaign` is `utm_campaign` lowercased if it matches `^[a-z0-9_-]{1,40}$`; `none` when absent, else `other`.
 - `scheme` is `prefers-color-scheme` (`light` or `dark`).
 - `visit` is `new` or `returning`: `returning` when the marker holds this or one of the previous twelve UTC

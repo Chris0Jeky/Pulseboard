@@ -9,7 +9,8 @@
  * into a payload. The DOM is built with createElement and textContent only; styles are set through the
  * CSSOM (element.style), which a strict `style-src` without 'unsafe-inline' does not block.
  */
-export const SDK_VERSION = '3.0.0';
+import { referrerDomain, referrerSource } from './referrers.mjs';
+export const SDK_VERSION = '3.1.0';
 const COUNT_BATCH = 20;
 const PRODUCT_BATCH = 20;
 const PRODUCT_BODY_LIMIT = 16384;
@@ -31,7 +32,6 @@ const ROUTE_RE = /^[a-z0-9._-]{1,48}$/;
 const RELEASE_RE = /^[0-9A-Za-z.+-]{1,32}$/;
 const KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
-const REFERRER_RE = /^(?=[a-z0-9.-]*\.)[a-z0-9.-]{3,64}$/;
 const CAMPAIGN_RE = /^[a-z0-9_-]{1,40}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
@@ -45,8 +45,6 @@ const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/([^\s/?#'"<>]*)[^\s'"<>]*/gi;
 const IPV4_RE = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
 // Full forms need five or more groups and compressed forms need `::`, so clock times such as 12:30:45 survive.
 const IPV6_RE = /(?<![0-9a-z:])(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){4,7}|(?:[0-9a-f]{1,4}:){1,7}:(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?|::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?)(?![0-9a-z:])/gi;
-const SEARCH = ['google', 'bing', 'duckduckgo', 'yahoo', 'ecosia', 'brave', 'yandex', 'baidu'];
-const SOCIAL = ['twitter', 'facebook', 'instagram', 'linkedin', 'reddit', 'mastodon', 'bsky', 'youtube', 'tiktok', 'discord'];
 // web.dev "good" and "poor" boundaries: at or below the first is good, above the second is poor.
 const THRESHOLDS = { LCP: [2500, 4000], INP: [200, 500], CLS: [0.1, 0.25], FCP: [1800, 3000], TTFB: [800, 1800] };
 
@@ -65,20 +63,16 @@ export function deviceOf(width) {
   return width < 768 ? 'mobile' : width < 1024 ? 'tablet' : 'desktop';
 }
 
-/** Referral category and bare host from `document.referrer`; the path and query never leave this function. */
+/** Referral category and platform domain from `document.referrer`. A host can carry a name (jane.github.io,
+ * janedoe.com), so only a domain from the shared allowlist (referrers.mjs) is ever sent; anything else is `other`.
+ * The path, query and any subdomain never leave this function. */
 export function classifyReferrer(referrer, pageOrigin) {
   if (typeof referrer !== 'string' || referrer === '') return { source: 'direct', referrer: 'none' };
   let url;
   try { url = new URL(referrer); } catch { return { source: 'other', referrer: 'other' }; }
   if (url.origin === pageOrigin) return { source: 'internal', referrer: 'none' };
-  let host = String(url.hostname || '').toLowerCase().replace(/\.$/, '');
-  if (host.startsWith('www.')) host = host.slice(4);
-  const labels = host.split('.');
-  const source = host === 'github.com' || host.endsWith('.github.com') || host === 'github.io' || host.endsWith('.github.io') ? 'github'
-    : SEARCH.some(name => labels.includes(name)) ? 'search'
-      : host === 'x.com' || host === 't.co' || SOCIAL.some(name => labels.includes(name)) ? 'social'
-        : 'other';
-  return { source, referrer: REFERRER_RE.test(host) ? host : 'other' };
+  const domain = referrerDomain(url.hostname);
+  return domain ? { source: referrerSource(url.hostname), referrer: domain } : { source: 'other', referrer: 'other' };
 }
 
 /** `utm_campaign` from a location search string: `none` when absent, `other` when outside the contract. */
@@ -239,7 +233,8 @@ export function createPulseboard(config, runtime = globalThis) {
   let memoryChoice = null;
   let stored = readChoice();
   let current = { counts: false, diagnostics: false, journeys: false };
-  let currentRoute = cfg.route;
+  let currentRoute = cfg.route, routeChosen = false;
+  let early = []; // Journeys and Diagnostics items held in memory while the region hint is pending.
   let visitAnswer = null, sessionRecord = null, pageSeq = 0, errorsSent = 0, journeyViewPending = false;
   let requests = 0, keepaliveBytes = 0;
   const stats = { sent: 0, dropped: 0, unknown: 0 };
@@ -281,6 +276,7 @@ export function createPulseboard(config, runtime = globalThis) {
   }
   const decided = () => !!(memoryChoice ?? stored)?.decided;
   /** EEA (or unknown) visitors get no visit marker until they OK or enable a category (a recorded decision). */
+  const regionPending = () => !disposed && region === null && !regionFailed && !decided() && !blocked() && !(stored?.corrupt);
   const markerAllowed = () => current.counts && (decided() || region === 'other');
 
   function refresh() {
@@ -290,6 +286,7 @@ export function createPulseboard(config, runtime = globalThis) {
     if (!before.diagnostics && current.diagnostics) { emitVital('FCP'); emitVital('TTFB'); }
     // The page's view reached Counts but not Journeys (the region hint or an OK arrived after it): send it once now.
     if (!before.journeys && current.journeys && journeyViewPending && product('journeys', 'page.view', {})) journeyViewPending = false;
+    if (early.length && !regionPending()) releaseEarly();
     paint();
   }
 
@@ -502,13 +499,14 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   function fetchRegion() {
-    if (region || regionFailed || decided() || blocked() || requests >= REQUEST_LIMIT) return;
+    if (region || regionFailed || decided() || blocked()) return;
+    if (requests >= REQUEST_LIMIT) { regionFailed = true; releaseEarly(); return; }
     requests += 1;
     let controller = null;
     try { const AC = runtime.AbortController ?? globalThis.AbortController; if (typeof AC === 'function') controller = new AC(); } catch { controller = null; }
     const id = controller ? timer(() => { try { controller.abort(); } catch { /* Failure below. */ } }, 5000) : null;
     // A failed, slow or malformed hint means EEA for this page, and is not cached.
-    const fail = () => { clear(id); regionFailed = true; };
+    const fail = () => { clear(id); regionFailed = true; releaseEarly(); };
     try {
       const init = { method: 'GET', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', cache: 'default' };
       if (controller) init.signal = controller.signal;
@@ -547,18 +545,36 @@ export function createPulseboard(config, runtime = globalThis) {
     } catch { return false; }
   }
 
-  function product(category, name, props) {
-    if (!admit(category)) return false;
+  /** `at` carries the route and time of a buffered item, so a late release keeps when and where it happened. */
+  function product(category, name, props, at = null) {
+    const ms = at ? at.ms : Math.min(86400000, Math.max(0, Math.round(now())));
+    const where = at ? at.route : productRoute();
+    if (!admit(category)) {
+      // Until the region hint answers, Journeys and Diagnostics wait in memory under the same queue cap.
+      if (category === 'counts' || !regionPending()) return false;
+      if (queued() + early.length >= QUEUE_LIMIT) { stats.dropped += 1; return false; }
+      early.push({ category, name, props, ms, route: where });
+      return true;
+    }
     const seq = nextSeq();
     if (!seq) { stats.dropped += 1; return false; }
     const sid = sessionRecord && current.journeys ? sessionRecord.id : null;
-    const ms = Math.min(86400000, Math.max(0, Math.round(now())));
-    return enqueue('product', category, { name, route: productRoute(), seq, ms, props }, sid);
+    return enqueue('product', category, { name, route: where, seq, ms, props }, sid);
+  }
+
+  /** The hint answered, failed, or a choice was recorded: send each buffered item its category now allows, drop the rest. */
+  function releaseEarly() {
+    const items = early;
+    early = [];
+    for (const item of items) {
+      if (current[item.category] && !disposed) product(item.category, item.name, item.props, item);
+      else stats.dropped += 1;
+    }
   }
 
   function track(name, props) {
     try {
-      if (!current.journeys || typeof name !== 'string' || !NAME_RE.test(name) || RESERVED.includes(name)) { stats.dropped += 1; return false; }
+      if ((!current.journeys && !regionPending()) || typeof name !== 'string' || !NAME_RE.test(name) || RESERVED.includes(name)) { stats.dropped += 1; return false; }
       const clean = scrubProps(props === undefined ? {} : props);
       if (!validProps(clean, runtime)) { stats.dropped += 1; return false; }
       return product('journeys', name, clean);
@@ -568,6 +584,9 @@ export function createPulseboard(config, runtime = globalThis) {
   function route(name) {
     try {
       currentRoute = typeof name === 'string' && cfg.routes.includes(name) ? name : cfg.routes.includes('other') ? 'other' : 'home';
+      routeChosen = true;
+      // Before mount this only picks the landing route: mount() records the page's single first view.
+      if (!mounted) return !disposed;
       return pageView();
     } catch { return false; }
   }
@@ -632,7 +651,7 @@ export function createPulseboard(config, runtime = globalThis) {
 
   function onError(event) {
     try {
-      if (!current.diagnostics || errorsSent >= ERROR_LIMIT || disposed) return;
+      if ((!current.diagnostics && !regionPending()) || errorsSent >= ERROR_LIMIT || disposed) return;
       const nameOf = value => { try { const n = value?.name; return typeof n === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(n) ? n : null; } catch { return null; } };
       let props;
       if (event?.type === 'unhandledrejection') {
@@ -916,6 +935,11 @@ export function createPulseboard(config, runtime = globalThis) {
       listen(runtime, 'scroll', measureScroll, { passive: true });
       if (visible()) visibleSince = now();
       if (!blocked()) {
+        // The host may name the landing route (<html data-pulseboard-route="studio">) so a direct visit records it,
+        // not `home` first; an explicit route() call before mount wins.
+        if (!routeChosen) {
+          try { const start = doc.documentElement?.dataset?.pulseboardRoute; if (typeof start === 'string' && cfg.routes.includes(start)) currentRoute = start; } catch { /* Default route. */ }
+        }
         startDiagnostics();
         fetchRegion();
         pageView();
