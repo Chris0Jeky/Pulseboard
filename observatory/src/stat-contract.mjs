@@ -1,5 +1,6 @@
 import { projects as registry } from './projects.mjs';
 import { exactProjectList } from './admission.mjs';
+import { referrerDomain } from '../sdk/referrers.mjs';
 /** Aggregate admission contract (producer half of issue #89; multi-project since #102; v3 context since #104).
  * Accepted body is exactly { v: 1, counts: [...] }, { v: 2, context, counts } or { v: 3, context, counts }
  * with 1..20 counts { event, route, release, n: 1 }. No event IDs, session IDs, puzzle IDs, text, URLs or IPs
@@ -27,7 +28,8 @@ export const EXTRA_DIMENSIONS = Object.freeze({
   browser: BROWSERS,
   os: OPERATING_SYSTEMS,
 });
-/** A referrer host must contain a dot, so it can never collide with the `none` and `other` sentinels. */
+/** A referrer host must contain a dot, so it can never collide with the `none` and `other` sentinels. The shape is
+ *  still what admission checks (3.0 builds send bare hosts); storage keeps only allowlisted domains (storedReferrer). */
 const REFERRER_HOST = /^(?=[a-z0-9.-]*\.)[a-z0-9.-]{3,64}$/;
 /** The six-key v3 context: the v2 keys plus colour scheme, referrer host and campaign tag (USAGE_PLAN.md section 1).
  *  A list is a closed vocabulary; a function is a bounded shape. */
@@ -103,8 +105,15 @@ export function serverDimensions(request, now) {
 const UNKNOWN_CONTEXT = Object.freeze({ device: 'unknown', source: 'unknown', visit: 'unknown', scheme: 'unknown', referrer: 'unknown', campaign: 'unknown' });
 /** All twelve dimension values for one admitted batch, in DIMENSION_NAMES order. v1 carries no context and v2 no
  *  scheme, referrer or campaign; those read 'unknown'. */
+/** The referrer dimension as stored: a sentinel as sent, a host on the shared allowlist (sdk/referrers.mjs) as its
+ *  canonical platform domain, anything else `other`. A host can carry a person's name (CommitAtlas#247). */
+export function storedReferrer(value) {
+  if (SENTINELS.includes(value)) return value;
+  return referrerDomain(value) ?? 'other';
+}
 export function batchDimensions(body, request, now) {
   const context = { ...UNKNOWN_CONTEXT, ...(body.v === STAT_VERSION ? {} : body.context) };
+  context.referrer = storedReferrer(context.referrer);
   const values = { ...serverDimensions(request, now), ...context };
   return DIMENSION_NAMES.map(name => [name, values[name]]);
 }
