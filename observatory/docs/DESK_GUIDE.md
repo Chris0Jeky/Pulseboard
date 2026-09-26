@@ -24,14 +24,44 @@ Changed evidence resurfaces because review keys include an evidence fingerprint.
 This is not a shared incident-management system. Clear the site's local storage
 to reset these preferences; neither tokens nor snapshots are stored there.
 
-The **Usage** view (`5`) shows how Alibi is used: page views, puzzle starts,
-completions, hints, errors, a day-by-day chart, and route, event and release mixes.
-It reads the aggregate statistics endpoint only while the view is open, so the
+The **Usage** view (`5`) shows how a site is used: page views, starts,
+completions, hints, errors, a day-by-day chart, route, event and release mixes, and
+twelve separate dimensions (country, region, device, browser, operating system,
+colour scheme, source, referrer host, new or returning, campaign, language and UTC
+hour of receipt). Open-valued lists show their ten largest rows and fold the rest
+into "All others" for display only; a literal `other` row is the collector's own
+cap and is shown as it arrives. Usage and Product share a site picker and their own
+window (24 hours, 7, 14, 30 or 90 days); the portfolio window is hidden there. The
+view reads the aggregate statistics endpoint only while it is open, so the
 30-second portfolio poll costs one extra read per refresh on this view and none
 elsewhere. Its "questions worth asking" are leads computed from independent
 counts, never per-player rates. Its coverage table shows, for every registered
 site, what is measured today; a site marked "not measured" needs an owner decision
 (notice review plus a host adapter), not a code change.
+
+The **Product** view (`6`) reads `pulseboard.product/1` for the chosen site:
+event names, events by day, the latest 100 journeys as step chips with their
+durations, the last step before a session ended, web vitals as p75 per route with
+web.dev colouring (INP is approximate in this SDK) and errors grouped by kind and
+message. The **Explorer** reads raw events for one name only when you click
+**Read events**: each property (nested keys dotted, array items as `key[]`) shows
+how many events carry it, the top values for text and booleans, and min, median,
+p90, max and a histogram for numbers. The newest 50 events are listed with their
+properties as plain JSON text. A session is one browser tab, never a person.
+
+A site with a **product panel** gets its own section above the explorer. Alibi's
+reads the puzzle events on demand and shows, per puzzle, starts, completions,
+failures, completions per start, solve time median and p90, and hint requests,
+plus where people give up: a started puzzle with no completion in the same
+session. To add a panel for another site, write `public/products/<id>.mjs`
+exporting `{ title, names, compute(events), render(model, ui) }`: `names` are the
+event names it reads, `compute` is a pure function over raw events (test it with
+`node --test`), and `render` builds nodes only through the helpers in `ui`
+(`e`, `table`, `panel`, `count`, `percent`), which write text, never markup.
+Register it in `public/products/index.mjs`, list the file in `src/assets.mjs`, add
+it to the module list in `tests/desk-browser.py`, and keep the asset budget test green.
+Demo mode (`?demo=release` or **Try a scenario**) fills both views and the Alibi
+panel with seeded synthetic data that never leaves the tab.
 
 Prepare a field note or a task handoff. Read the exact file, acknowledge the
 sharing boundary, then download. No GitHub issue, Taskdeck card or agent action is
@@ -40,7 +70,7 @@ its evidence against current state and propose work before applying anything.
 
 ## Keyboard and connection behaviour
 
-`Ctrl/Cmd+K` opens the command palette. `1` through `5` switch views outside text
+`Ctrl/Cmd+K` opens the command palette. `1` through `6` switch views outside text
 inputs and dialogs. `/` focuses search. Escape closes the active native dialog.
 The density button switches between comfortable and compact spacing.
 

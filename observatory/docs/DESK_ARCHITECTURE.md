@@ -44,6 +44,17 @@ must never be summed with the legacy portfolio's opt-in population. Pure decisio
 live in `public/desk-model.mjs`, shared with the browser without bundling server
 configuration. `public/desk-demo.mjs` creates deterministic invented snapshots.
 
+The Desk UI reads each site through closed contracts it checks before rendering: `public/desk-usage.mjs`
+accepts `pulseboard.statistics/4` (twelve dimensions, each summing to the total) and still reads schema 3
+until the collector serves 4; `public/desk-product.mjs` accepts `pulseboard.product/1` and the raw
+`pulseboard.product-events/1` read, and documents the exact shapes it assumes at the top of the module.
+Usage and Product share one site and one window (1, 7, 14, 30 or 90 days), separate from the portfolio
+window. Raw events load only on demand; the explorer's property breakdown and every product panel are
+computed in the tab. Product panels are plain modules registered by project id in
+`public/products/index.mjs`; they receive the Desk's text-only helpers, so private values reach the page
+as text nodes, never markup. Demo mode builds the statistics, product summary and raw events from one
+seeded pool in the tab and never sends them anywhere.
+
 ## API
 
 `GET /v1/portfolio?days=7` requires the existing `Authorization: Bearer <READ_TOKEN>`
