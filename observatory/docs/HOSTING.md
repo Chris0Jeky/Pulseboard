@@ -125,8 +125,8 @@ works. Two scripts in `observatory/scripts/` do everything, in Windows PowerShel
 
 1. **Rotate** (new token, old ones stop working):
    `powershell -NoProfile -ExecutionPolicy Bypass -File observatory\scripts\rotate-read-token.ps1`.
-   It needs Node and a Wrangler login (`cd observatory && npx wrangler whoami`; if not logged in, run
-   `npx wrangler login`). It generates a random token, saves it encrypted for your Windows user at
+   It needs Node and a Wrangler login (`cd observatory; npx.cmd wrangler whoami`; if not logged in, run
+   `npx.cmd wrangler login`; in PowerShell use `npx.cmd`, because the `npx.ps1` shim can be blocked). It generates a random token, saves it encrypted for your Windows user at
    `%LOCALAPPDATA%\Pulseboard\read-token.dpapi` (the old file is kept as `.previous`), pipes it to
    `npx wrangler secret put READ_TOKEN --env=""`, and checks that the hosted Worker answers 200 with
    the new token and 401 without one. It never prints the token.
@@ -137,9 +137,11 @@ works. Two scripts in `observatory/scripts/` do everything, in Windows PowerShel
 
 Another machine: a DPAPI file only opens for the Windows user that wrote it, so it cannot be copied.
 Either rotate on the new machine (logging the others out), or keep the token in a password manager
-and paste it from there. On Linux or macOS the manual equivalent is
-`openssl rand -base64 32 | tr -d '=+/' | npx wrangler secret put READ_TOKEN --env=""`, keeping the
-value in your password manager. A lost token is not a problem: rotate again.
+and paste it from there. On Linux or macOS, generate the token into a file only you can read, save
+it in your password manager, then install it from that file, then delete the file:
+`umask 077; openssl rand -base64 32 | tr -d '=+/' > ~/.pulseboard-token`, copy it into the password
+manager, `npx wrangler secret put READ_TOKEN --env="" < ~/.pulseboard-token`, `rm ~/.pulseboard-token`.
+A lost token is not a problem: rotate again.
 
 ## Verified 2026-09-10
 

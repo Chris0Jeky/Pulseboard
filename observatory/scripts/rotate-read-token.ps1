@@ -38,7 +38,7 @@ New-Item -ItemType Directory -Force -Path $dir | Out-Null
 ConvertTo-SecureString $token -AsPlainText -Force | ConvertFrom-SecureString | Set-Content -Path $pending -Encoding ascii
 
 $ErrorActionPreference = 'Continue'  # Wrangler writes warnings to stderr; judge it by its exit code alone.
-$token | npx wrangler secret put READ_TOKEN --env=""
+$token | npx.cmd wrangler secret put READ_TOKEN --env=""
 $exit = $LASTEXITCODE
 $ErrorActionPreference = 'Stop'
 if ($exit -ne 0) {
