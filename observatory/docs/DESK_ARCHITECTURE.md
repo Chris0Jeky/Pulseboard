@@ -26,8 +26,11 @@ table in schema version 2; its migration is `migrations/0002-alibi-statistics.sq
 `src/portfolio.mjs` still consumes only the existing opt-in session event rows.
 The separate `GET /v1/statistics/alibi?days=7` read (1, 7 or 14 UTC calendar
 days) authenticates with the Desk read token, reads only daily aggregate rows,
-and returns event totals and daily totals. It returns no route/release cells,
-session estimate or flow. Its `collectionAdmitted` and `observationStatus`
+and returns `pulseboard.statistics/2`: event, daily, route and release totals plus
+per-day event totals, every breakdown summing to the same total. Schema 1 carried
+only event and daily totals; route and release totals were added for the Desk's
+Usage view, matching the route receipts and release cohorts the operator already
+reads for opt-in data. It returns no session estimate, visitor count or flow. Its `collectionAdmitted` and `observationStatus`
 fields distinguish a disabled collector from observed counts. These results
 must never be summed with the legacy portfolio's opt-in population. Pure decision helpers
 live in `public/desk-model.mjs`, shared with the browser without bundling server
