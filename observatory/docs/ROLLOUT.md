@@ -1,5 +1,7 @@
 # Portfolio rollout
 
+Usage counts for every public site now follow `USAGE_PLAN.md` (owner decisions of 2026-09-26). The table and gates below still apply to each host.
+
 No host PR in this rollout changes the native apps' no-telemetry promises. The collector is deployed with scheduled probes on since 2026-09-10 and admits browser events for the projects listed in `COLLECT_PROJECTS` only (Alibi, the owner's first pilot, since the same day; `HOSTING.md`); the admission gate below has been run and passed on that date.
 
 | Repository / surface | Integration boundary | Valuable next signals |
