@@ -42,15 +42,33 @@ success and failure receipts.
 
 The sync command requires `alibi-puzzle-club`, a stable package version and one
 matching `content/releases.json` record with the matching `v<version>` tag. It
-adds only that version to the closed collector list and regenerates the
-Pulseboard-owned `observatory/browser.js`, lock and shared host checker in the
-Alibi checkout. The existing approved collector endpoint is preserved. Locally
-edited or unowned host files, a mismatched lock, or a different endpoint stop the
-sync for manual reconciliation. The JSON receipt reports the resolved checkout
-source, package version, complete accepted list, target, byte count, SHA-256 and
-exact files changed in both repositories. `check:alibi` is read-only and reports
-`in-sync` only when the candidate host artifact matches the Pulseboard source and
-lock.
+adds only that version to the closed collector list and then refreshes the host
+artifact. Alibi's `observatory.lock.json` selects one of two layouts:
+
+- **Statistics embed** (lock without `"sdk"`; Alibi up to 0.14.0). Sync regenerates
+  the Pulseboard-owned `observatory/browser.js`, the lock and the shared host
+  checker, and keeps the approved collector endpoint.
+- **SDK v3** (lock with `"sdk"`; Alibi 0.14.1 onwards, Chris0Jeky/Alibi#391). The
+  lock must own exactly `observatory/pulseboard.js` for project `alibi`, and its
+  entry must repeat the lock's SDK version. Sync rebuilds that artifact with
+  `adapters/build-sdk.mjs` for the package release and rewrites the lock's
+  SHA-256 only when the bytes change. Alibi owns `observatory/check.mjs`,
+  `check.local.mjs` and the README in this layout, and sync never writes them.
+  The artifact must match its locked bytes and its own header hash. It must name
+  the pinned SDK version and use the approved collector. If Pulseboard builds a
+  different SDK version from the one Alibi pins, sync refuses. An SDK upgrade is
+  a reviewed Alibi change that updates the artifact, `check.mjs` and the lock
+  together. It is not a release sync.
+
+In both layouts, locally edited or unowned host files, a mismatched lock or a
+different collector stop the sync for manual reconciliation. The JSON receipt
+reports the resolved checkout source, package version, complete accepted list,
+`layout` (plus `sdk` for SDK v3), target, byte count, SHA-256 and the exact files
+changed in both repositories. `check:alibi` is read-only. It reports `in-sync`
+only when the host artifact matches the Pulseboard source and lock. It accepts
+either of two builds: one from the current list, or one from the list up to and
+including the artifact's own release. Registering a newer release therefore
+leaves a published older checkout in sync.
 
 The **Alibi connection watch** workflow checks public Alibi `main` once a day and
 can be run on demand. It writes a release and adapter receipt to the Actions
