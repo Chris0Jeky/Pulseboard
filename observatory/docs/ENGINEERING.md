@@ -87,4 +87,8 @@ The UK statistical-purpose exception is conditional, not a universal exemption f
 
 Amended 2026-09-26: `USAGE_PLAN.md` records the owner's decision to extend default-on aggregate counts (never session events) to every public site, one reviewed host at a time, and supersedes the opt-in wording above and the referral-category note in "Next modules" for aggregate counts only.
 
-Amended again 2026-09-26 (plan version 2, HUMAN_TODO q-20): diagnostics and journeys are default-on outside the EEA and need an OK inside it, product events carry bounded open JSON, detailed data is kept 90 days and aggregates 400 days. `USAGE_PLAN.md`, "Amendments to ENGINEERING.md", lists every statement this replaces.
+Amended again 2026-09-26 (plan version 2, HUMAN_TODO q-20): diagnostics and journeys are default-on outside the EEA and need an OK inside it, product events carry bounded open JSON, detailed data is kept 90 days and aggregates 400 days. `USAGE_PLAN.md`, "Amendments to ENGINEERING.md", lists the statements this replaces. It also replaces, in
+this file: the 2026-09-26 amendment's "one reviewed host at a time" and "never session events" (hosts now
+roll out together, q-21, and journeys are default-on outside the EEA); the 1,000-events-per-day budget as
+the only budget (product events have their own, 20,000 by default); and 1-, 7- or 14-day windows (statistics
+and product reads also allow 30 and 90).

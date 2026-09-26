@@ -33,8 +33,12 @@ Every product loads one Pulseboard SDK (below) with three categories:
 - Global Privacy Control or Do Not Track turns every category off, silently, whatever the region.
 - "EEA" is the EU 27 plus Iceland, Liechtenstein and Norway, taken from Cloudflare's edge country.
   An unknown country is treated as EEA.
-- One click turns everything off and is remembered. Turning a category off clears its local keys
-  (visit marker, session id) and drops anything queued.
+- **Choose** includes **Turn all off**, which records the choice with every category off, clears
+  every local key (visit marker, session id) and drops anything queued. Turning one category off
+  does the same for that category.
+- If the region hint cannot be fetched, the SDK treats the visitor as EEA.
+- In the EEA the visit marker is not written until the visitor clicks OK or turns a category on;
+  until then counts carry `visit: new` and nothing is stored on the device.
 - Session replay is out of scope (owner decision): it records screen content.
 
 ### The bar
@@ -46,7 +50,9 @@ before first paint, so it does not shift layout later:
 > names, emails or IPs. [Choose] [OK]
 
 - **OK** records the choice. In the EEA it also turns on Diagnostics and Journeys.
-- **Choose** opens three switches in place (the table above) and a Save button.
+- **Choose** opens three switches in place, each with a one-line description of what it sends, plus
+  Save and Turn all off. The descriptions are how journeys and product data are disclosed: the
+  owner-approved line itself names only usage and diagnostics (see q-22).
 - Once a choice is recorded, the bar collapses to a small **Beta** pill in the bottom-left corner that
   reopens the switches. A host can render the pill inline instead with an element carrying
   `data-pulseboard-slot`.
@@ -61,7 +67,10 @@ first-party storage and access for statistical purposes about how a service is u
 improving it, if the user gets clear information and a simple, free way to object. Everything above is
 first-party, used only for product improvement and security, never shared or sold, and the bar is the
 information plus the objection. EEA visitors are not covered by that exception, so everything beyond
-aggregate counts waits for their OK. The products are invite-only betas, which lowers the stakes but
+aggregate counts waits for their OK, and their devices get no visit marker before it. EEA aggregate
+counts then store nothing on the device; whether that is enough for the EEA without consent is the
+open question in #99. Processing of the stored data (UK and EU GDPR) rests on legitimate interests in
+improving and securing the products: pseudonymous data, short retention, no sharing, easy objection. The products are invite-only betas, which lowers the stakes but
 does not change the law. Revisit before any product leaves beta or goes to a general audience.
 
 ## Data model
@@ -84,10 +93,15 @@ Versions 1 and 2 stay accepted. Counts are unchanged: `{ event, route, release, 
 | source | browser, from `document.referrer`'s host against a fixed list | `direct search social github internal other` |
 | visit | browser, month marker (below) | `new returning` |
 | scheme | browser, `prefers-color-scheme` | `light dark` |
-| referrer | browser, referrer host lowercased, `www.` stripped; `none` when direct or internal | `^[a-z0-9.-]{1,64}$` |
+| referrer | browser, referrer host lowercased, `www.` stripped; `none` when direct or internal | a host containing a dot, `^[a-z0-9.-]{3,64}$`; `other` when invalid |
 | campaign | browser, `utm_campaign` lowercased | `^[a-z0-9_-]{1,40}$`; `none` when absent; `other` when invalid |
 
-Server-derived dimensions apply to every version; browser-derived ones read `unknown` for v1 and v2.
+Server-derived dimensions apply to every version. For v1 every browser-derived dimension reads
+`unknown`; v2 keeps its device, source and visit, and only scheme, referrer and campaign read
+`unknown`. Region, language, referrer and campaign are capped at 50 distinct values per project,
+day and dimension; a new value beyond that is stored as `other`, so a forged Origin cannot grow the
+table without bound. Campaign tags are chosen by whoever writes the link: never put a person's name
+in one.
 Each dimension is its own daily total, `statistics_dimensions(project, day, dimension, value, n)`, never
 crossed with another dimension or with the event, route or release. The visit marker is one
 localStorage key holding only a UTC month (`2026-09`) plus a sessionStorage copy of the answer.
@@ -97,12 +111,14 @@ localStorage key holding only a UTC month (`2026-09`) plus a sessionStorage copy
 This is the "plug in anything" channel: diagnostics and journeys both travel here.
 
 ```json
-{ "v": 1, "session": "<uuid v4> | null", "release": "0.13.0",
+{ "v": 1, "session": "<uuid v4> | null", "release": "0.13.0", "context": { "device": "desktop" },
   "events": [ { "name": "puzzle.completed", "route": "puzzle", "seq": 7, "ms": 81234,
                 "props": { "puzzle": "castle-3", "seconds": 212, "hints": 1 } } ] }
 ```
 
-- `session` is present only with the Journeys category; Diagnostics-only batches send `null`.
+- Top-level keys are exactly `v`, `session`, `release`, `context` and `events`; `context` is exactly
+  `{ device }` with `mobile | tablet | desktop`.
+- `session` is a uuid only with the Journeys category; Diagnostics-only batches send `null`.
 - `release` `^[0-9A-Za-z.+-]{1,32}$`. `name` `^[a-z][a-z0-9_.:-]{0,63}$`. `route` `^[a-z0-9._-]{1,48}$`.
   `seq` an integer from 1 to 1,000,000. `ms`, milliseconds since the page loaded, 0–86,400,000.
 - `props` is any JSON object, bounded: nesting depth 4, 32 keys per object, keys
@@ -111,13 +127,17 @@ This is the "plug in anything" channel: diagnostics and journeys both travel her
 - Personal keys are removed on the server before storage: after lower-casing and removing `_ - .`,
   any key equal to `email emailaddress password passwd pwd phone phonenumber mobile token accesstoken
   refreshtoken secret apikey ip ipaddress address streetaddress postcode zipcode ssn iban cardnumber
-  cvv dob dateofbirth firstname lastname fullname username`. Any string that looks like an e-mail
+  cvv dob dateofbirth firstname lastname fullname username nickname displayname player playername user
+  handle realname surname givenname`. The SDK drops the same keys before sending. Host rule: props
+  never carry user-entered free text or identity (names, handles, typed answers); the key list is a
+  safety net, not the guarantee. Any string that looks like an e-mail
   address becomes `[email]`. The stored event records how many keys it lost in `redacted`.
 - 1–20 events per batch, 16 KiB per request, and a separate daily budget per project
   (`productLimit`, default 20,000 events).
 - The server stores `(project, received, day, session, seq, name, route, release, ms, props,
-  redacted, country, region, browser, os, device)`; `device` comes from a per-batch context
-  `{ device }` sent with the events, and the rest from the request as for counts.
+  redacted, country, region, browser, os, device)`; `device` comes from the batch `context`, the rest
+  from the request as for counts. The product budget reuses the `budget` table under the key
+  `<id>:product`, so it needs no schema change.
 - Admission: `COLLECT_ENABLED` and the id in `COLLECT_PRODUCT_PROJECTS` (exact comma list, same
   rules as `COLLECT_STAT_PROJECTS`). Origin must match the registered project origin.
 
