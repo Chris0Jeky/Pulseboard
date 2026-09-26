@@ -7,7 +7,13 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const VERSION = '0.13.1';
+import { ALIBI_RELEASES } from '../src/alibi-releases.mjs';
+
+// A probe release one patch past the newest registered release, so registering a
+// new Alibi version never requires editing this test.
+const VERSION = (([major, minor, patch]) => `${major}.${minor}.${patch + 1}`)(
+  ALIBI_RELEASES.at(-1).split('.').map(Number),
+);
 const ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi';
 const LEGACY_ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi';
 const sourceObservatory = fileURLToPath(new URL('../', import.meta.url));
