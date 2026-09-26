@@ -22,7 +22,7 @@ A gateway/WAF rate limit and platform cost cap must protect pre-auth traffic: so
 
 Choose one Alibi or CommitAtlas preview/server route after inspecting the current host code and open telemetry PRs. Register stable aliases, not dynamic URLs. Confirm instrumentation runs on the server, not in a browser bundle. Add a fixture for successful requests, an auth rejection, an application error, queue loss, a collector outage and a restart. Preserve the original business response and exception. Show the source as partial during reported sampling/loss.
 
-Then enable only that source, with a deliberately low quota and an explicit rollback. Confirm a known, harmless fixture appears in the private Watch and no event appears in public exports. Browser usage consent and the existing COLLECT_ENABLED flag are independent. Resolve host artifact debt #31 before treating existing SDK integration PRs as clean deployment inputs.
+Then enable only that source, with a deliberately low quota and an explicit rollback. Confirm a known, harmless fixture appears in the private Watch and no event appears in public exports. Browser usage consent and the collection switches (`COLLECT_ENABLED`, `COLLECT_PROJECTS`, `COLLECT_STAT_PROJECTS`, `COLLECT_PRODUCT_PROJECTS`) are independent of `WATCH_ENABLED`. Host artifact debt #31 is closed; still confirm a host integration PR carries current artifacts before treating it as a clean deployment input.
 
 ## Gate 4: owned-scope posture checks and internal sources
 

@@ -66,7 +66,7 @@ The model does not implement incident acknowledgement, persistent resolution, sc
 
 ## Storage and serving
 
-Watch's additive schema has its own readiness marker and indexes. Existing schema version, portfolio contracts, browser builds and public-probe targets are unchanged. `src/watch-worker.mjs` wraps the existing Worker rather than replacing its routes. The original scheduled probes still run as before; Watch adds retention, not new scans.
+Watch's additive schema has its own readiness marker and indexes. Existing schema version (the Desk `/readyz` still reports `schema: 4`; Watch readiness is only at `/v1/watch/readyz`), portfolio, statistics and product contracts, browser builds and public-probe targets are unchanged. `src/watch-worker.mjs` wraps the existing Worker rather than replacing its routes. The original scheduled probes still run as before; Watch adds retention, not new scans.
 
 The local runner executes Watch retention at startup and every 15 minutes without network access, including while ingestion is disabled. The hosted wrapper attempts retention at the existing cron and emits a fixed diagnostic if it fails; it does not log exceptions or payloads. Snapshots expose `retentionOverdue`. Retention is logical deletion, not guaranteed physical erasure from SQLite pages, WAL files, snapshots or provider backups. Encryption, backup expiry and restore policy are deployment responsibilities.
 
@@ -89,4 +89,4 @@ Snapshot reads are transactional and bounded in output cardinality. Events are s
 
 ## Validation contract
 
-New tests must prove scope, credential separation, malformed input, byte/time limits, transaction rollback, concurrent admission, replay, event window edges, stale/partial sensors, source-separated denominators, retention and legacy route delegation. Browser tests additionally need real HTTP serving/CSP, keyboard/mobile behaviour, disconnect/401 cleanup, stale reads and deliberate export. A local SQLite test is not hosted D1 parity. Existing full Observatory and Desk gates remain mandatory; legacy #13/#14 are not repaired by Watch.
+New tests must prove scope, credential separation, malformed input, byte/time limits, transaction rollback, concurrent admission, replay, event window edges, stale/partial sensors, source-separated denominators, retention and legacy route delegation. Browser tests additionally need real HTTP serving/CSP, keyboard/mobile behaviour, disconnect/401 cleanup, stale reads and deliberate export. A local SQLite test is not hosted D1 parity. Existing full Observatory and Desk gates remain mandatory; legacy #13/#14 were closed on `main` independently of Watch.
