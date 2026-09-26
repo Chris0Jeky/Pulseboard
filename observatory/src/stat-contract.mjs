@@ -7,8 +7,27 @@ import { projects as registry } from './projects.mjs';
  * project.routes, project.releases). Each admitted count reserves one unit of
  * the same daily budget and increments one aggregate row. */
 export const STAT_VERSION = 1;
+export const STAT_CONTEXT_VERSION = 2;
 export const STAT_MAX_BATCH = 20;
 const STAT_COUNT_FIELDS = ['event', 'route', 'release', 'n'];
+/** Closed per-visit context a v2 batch carries (USAGE_PLAN.md). Country is never sent by the browser. */
+export const DIMENSIONS = Object.freeze({
+  device: Object.freeze(['mobile', 'tablet', 'desktop']),
+  source: Object.freeze(['direct', 'search', 'social', 'github', 'internal', 'other']),
+  visit: Object.freeze(['new', 'returning']),
+});
+export const DIMENSION_NAMES = Object.freeze(['country', 'device', 'source', 'visit']);
+/** Cloudflare's edge country as ISO alpha-2; its Tor (T1), unknown (XX) and missing values read 'unknown'.
+ *  Only this code is used: the collector never reads the connecting IP. */
+export function statCountry(request) {
+  const code = request?.cf?.country;
+  return typeof code === 'string' && /^[A-Z]{2}$/.test(code) && code !== 'XX' ? code : 'unknown';
+}
+function validContext(context) {
+  if (!context || Object.getPrototypeOf(context) !== Object.prototype) return false;
+  const keys = Object.keys(context);
+  return keys.length === 3 && Object.entries(DIMENSIONS).every(([name, values]) => values.includes(context[name]));
+}
 
 export function validateStatCount(count, project) {
   if (!count || Object.getPrototypeOf(count) !== Object.prototype) return false;
@@ -25,8 +44,9 @@ export function validateStatCount(count, project) {
 export function validateStatBatch(body, project) {
   if (!body || Object.getPrototypeOf(body) !== Object.prototype) return false;
   const keys = Object.keys(body);
-  if (keys.length !== 2 || !keys.includes('v') || !keys.includes('counts')) return false;
-  if (body.v !== STAT_VERSION) return false;
+  if (body.v === STAT_VERSION) { if (keys.length !== 2 || !keys.includes('counts')) return false; }
+  else if (body.v === STAT_CONTEXT_VERSION) { if (keys.length !== 3 || !keys.includes('counts') || !validContext(body.context)) return false; }
+  else return false;
   if (!Array.isArray(body.counts)) return false;
   if (body.counts.length < 1 || body.counts.length > STAT_MAX_BATCH) return false;
   return body.counts.every(count => validateStatCount(count, project));

@@ -52,6 +52,11 @@ test('the Desk refuses a statistics read that disagrees with itself or its windo
     s => { s.events[0].country = 'GB'; },
     s => { s.events.push({ ...s.events[0], n: 0 }); },
     s => { s.window.extra = 1; },
+    s => { delete s.dimensions; },
+    s => { s.dimensions.country[0].n += 1; },
+    s => { s.dimensions.device = [{ value: 'phone', n: 3 }]; },
+    s => { s.dimensions.country = [{ value: 'gb', n: 3 }]; },
+    s => { s.dimensions.extra = []; },
   ];
   for (const change of broken) {
     const copy = structuredClone(stats); change(copy);

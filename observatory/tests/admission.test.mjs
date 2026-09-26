@@ -47,14 +47,14 @@ test('readiness exposes admission and rejects an invalid allowlist', async t => 
   const DB = database(t);
   const good = await handle(new Request('https://desk.test/readyz'), { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi' });
   assert.equal(good.status, 200);
-  assert.deepEqual(await good.json(), { ready: true, schema: 2,
+  assert.deepEqual(await good.json(), { ready: true, schema: 3,
     collection: { enabled: true, configured: ['alibi'], admitted: ['alibi'], invalid: [] },
     statistics: { configured: false, admitted: [] } });
   const counted = await handle(new Request('https://desk.test/readyz'), { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi', COLLECT_STAT_PROJECTS: 'alibi, mdviewer' });
   assert.deepEqual((await counted.json()).statistics, { configured: true, admitted: [] }, 'a malformed statistics list is visible as configured but admitting nothing');
   const bad = await handle(new Request('https://desk.test/readyz'), { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi,Alibi' });
   assert.equal(bad.status, 503);
-  assert.deepEqual(await bad.json(), { ready: false, schema: 2,
+  assert.deepEqual(await bad.json(), { ready: false, schema: 3,
     collection: { enabled: true, configured: ['alibi', 'Alibi'], admitted: [], invalid: ['Alibi'] },
     statistics: { configured: false, admitted: [] } });
 });

@@ -1,9 +1,14 @@
 /** Usage view model: one project's aggregate statistics read, its contract check and a synthetic twin.
  *  Counts are client-reported events, never people; nothing here derives visitors, retention or conversion. */
 import { plain, requireValue, boundedString, list, exactKeys, unique } from './desk-bridge.mjs';
-export const STATISTICS_SCHEMA = 'pulseboard.statistics/2';
+export const STATISTICS_SCHEMA = 'pulseboard.statistics/3';
 export const STATISTICS_MAX_BYTES = 65536;
-const TOP_KEYS = ['schema', 'project', 'generatedAt', 'window', 'collectionAdmitted', 'observationStatus', 'population', 'limitations', 'total', 'events', 'daily', 'routes', 'releases', 'eventDaily'];
+const TOP_KEYS = ['schema', 'project', 'generatedAt', 'window', 'collectionAdmitted', 'observationStatus', 'population', 'limitations', 'total', 'events', 'daily', 'routes', 'releases', 'eventDaily', 'dimensions'];
+/** Mirrors DIMENSIONS in src/stat-contract.mjs (a test keeps them equal); country is ISO alpha-2 from the edge. */
+export const DIMENSION_VALUES = Object.freeze({
+  device: ['mobile', 'tablet', 'desktop'], source: ['direct', 'search', 'social', 'github', 'internal', 'other'], visit: ['new', 'returning'],
+});
+const dimensionValue = (name, value) => value === 'unknown' || (name === 'country' ? /^[A-Z]{2}$/.test(value) : DIMENSION_VALUES[name].includes(value));
 const VOCABULARY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const DAY_TEXT = /^\d{4}-\d\d-\d\d$/;
 const PROJECT = /^[a-z0-9-]{1,64}$/;
@@ -45,6 +50,11 @@ export function assertStatistics(input, days, project = 'alibi') {
   const total = rows => rows.reduce((n, r) => n + r.n, 0);
   requireValue([input.events, input.routes, input.releases, input.daily, input.eventDaily].every(xs => total(xs) === input.total), 'Statistics totals disagree');
   requireValue(input.daily.every(d => total(input.eventDaily.filter(r => r.day === d.day)) === d.n), 'Daily statistics disagree');
+  exactKeys(input.dimensions, ['country', 'device', 'source', 'visit']);
+  for (const [name, list] of Object.entries(input.dimensions)) {
+    rows(list, name === 'country' ? 256 : 8, ['value'], r => requireValue(typeof r.value === 'string' && dimensionValue(name, r.value), 'Invalid dimension value'));
+    requireValue(total(list) === input.total, 'Dimension totals disagree');
+  }
   return input;
 }
 
@@ -105,5 +115,11 @@ export function makeStatisticsDemo(days = 7, now = Date.now(), project = 'alibi'
     total, events, daily,
     routes: (alibi ? split(['puzzle', 'home', 'castle', 'quiet-wing', 'other'], [0.52, 0.27, 0.12, 0.06]) : split(['home'], [])).map(([route, n]) => ({ route, n })),
     releases: (alibi ? split(['0.12.0', '0.11.6'], [0.86]) : split(['unattributed'], [])).map(([release, n]) => ({ release, n })),
+    dimensions: {
+      country: split(['GB', 'RO', 'MD', 'US', 'unknown'], [0.46, 0.22, 0.14, 0.1]).map(([value, n]) => ({ value, n })),
+      device: split(['desktop', 'mobile', 'tablet'], [0.64, 0.3]).map(([value, n]) => ({ value, n })),
+      source: split(['direct', 'github', 'search', 'social', 'internal', 'other'], [0.41, 0.24, 0.15, 0.1, 0.06]).map(([value, n]) => ({ value, n })),
+      visit: split(['returning', 'new'], [0.62]).map(([value, n]) => ({ value, n })),
+    },
     eventDaily };
 }

@@ -39,7 +39,10 @@ belongs in an operator-controlled secret store; the browser only keeps it in mem
 
 For the schema-2 Alibi statistics producer, migrate the existing D1 database
 with `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0002-alibi-statistics.sql`
-before deploying a Worker that requires schema 2. The migration creates only an
+before deploying a Worker that requires schema 2. For schema 3 (per-dimension totals, #103), run
+`npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0003-statistics-dimensions.sql`
+before deploying; it only adds `statistics_dimensions`. Rolling back to a schema-2 Worker needs
+`UPDATE schema_version SET version=2 WHERE id=1 AND version=3` after the deploy, and the table stays. The migration creates only an
 aggregate table and preserves historical session event rows. Confirm `/readyz`
 returns schema 2 after deployment. The `/v1/collect-stat/<id>` route is
 disabled for every id not listed in `COLLECT_STAT_PROJECTS` (an exact comma list since #102; it was exactly `alibi` before). Production now
