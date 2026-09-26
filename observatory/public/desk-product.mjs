@@ -8,12 +8,13 @@
  *    window: { startDay, endDay, days, timezone: 'UTC', partialToday: true },   // same window as pulseboard.statistics/4
  *    collectionAdmitted: <bool>, population: <text ≤120>, limitations: [<text ≤500>] ≤16,
  *    total: <int>,                                                           // events in the window
- *    totals: { names: [{ name, n }], routes: [{ route, n }], releases: [{ release, n }], days: [{ day, n }] },  // each sums to total
+ *    totals: { names: [{ name, n }] ≤512, routes: [{ route, n }] ≤256, releases: [{ release, n }] ≤64, days: [{ day, n }],
+ *              truncated: { names, routes, releases } },  // booleans; a list sums to total unless its flag is true (then ≤ total); days never truncate
  *    sessions: { n: <int>, medianEvents: <number|null>, medianDurationMs: <number|null> },  // null when n is 0
- *    journeys: [{ session: <uuid v4>, startedAt: <ms>, durationMs: <int>, steps: [name] ≤200 }] ≤100,  // newest first
+ *    journeys: [{ session: <uuid v4>, startedAt: <ms>, durationMs: <int>, steps: [name] 1..200, stepsTruncated: <bool> }] ≤100,  // newest first
  *    exits: [{ name, n }],                                                   // last step of each session; sums to sessions.n
  *    vitals: [{ metric: LCP|INP|CLS|FCP|TTFB, route, p75: <number ≥0>, n: <int ≥1> }],  // p75 from raw values; CLS unitless, others ms
- *    errors: [{ kind: <text ≤64>, message: <text ≤160>, n: <int ≥1>, lastSeen: <ms> }] ≤100 }
+ *    errors: [{ kind: <text ≤64>, message: <text ≤160>, n: <int ≥1>, lastSeen: <ms> }] ≤100 }  // lengths in JS string units
  *
  *  GET /v1/product/<id>/events?days=…&name=…&limit=1..5000  →
  *  { schema: 'pulseboard.product-events/1', project, generatedAt, mode?: 'demo', window: {…as above}, name, limit, truncated: <bool>,
@@ -23,7 +24,7 @@
 import { plain, requireValue, boundedString, list, exactKeys, unique } from './desk-bridge.mjs';
 export const PRODUCT_SCHEMA = 'pulseboard.product/1';
 export const PRODUCT_EVENTS_SCHEMA = 'pulseboard.product-events/1';
-export const PRODUCT_MAX_BYTES = 524288;
+export const PRODUCT_MAX_BYTES = 4 * 1048576;
 /** 5,000 events at up to 2 KiB of props each, plus their envelope. */
 export const PRODUCT_EVENTS_MAX_BYTES = 12 * 1048576;
 export const PRODUCT_EVENTS_LIMIT = 5000;
@@ -79,19 +80,24 @@ export function assertProduct(input, days, project) {
   list(input.limitations, 16).forEach(text => boundedString(text, 500));
   whole(input.total);
   const { window: w, totals: t } = input;
-  exactKeys(t, ['names', 'routes', 'releases', 'days']);
+  exactKeys(t, ['names', 'routes', 'releases', 'days', 'truncated']);
+  exactKeys(t.truncated, ['names', 'routes', 'releases']);
+  requireValue(Object.values(t.truncated).every(flag => typeof flag === 'boolean'), 'Invalid truncation flag');
   const rows = (value, max, key, check) => { list(value, max).forEach(r => { exactKeys(r, [key, 'n']); check(r[key]); whole(r.n, 1); }); unique(value.map(r => r[key])); };
   rows(t.names, LIMITS.names, 'name', v => matching(v, EVENT_NAME));
   rows(t.routes, LIMITS.routes, 'route', v => matching(v, ROUTE));
   rows(t.releases, LIMITS.releases, 'release', v => matching(v, RELEASE));
   rows(t.days, days, 'day', v => requireValue(utcDay(v) >= w.startDay && v <= w.endDay, 'Day outside window'));
-  requireValue([t.names, t.routes, t.releases, t.days].every(xs => tally(xs) === input.total), 'Product totals disagree');
+  // A capped list may fall short of the total, never exceed it; days are never capped.
+  requireValue(['names', 'routes', 'releases'].every(k => t.truncated[k] ? tally(t[k]) <= input.total : tally(t[k]) === input.total)
+    && tally(t.days) === input.total, 'Product totals disagree');
   const s = input.sessions;
   exactKeys(s, ['n', 'medianEvents', 'medianDurationMs']);
   whole(s.n); medianOrNull(s.medianEvents); medianOrNull(s.medianDurationMs);
   requireValue(s.n > 0 || (s.medianEvents === null && s.medianDurationMs === null), 'Median without sessions');
   list(input.journeys, LIMITS.journeys).forEach(j => {
-    exactKeys(j, ['session', 'startedAt', 'durationMs', 'steps']);
+    exactKeys(j, ['session', 'startedAt', 'durationMs', 'steps', 'stepsTruncated']);
+    requireValue(typeof j.stepsTruncated === 'boolean', 'Invalid step truncation flag');
     matching(j.session, SESSION); whole(j.startedAt); whole(j.durationMs);
     requireValue(list(j.steps, LIMITS.steps).length > 0, 'Empty journey'); j.steps.forEach(step => matching(step, EVENT_NAME));
   });
@@ -108,15 +114,17 @@ export function assertProduct(input, days, project) {
     exactKeys(x, ['kind', 'message', 'n', 'lastSeen']);
     boundedString(x.kind, 64); boundedString(x.message, 160); whole(x.n, 1); whole(x.lastSeen);
   });
-  unique(input.errors.map(x => `${x.kind}|${x.message}`));
+  // NUL cannot appear in either field (boundedString refuses control characters), so kinds and messages holding '|' cannot collide.
+  unique(input.errors.map(x => `${x.kind}\u0000${x.message}`));
   return input;
 }
 
-/** Bounded props as the collector stores them: depth 4, 32 keys per object, 256-character strings, 32-item arrays, finite numbers. */
+/** Bounded props as the collector stores them: depth 4, 32 keys per object, 256-character strings (300 tolerated: redaction can
+ *  lengthen a string before the collector's cut), 32-item arrays, finite numbers. */
 export function assertProps(value, depth = 0) {
   if (value === null || typeof value === 'boolean') return;
   if (typeof value === 'number') return requireValue(Number.isFinite(value), 'Invalid prop number');
-  if (typeof value === 'string') return requireValue(value.length <= 256, 'Prop string too long');
+  if (typeof value === 'string') return requireValue(value.length <= 300, 'Prop string too long');
   requireValue(depth < 4, 'Props nested too deeply');
   if (Array.isArray(value)) { list(value, 32).forEach(item => assertProps(item, depth + 1)); return; }
   requireValue(plain(value) && Object.keys(value).length <= 32, 'Invalid props object');
@@ -157,15 +165,23 @@ export function rankQuantile(sorted, q) { return sorted.length ? sorted[Math.max
 function flattenProps(value, prefix, out) {
   if (Array.isArray(value)) { for (const item of value) flattenProps(item, `${prefix}[]`, out); return; }
   if (plain(value)) { for (const [key, item] of Object.entries(value)) flattenProps(item, prefix ? `${prefix}.${key}` : key, out); return; }
-  (out[prefix] ??= []).push(value);
+  const values = out.get(prefix); if (values) values.push(value); else out.set(prefix, [value]);
+}
+/** The top n rows by count, value as tie-break: a linear pass keeps only candidates, then only those are sorted. */
+function topValues(counts, n) {
+  const byCount = (a, b) => b.n - a.n || (a.value < b.value ? -1 : a.value > b.value ? 1 : 0);
+  if (counts.size <= n) return [...counts].map(([value, c]) => ({ value, n: c })).sort(byCount);
+  const floor = [...counts.values()].sort((a, b) => b - a)[n - 1];
+  return [...counts].filter(([, c]) => c >= floor).map(([value, c]) => ({ value, n: c })).sort(byCount).slice(0, n);
 }
 /** Per dotted key: how many events carry it; strings, booleans and nulls as top values; numbers as min / median / p90 / max and a histogram.
  *  Computed in the browser from the rows already read; nothing leaves the tab. */
 export function propertyBreakdown(events, { top = 10, bins = 10 } = {}) {
   const keys = new Map();
   for (const event of events) {
-    const flat = {}; flattenProps(event.props ?? {}, '', flat);
-    for (const [key, values] of Object.entries(flat)) {
+    // A Map, so prop names such as constructor, toString or __proto__ are ordinary keys.
+    const flat = new Map(); flattenProps(event.props ?? {}, '', flat);
+    for (const [key, values] of flat) {
       const entry = keys.get(key) ?? { key, present: 0, numbers: [], others: new Map() };
       entry.present++;
       for (const v of values) typeof v === 'number' ? entry.numbers.push(v) : entry.others.set(String(v), (entry.others.get(String(v)) ?? 0) + 1);
@@ -173,13 +189,13 @@ export function propertyBreakdown(events, { top = 10, bins = 10 } = {}) {
     }
   }
   return [...keys.values()].sort((a, b) => b.present - a.present || a.key.localeCompare(b.key)).map(({ key, present, numbers, others }) => {
-    const values = [...others].map(([value, n]) => ({ value, n })).sort((a, b) => b.n - a.n || a.value.localeCompare(b.value));
     const kind = numbers.length && others.size ? 'mixed' : numbers.length ? 'number' : [...others.keys()].every(v => v === 'true' || v === 'false') ? 'boolean' : 'string';
-    const result = { key, kind, present, values: values.slice(0, top), otherValues: Math.max(0, values.length - top), numeric: null };
+    const result = { key, kind, present, values: topValues(others, top), otherValues: Math.max(0, others.size - top), numeric: null };
     if (numbers.length) {
       const sorted = numbers.sort((a, b) => a - b), min = sorted[0], max = sorted.at(-1), count = Math.min(bins, new Set(sorted).size);
-      const width = (max - min) / Math.max(1, count), histogram = Array.from({ length: count }, (_, i) => ({ lo: min + i * width, hi: i === count - 1 ? max : min + (i + 1) * width, n: 0 }));
-      for (const v of sorted) histogram[width ? Math.min(count - 1, Math.floor((v - min) / width)) : 0].n++;
+      // max - min overflows to Infinity for extreme spans (-1e308 and 1e308): everything then goes in one bin.
+      const span = max - min, bucketCount = Number.isFinite(span) ? count : 1, width = Number.isFinite(span) ? span / Math.max(1, count) : 0, histogram = Array.from({ length: bucketCount }, (_, i) => ({ lo: min + i * width, hi: i === bucketCount - 1 ? max : min + (i + 1) * width, n: 0 }));
+      for (const v of sorted) histogram[width ? Math.min(bucketCount - 1, Math.floor((v - min) / width)) : 0].n++;
       result.numeric = { n: sorted.length, min, median: rankQuantile(sorted, 0.5), p90: rankQuantile(sorted, 0.9), max, histogram };
     }
     return result;

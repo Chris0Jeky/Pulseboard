@@ -129,10 +129,10 @@ export function makeProductDemo(days = 7, now = Date.now(), project = 'alibi') {
       'Journeys are the latest 100 sessions. A session is one browser tab, not a person.'],
     total: pool.length,
     totals: { names: counted(pool, x => x.name, 'name'), routes: counted(pool, x => x.route, 'route'), releases: counted(pool, x => x.release, 'release'),
-      days: counted(pool, x => x.day, 'day').sort((a, b) => a.day.localeCompare(b.day)) },
+      days: counted(pool, x => x.day, 'day').sort((a, b) => a.day.localeCompare(b.day)), truncated: { names: false, routes: false, releases: false } },
     sessions: { n: sessions.length, medianEvents: rankQuantile(lengths, 0.5), medianDurationMs: rankQuantile(durations, 0.5) },
     journeys: sessions.sort((a, b) => b[0].received - a[0].received).slice(0, 100)
-      .map(xs => ({ session: xs[0].session, startedAt: xs[0].received, durationMs: xs.at(-1).ms - xs[0].ms, steps: xs.map(x => x.name) })),
+      .map(xs => ({ session: xs[0].session, startedAt: xs[0].received, durationMs: xs.at(-1).ms - xs[0].ms, steps: xs.slice(0, 60).map(x => x.name), stepsTruncated: xs.length > 60 })),
     exits: counted(sessions.map(xs => xs.at(-1)), x => x.name, 'name'),
     vitals: [...byKey(pool.filter(x => x.name === 'web.vital'), x => `${x.props.metric}|${x.route}`)].map(([key, xs]) => {
       const [metric, route] = key.split('|'), values = xs.map(x => x.props.value).sort((a, b) => a - b);

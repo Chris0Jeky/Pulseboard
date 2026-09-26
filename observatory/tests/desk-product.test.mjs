@@ -16,9 +16,10 @@ const summary = () => ({
   collectionAdmitted: true, population: 'opted-in browser sessions', limitations: ['Sessions are browser tabs, not people.'],
   total: 5,
   totals: { names: [{ name: 'puzzle.started', n: 3 }, { name: 'web.vital', n: 2 }], routes: [{ route: 'puzzle', n: 5 }],
-    releases: [{ release: '0.13.0', n: 5 }], days: [{ day: '2026-09-24', n: 1 }, { day: '2026-09-25', n: 4 }] },
+    releases: [{ release: '0.13.0', n: 5 }], days: [{ day: '2026-09-24', n: 1 }, { day: '2026-09-25', n: 4 }],
+    truncated: { names: false, routes: false, releases: false } },
   sessions: { n: 2, medianEvents: 1, medianDurationMs: 0 },
-  journeys: [{ session: session(1), startedAt: now - 1000, durationMs: 0, steps: ['puzzle.started'] }],
+  journeys: [{ session: session(1), startedAt: now - 1000, durationMs: 0, steps: ['puzzle.started'], stepsTruncated: false }],
   exits: [{ name: 'puzzle.started', n: 2 }],
   vitals: [{ metric: 'INP', route: 'puzzle', p75: 240, n: 2 }],
   errors: [{ kind: 'TypeError', message: 'x is undefined', n: 1, lastSeen: now - 5000 }],
@@ -32,6 +33,14 @@ test('the product summary contract accepts its documented shape', () => {
   const s = summary();
   assert.equal(assertProduct(s, 7, 'alibi'), s);
   assert.equal(assertProduct({ ...summary(), sessions: { n: 0, medianEvents: null, medianDurationMs: null }, journeys: [], exits: [] }, 7, 'alibi').sessions.n, 0);
+  const capped = summary(); capped.totals.truncated.names = true; capped.totals.names.pop();
+  assert.equal(assertProduct(capped, 7, 'alibi'), capped, 'a capped list may fall short of the total');
+  const long = summary(); long.journeys[0].steps = Array(200).fill('puzzle.started'); long.journeys[0].stepsTruncated = true;
+  assert.equal(assertProduct(long, 7, 'alibi'), long);
+  const piped = summary(); piped.errors.push({ kind: 'Type|Error', message: 'x', n: 1, lastSeen: now }, { kind: 'Type', message: 'Error|x', n: 1, lastSeen: now });
+  assert.equal(assertProduct(piped, 7, 'alibi'), piped, "'|' inside a kind or message cannot collide");
+  const wide = summary(); wide.errors[0].kind = 'k'.repeat(64); wide.errors[0].message = '\u{1F600}'.repeat(80);
+  assert.equal(assertProduct(wide, 7, 'alibi'), wide, 'lengths are JS string units');
 });
 
 test('the product summary contract refuses each malformed shape', () => {
@@ -49,6 +58,17 @@ test('the product summary contract refuses each malformed shape', () => {
     s => { s.totals.releases.push({ release: '0.13.0', n: 0 }); },
     s => { s.totals.days[0].day = '2026-09-01'; },
     s => { s.totals.extra = []; },
+    s => { delete s.totals.truncated; },
+    s => { s.totals.truncated.days = false; },
+    s => { s.totals.truncated.names = 'yes'; },
+    s => { s.totals.truncated.names = true; s.totals.names[0].n += 1; },
+    s => { s.totals.truncated.routes = true; s.totals.days[0].n -= 1; },
+    s => { s.totals.names = Array.from({ length: 513 }, (_, i) => ({ name: `e${i}`, n: 1 })); s.totals.truncated.names = true; },
+    s => { delete s.journeys[0].stepsTruncated; },
+    s => { s.journeys[0].stepsTruncated = 1; },
+    s => { s.journeys[0].steps = Array(201).fill('puzzle.started'); },
+    s => { s.errors[0].kind = 'k'.repeat(65); },
+    s => { s.errors.push({ ...s.errors[0] }); },
     s => { s.sessions.medianEvents = -1; },
     s => { s.sessions.users = 2; },
     s => { s.sessions = { n: 0, medianEvents: 1, medianDurationMs: null }; s.exits = []; s.journeys = []; },
@@ -88,7 +108,7 @@ test('the raw events contract is ordered, filtered by name and bounded', () => {
     r => { r.events[0].props = null; },
     r => { r.events[0].props = { 'bad key': 1 }; },
     r => { r.events[0].props = { a: { b: { c: { d: { e: 1 } } } } }; },
-    r => { r.events[0].props = { s: 'x'.repeat(257) }; },
+    r => { r.events[0].props = { s: 'x'.repeat(301) }; },
     r => { r.events[0].props = { n: Number.POSITIVE_INFINITY }; },
     r => { r.events[0].seq = 0; },
     r => { r.events[0].ms = 86_400_001; },
@@ -103,6 +123,7 @@ test('the raw events contract is ordered, filtered by name and bounded', () => {
     assert.throws(() => assertProductEvents(copy, 7, 'alibi', 'puzzle.started'), TypeError, `mutation ${i} should be refused`);
   }
   assert.throws(() => assertProps(Array.from({ length: 33 }, () => 1)), TypeError);
+  assert.equal(assertProps({ s: 'x'.repeat(300) }), undefined, 'redaction slack up to 300 characters');
   assert.throws(() => assertProps(Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`k${i}`, i]))), TypeError);
 });
 
@@ -152,6 +173,13 @@ test('property breakdown flattens, counts strings and booleans, and summarises n
   assert.equal(rows.nothing.kind, 'string'); assert.deepEqual(rows.nothing.values, [{ value: 'null', n: 1 }]);
   const one = propertyBreakdown([{ props: { v: 5 } }, { props: { v: 5 } }])[0].numeric;
   assert.deepEqual(one.histogram, [{ lo: 5, hi: 5, n: 2 }]);
+  const proto = Object.fromEntries(propertyBreakdown([{ props: JSON.parse('{"constructor":"a","toString":1,"valueOf":true,"__proto__":{"x":"y"}}') }]).map(r => [r.key, r]));
+  assert.deepEqual(Object.keys(proto).sort(), ['__proto__.x', 'constructor', 'toString', 'valueOf']);
+  assert.deepEqual(proto.constructor.values, [{ value: 'a', n: 1 }]); assert.equal(proto.toString.numeric.n, 1);
+  const extreme = propertyBreakdown([{ props: { v: -1e308 } }, { props: { v: 1e308 } }, { props: { v: 0 } }])[0].numeric;
+  assert.deepEqual(extreme.histogram, [{ lo: -1e308, hi: 1e308, n: 3 }], 'an overflowing span falls back to one bin');
+  const ties = propertyBreakdown([...'abcdefghijkl'].map(k => ({ props: { k } })).concat([{ props: { k: 'z' } }, { props: { k: 'z' } }]))[0];
+  assert.deepEqual(ties.values.map(v => v.value), ['z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']); assert.equal(ties.otherValues, 3);
   const many = propertyBreakdown(Array.from({ length: 30 }, (_, i) => ({ props: { k: `v${i}`, x: i } })), { top: 10 });
   assert.equal(many.find(r => r.key === 'k').values.length, 10); assert.equal(many.find(r => r.key === 'k').otherValues, 20);
   assert.equal(many.find(r => r.key === 'x').numeric.histogram.length, 10);

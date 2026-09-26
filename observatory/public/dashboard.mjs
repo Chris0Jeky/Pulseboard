@@ -543,12 +543,13 @@ function productView() {
       stat('Events per session', s.medianEvents === null ? '—' : count(s.medianEvents), 'Median'),
       stat('Session length', seconds(s.medianDurationMs), 'Median, first to last event')),
     e('div', { class: 'overview-grid' },
-      panel('Event names', share(p.totals.names, 'name', p.total, 'Event'), tag('ALL EVENTS')),
+      panel('Event names', e('div', {}, share(p.totals.names, 'name', p.total, 'Event'), p.totals.truncated.names ? e('p', { class: 'tiny muted' }, 'The collector capped this list; rarer names are not shown.') : null), tag(p.totals.truncated.names ? 'CAPPED LIST' : 'ALL EVENTS')),
       panel('Day by day', barChart(perDay, days.map(d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })), 'Product events by UTC day', ['Product events', 'UTC · today is partial'], 'UTC day'), tag('RAW COUNTS'))),
     e('div', { class: 'overview-grid' },
       panel('Journeys', p.journeys.length ? e('div', { class: 'journey-list', tabindex: '0', role: 'region', 'aria-label': 'Latest journeys' }, p.journeys.map(j => e('div', { class: 'journey' },
         e('div', { class: 'tiny muted' }, `${date(j.startedAt)} · ${seconds(j.durationMs)} · ${j.steps.length} steps`),
-        e('div', {}, j.steps.slice(0, 30).map(step => e('span', { class: 'step-chip' }, step)), j.steps.length > 30 ? e('span', { class: 'tiny muted' }, ` +${j.steps.length - 30} more`) : null))))
+        e('div', {}, j.steps.slice(0, 30).map(step => e('span', { class: 'step-chip' }, step)), j.steps.length > 30 ? e('span', { class: 'tiny muted' }, ` +${j.steps.length - 30} more`) : null,
+          j.stepsTruncated ? e('span', { class: 'tiny muted' }, ' · later steps capped by the collector') : null))))
         : e('p', { class: 'muted' }, 'No sessions in this window. Journeys need the Journeys category allowed.'), tag(`LATEST ${p.journeys.length}`)),
       panel('Last step before leaving', share(p.exits, 'name', s.n, 'Last event'), tag('EXITS · PER SESSION'))),
     e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Diagnostics'), e('p', {}, 'p75 from raw values per metric and route; web.dev thresholds. INP is approximate in this SDK.')),
