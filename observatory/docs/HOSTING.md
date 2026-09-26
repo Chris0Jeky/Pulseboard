@@ -124,10 +124,10 @@ The read token is the password to the hosted Desk's private data. The owner lets
 works. Two scripts in `observatory/scripts/` do everything, in Windows PowerShell 5.1 or later:
 
 1. **Rotate** (new token, old ones stop working):
-   `powershell -NoProfile -ExecutionPolicy Bypass -File observatory\scriptsotate-read-token.ps1`.
+   `powershell -NoProfile -ExecutionPolicy Bypass -File observatory\scripts\rotate-read-token.ps1`.
    It needs Node and a Wrangler login (`cd observatory && npx wrangler whoami`; if not logged in, run
    `npx wrangler login`). It generates a random token, saves it encrypted for your Windows user at
-   `%LOCALAPPDATA%\Pulseboardead-token.dpapi` (the old file is kept as `.previous`), pipes it to
+   `%LOCALAPPDATA%\Pulseboard\read-token.dpapi` (the old file is kept as `.previous`), pipes it to
    `npx wrangler secret put READ_TOKEN --env=""`, and checks that the hosted Worker answers 200 with
    the new token and 401 without one. It never prints the token.
 2. **Copy** (to paste into the Desk's **Connect data**):
