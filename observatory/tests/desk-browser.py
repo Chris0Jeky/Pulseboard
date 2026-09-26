@@ -19,7 +19,8 @@ TOKEN = os.environ.get('READ_TOKEN', 'desk-browser-test-only-' + '0' * 40)
 
 def offline_html():
     html = (PUBLIC / 'index.html').read_text()
-    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-network.mjs', 'desk-release.mjs', 'desk-usage.mjs', 'dashboard.mjs'])
+    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-product.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-network.mjs', 'desk-release.mjs', 'desk-usage.mjs',
+                                                      'products/alibi.mjs', 'products/index.mjs', 'dashboard.mjs'])
     source = re.sub(r'^import .*?;\n', '', source, flags=re.M)
     source = re.sub(r'\bexport (?=(?:async )?(?:const|function|class))', '', source)
     html = html.replace('<link rel="stylesheet" href="/dashboard.css">', '<style>' + (PUBLIC / 'dashboard.css').read_text() + '</style>')
@@ -111,8 +112,37 @@ async def run(args):
         assert await page.locator('#view .state-chip.down').count() == 0
         await page.locator('#replay').fill('1')
         assert await page.locator('#view .state-chip.down').count() == 1
+        results.append('release guard and incident replay')
+        # Number keys switch views only outside form controls; the replay slider still has focus here.
+        await page.locator('#page-title').focus()
+        await page.keyboard.press('5')
+        await expect(page.locator('#page-title')).to_have_text('Usage.')
+        await page.locator('#usage-window').select_option('90')
+        await expect(page.locator('#view')).to_contain_text('Hour of day')
+        await expect(page.locator('#view')).to_contain_text('Referrer host')
+        await page.locator('#page-title').focus()
+        await page.keyboard.press('6')
+        await expect(page.locator('#page-title')).to_have_text('Product.')
+        await expect(page.locator('#view')).to_contain_text('SYNTHETIC')
+        await expect(page.locator('#view')).to_contain_text('INP (approximate)')
+        assert await page.locator('.journey').count() > 0
+        await page.locator('.product-plugin').get_by_role('button', name='Read events').click()
+        await expect(page.locator('.product-plugin')).to_contain_text('Where people give up')
+        await expect(page.locator('.product-plugin')).to_contain_text('castle-')
+        await page.locator('#explorer-name').select_option('puzzle.completed')
+        await page.locator('.panel', has=page.locator('#explorer-name')).get_by_role('button', name='Read events').click()
+        await expect(page.locator('#view')).to_contain_text('Recent events')
+        await expect(page.locator('#view .props-json').first).to_contain_text('"seconds"')
+        await page.set_viewport_size({'width': 390, 'height': 900})
+        assert await page.evaluate('document.documentElement.scrollWidth') <= 390, 'The product view must not scroll the page sideways'
+        await page.set_viewport_size({'width': 1440, 'height': 1100})
+        await page.locator('#usage-project').select_option('mdviewer')
+        await expect(page.locator('#view')).not_to_contain_text('Where people give up')
+        await page.locator('#usage-project').select_option('alibi')
+        await page.locator('#usage-window').select_option('7')
+        await page.locator('[data-view=overview]').click()
         assert not any('/v1/' in url for url in requests[demo_mark:]), 'Replay and demo interaction must not read or write the collector'
-        results.append('release guard and incident replay write nothing to the collector')
+        results.append('synthetic usage dimensions, product view, Alibi panel and explorer write nothing to the collector')
         await page.locator('[data-view=signals]').click()
         await expect(page.locator('#page-title')).to_have_text('Signal inbox.')
         before = await page.locator('.signal').count()
