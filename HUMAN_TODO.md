@@ -43,8 +43,6 @@ verified. Items that need the owner's judgement stay open until the owner answer
 
 The encrypted operator read token is stored at `%LOCALAPPDATA%/Pulseboard/read-token.dpapi` for the Windows user on Kraspyon since the 2026-09-26 rotation; other machines' copies are stale. Rotate or copy it with the scripts in `observatory/scripts/` (`HOSTING.md`, "Read token: rotate, copy, recover"). `observatory/docs/HOSTING.md` explains how to copy it without printing it. The public demo needs no token.
 
-Tracked debt that needs no owner input: #43 (the first unattended probe cron tick, pending behind Cloudflare
-incident sjs8s0q2x4hw, "Workers Cron Triggers degraded", open since 2026-09-09; until it lands every probe
-reads `unknown` or `stale` in the Desk), #19 (the remaining query-budget and rollback evidence), #32 (SDK
+Tracked debt that needs no owner input: #19 (the remaining query-budget and rollback evidence), #32 (SDK
 delivery follow-ups from the Alibi pilot) and the post-merge issues on the Desk delivery order (#18, #20–#24,
-#35). #13, #14 and #33 closed on 2026-09-22.
+#35). #13, #14 and #33 closed on 2026-09-22; #43 closed on 2026-09-26 (unattended cron ticks confirmed from D1).

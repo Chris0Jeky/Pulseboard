@@ -1,6 +1,11 @@
 # Portfolio Observatory PR index
 
-Rollout prepared on 10 September 2026. These are review branches, not merged deployments. The central kit is runnable; application integrations remain drafts and all collection endpoints are empty. Deployment and the first consented pilot are still required.
+**Historical record (10 September 2026).** This index lists the first host-adapter PRs. Since then the Desk was
+merged and deployed, and Alibi became the collecting pilot. Usage plan v2 (`USAGE_PLAN.md`, 2026-09-26) plans to
+replace these adapters with one SDK, to be rolled out to every host at once (#105, not yet shipped). Read
+`HOSTING.md` for what is live.
+
+Original text: rollout prepared on 10 September 2026. These were review branches, not merged deployments.
 
 | Repository | Pull request | Included change |
 |---|---|---|
