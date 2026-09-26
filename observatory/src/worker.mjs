@@ -92,7 +92,10 @@ export async function handle(request, env) {
       if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
       const schema = await ready(env.DB), admission = collectionAdmission(env);
       const collection = { enabled: admission.enabled, configured: admission.configured, admitted: admission.admitted, invalid: admission.invalid };
-      return json({ ready: admission.valid, schema, collection }, admission.valid ? 200 : 503);
+      // Reported, not gating: a malformed statistics list already disables itself, and this makes that visible.
+      const statistics = { configured: typeof env.COLLECT_STAT_PROJECTS === 'string' && env.COLLECT_STAT_PROJECTS !== '',
+        admitted: admission.enabled && admission.valid ? statAdmission(env) : [] };
+      return json({ ready: admission.valid, schema, collection, statistics }, admission.valid ? 200 : 503);
     }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
@@ -119,7 +122,7 @@ export async function handle(request, env) {
       const admission = collectionAdmission(env);
       if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
       return json(await readStatistics(env.DB, { project: readId, days: Number(values[0] ?? 7),
-        admitted: admission.admitted.includes(readId) && statAdmission(env).includes(readId) }));
+        admitted: admission.enabled && statAdmission(env).includes(readId) }));
     }
     // Read only on explicit desk action, never by the portfolio poll; its own contract keeps /v1/portfolio closed.
     if (url.pathname === '/v1/github-evidence' && request.method === 'GET') {
@@ -140,8 +143,10 @@ export async function handle(request, env) {
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, ...cors,
         'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
       if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
+      // COLLECT_ENABLED and a valid policy are required, but not COLLECT_PROJECTS membership: admitting a host's counts
+      // must not also open its identifier-bearing /v1/collect/<id> session route.
       const statAdmissionCheck = collectionAdmission(env);
-      if (!statAdmissionCheck.valid || !statAdmissionCheck.admitted.includes(statId)) return json({ error: 'disabled' }, 503, cors);
+      if (!statAdmissionCheck.valid || !statAdmissionCheck.enabled) return json({ error: 'disabled' }, 503, cors);
       if (!statAdmission(env).includes(statId)) return json({ error: 'disabled' }, 503, cors);
       if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers.get('content-type') || '')) return json({ error: 'media_type' }, 415, cors);
       let statBody;

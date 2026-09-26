@@ -154,12 +154,11 @@ test('disabled switch and registry rejection both fail closed with CORS', async 
     assert.equal(r.status, 503, String(value));
     assert.equal(r.headers.get('Access-Control-Allow-Origin'), ALIBI_ORIGIN);
   }
-  // Existing collectionAdmission must also admit alibi.
+  // The global switch and a valid session policy still gate statistics; COLLECT_PROJECTS membership does not.
   for (const env of [
     { DB, COLLECT_ENABLED: 'false', COLLECT_PROJECTS: 'alibi', COLLECT_STAT_PROJECTS: 'alibi' },
-    { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'mdviewer', COLLECT_STAT_PROJECTS: 'alibi' },
+    { DB, COLLECT_PROJECTS: 'alibi', COLLECT_STAT_PROJECTS: 'alibi' },
     { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi,Alibi', COLLECT_STAT_PROJECTS: 'alibi' },
-    { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: '', COLLECT_STAT_PROJECTS: 'alibi' },
   ]) {
     const r = await handle(statRequest(validBody()), env);
     assert.equal(r.status, 503);
@@ -274,7 +273,18 @@ test('several admitted projects count separately and stay inside their own origi
   assert.deepEqual(rows.map(r => [r.project, r.n]), [['alibi', 2], ['mdviewer', 2]]);
   const budgets = (await DB.prepare('SELECT project,used FROM budget ORDER BY project').all()).results;
   assert.deepEqual(budgets.map(r => [r.project, r.used]), [['alibi', 2], ['mdviewer', 2]]);
-  // Admitted for collection but not for statistics: disabled, nothing written.
+  // Statistics admission does not open the identifier-bearing session route, and needs no COLLECT_PROJECTS entry.
+  const countsOnly = { ...env, COLLECT_PROJECTS: '' };
+  const session = await handle(new Request('https://collector.example/v1/collect/mdviewer', {
+    method: 'POST', headers: { Origin: projects.mdviewer.origin, 'Content-Type': 'application/json' }, body: '{}',
+  }), countsOnly);
+  assert.equal(session.status, 503);
+  assert.equal((await post('mdviewer', md, undefined)).status, 202);
+  assert.equal((await handle(new Request('https://collector.example/v1/collect-stat/mdviewer', {
+    method: 'POST', headers: { Origin: projects.mdviewer.origin, 'Content-Type': 'application/json' }, body: JSON.stringify(md),
+  }), countsOnly)).status, 202);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 0);
+  // Admitted for session events but not for statistics: disabled, nothing written.
   const partial = { ...env, COLLECT_PROJECTS: 'alibi,mdviewer,commitatlas' };
   const ca = await handle(new Request('https://collector.example/v1/collect-stat/commitatlas', {
     method: 'POST', headers: { Origin: projects.commitatlas.origin, 'Content-Type': 'application/json' },
@@ -285,7 +295,7 @@ test('several admitted projects count separately and stay inside their own origi
   const read = async id => handle(new Request('https://desk.test/v1/statistics/' + id + '?days=1', { headers: { authorization: 'Bearer ' + env.READ_TOKEN } }), partial);
   const mdStats = await (await read('mdviewer')).json();
   assert.equal(mdStats.project, 'mdviewer');
-  assert.equal(mdStats.total, 2);
+  assert.equal(mdStats.total, 6);
   assert.equal(mdStats.collectionAdmitted, true);
   const caStats = await (await read('commitatlas')).json();
   assert.equal(caStats.total, 0);

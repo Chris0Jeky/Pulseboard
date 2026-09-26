@@ -50,9 +50,9 @@ export function assertStatistics(input, days, project = 'alibi') {
 
 const n = (stats, event) => stats.events.find(r => r.event === event)?.n || 0;
 /** Headline figures. The per-start ratio compares two independent counts; it is not a per-player rate.
- *  A project with a named journey (Alibi's puzzles) reads it; every other project reads the shared action events. */
+ *  Alibi reads its named puzzle journey; every other project reads the shared action events. */
 export function usageReading(stats) {
-  const journey = stats.events.some(r => r.event.startsWith('puzzle.')) ? 'puzzle' : 'action';
+  const journey = stats.project === 'alibi' ? 'puzzle' : 'action';
   const [s, c, f] = journey === 'puzzle' ? ['puzzle.started', 'puzzle.completed', 'puzzle.failed'] : ['action.requested', 'action.completed', 'action.failed'];
   const started = n(stats, s), completed = n(stats, c), failed = n(stats, f);
   const views = n(stats, 'page.view'), errors = n(stats, 'app.error'), hints = n(stats, 'hint.requested');

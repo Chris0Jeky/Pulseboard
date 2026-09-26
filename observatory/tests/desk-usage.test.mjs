@@ -87,6 +87,7 @@ test('a read for one project is refused as another project', async t => {
   assert.equal(assertStatistics(md, 7, 'mdviewer'), md);
   const r = usageReading({ ...md, events: [{ event: 'action.requested', n: 2 }, { event: 'page.view', n: 1 }] });
   assert.equal(r.journey, 'action');
+  assert.equal(usageReading(stats).journey, 'puzzle', 'Alibi keeps its puzzle journey even in a window without puzzle events');
   assert.equal(r.started, 2);
 });
 

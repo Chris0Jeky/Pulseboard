@@ -325,8 +325,8 @@ function connections() {
 /** Read only while the Usage view is open: the 30 s portfolio poll pays for this read on this view alone. */
 async function readUsage() {
   // Keyed by read epoch, so a read cancelled by a window change or disconnect cannot leave the view stuck busy.
-  if (!state.token || state.usageRead === state.epoch) return;
-  const epoch = state.epoch, days = state.days, project = state.usageProject; state.usageRead = epoch;
+  if (!state.token || (state.usageRead?.epoch === state.epoch && state.usageRead.project === state.usageProject)) return;
+  const epoch = state.epoch, days = state.days, project = state.usageProject, read = { epoch, project }; state.usageRead = read;
   try {
     const response = await requestStatistics(fetch, { project, token: state.token, days, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
     if (epoch !== state.epoch) return;
@@ -335,8 +335,8 @@ async function readUsage() {
     const data = assertStatistics(await readLimitedJson(response, STATISTICS_MAX_BYTES), days, project);
     if (epoch !== state.epoch || days !== state.days || project !== state.usageProject) return;
     state.usage = data; state.usageError = '';
-  } catch (error) { if (epoch === state.epoch) state.usageError = error.message || 'Could not read usage statistics.'; }
-  finally { if (state.usageRead === epoch) state.usageRead = null; if (epoch === state.epoch && state.view === 'usage') render(); }
+  } catch (error) { if (epoch === state.epoch && project === state.usageProject) state.usageError = error.message || 'Could not read usage statistics.'; }
+  finally { if (state.usageRead === read) state.usageRead = null; if (epoch === state.epoch && state.view === 'usage') render(); }
 }
 const ratio = value => value === null ? '—' : value.toFixed(2);
 function usageChart(reading) {

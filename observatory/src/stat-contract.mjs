@@ -34,7 +34,7 @@ export function validateStatBatch(body, project) {
 
 /** The producer switch is an exact comma list of registered public ids: no spaces, case changes, empty
  *  entries or duplicates. Any malformed entry disables the whole switch, so a typo never widens admission.
- *  The ids must also be admitted by collectionAdmission; this returns only the statistics half. */
+ *  Independent of COLLECT_PROJECTS (session events); COLLECT_ENABLED still gates both channels. */
 export function statAdmission(env = {}, projects = registry) {
   const raw = env.COLLECT_STAT_PROJECTS;
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > 4096) return [];
