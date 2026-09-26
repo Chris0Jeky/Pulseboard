@@ -6,7 +6,7 @@
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
   // COLLECT_PROJECTS lists the registered ids that may be admitted while COLLECT_ENABLED is true (owner decision per host).
   // Alibi's separate aggregate route is admitted only after its reviewed browser notice and transport are ready.
-  // COLLECT_PRODUCT_PROJECTS admits /v1/product/<id> (USAGE_PLAN.md section 2); it stays empty until the owner rolls a host out.
+  // COLLECT_PRODUCT_PROJECTS admits /v1/product/<id> (USAGE_PLAN.md section 2); it lists the hosts whose SDK v3 install has shipped (USAGE_PLAN.md, #105).
   "vars": { "COLLECT_ENABLED": "true", "COLLECT_PROJECTS": "alibi", "COLLECT_STAT_PROJECTS": "alibi,portfolio", "COLLECT_PRODUCT_PROJECTS": "portfolio", "WATCH_ENABLED": "false" },
   // Each tick runs probeAll() over the fixed targets in src/projects.mjs and then maintain() (90-day product
   // events, 14-day session events and budget, 14-day aggregates until the old notice is gone, 30-day probe history). COLLECT_ENABLED gates browser admission only, never probing.
