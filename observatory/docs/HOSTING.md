@@ -3,7 +3,8 @@
 Live URL: https://pulseboard-observatory.commit-atlas.workers.dev
 
 The hosted Desk serves its UI and authenticated aggregate API from one Worker with D1.
-Three switches admit collection: `COLLECT_PROJECTS` (legacy session events, Alibi only since 2026-09-10),
+`COLLECT_ENABLED` is the global gate: nothing is admitted unless it is `"true"` and `COLLECT_PROJECTS` parses.
+Then one list per channel admits collection: `COLLECT_PROJECTS` (legacy session events, Alibi only since 2026-09-10),
 `COLLECT_STAT_PROJECTS` (aggregate counts) and `COLLECT_PRODUCT_PROJECTS` (product events); the last two list every
 public host since usage plan v2 (receipt below). Publishing never activates a host integration by itself. Since 2026-09-10 a
 `*/15 * * * *` cron is registered to probe the seven registered public origins (status, timing and a
