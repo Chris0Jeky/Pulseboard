@@ -131,7 +131,9 @@ bar is replaced by a small **Beta** button fixed bottom-left (or rendered inside
 `data-pulseboard-slot`) that reopens the switches; Escape closes them and returns focus to the pill.
 Only a direct action in this tab's notice moves focus (OK, Save, Turn all off, the pill, Escape). A
 choice recorded in another tab, or a host's `consent.set` call, updates the bar and switches without
-taking focus from whatever the visitor is typing in. All
+taking focus from whatever the visitor is typing in. If keyboard focus was inside the notice being removed,
+it moves to the pill rather than dropping to the page. A marked scroll pane that does not actually scroll
+is ignored in favour of the window. All
 controls are native buttons and checkboxes with visible focus, and nothing animates.
 
 To avoid a layout shift when the deferred script inserts the bar, a host may reserve its space:

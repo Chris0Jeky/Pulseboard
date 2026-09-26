@@ -678,12 +678,24 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   /** A host that scrolls inside a pane marks it `[data-pulseboard-scroll]` (MDviewer#105); otherwise the window. */
+  let paneRef = null;
+  /** The marked pane, cached until it leaves the document (SPA re-renders replace it). */
+  function scrollPane() {
+    try {
+      if (paneRef && paneRef.isConnected !== false) return paneRef;
+      paneRef = typeof runtime.document?.querySelector === 'function' ? runtime.document.querySelector('[data-pulseboard-scroll]') : null;
+      return paneRef;
+    } catch { return null; }
+  }
   function measureScroll() {
     try {
-      const pane = typeof runtime.document?.querySelector === 'function' ? runtime.document.querySelector('[data-pulseboard-scroll]') : null;
-      if (pane && typeof pane.scrollHeight === 'number' && pane.scrollHeight > 0) {
-        const seenPane = (pane.scrollTop ?? 0) + (pane.clientHeight ?? 0);
-        scrollMax = Math.max(scrollMax, Math.min(100, Math.max(0, Math.round((seenPane / pane.scrollHeight) * 100))));
+      const pane = scrollPane();
+      const finite = value => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+      const height = finite(pane?.scrollHeight), view = finite(pane?.clientHeight);
+      // A marked pane that does not actually scroll says nothing about depth: measure the window instead.
+      if (pane && height > view + 1) {
+        const seenPane = Math.max(0, finite(pane.scrollTop)) + view;
+        scrollMax = Math.max(scrollMax, Math.min(100, Math.max(0, Math.round((seenPane / height) * 100))));
         return;
       }
       const doc = runtime.document?.documentElement;
@@ -792,8 +804,18 @@ export function createPulseboard(config, runtime = globalThis) {
     return true;
   }
 
-  /** `focus` only for a direct action in this tab's notice; a cross-tab update or a host call never moves focus. */
+  /** Keyboard focus is inside `node` (checked before it is removed, so it cannot drop to <body>). */
+  function holdsFocus(node) {
+    try {
+      const active = ui.doc?.activeElement;
+      return !!node && !!active && typeof node.contains === 'function' && node.contains(active);
+    } catch { return false; }
+  }
+
+  /** `focus` for a direct action in this tab's notice. Otherwise (a cross-tab update, a host call) focus moves to
+   *  the pill only when it was inside the notice being removed; focus anywhere else in the host is left alone. */
   function collapse(focus = false) {
+    focus = focus || holdsFocus(ui.bar);
     remove(ui.bar); ui.bar = null; ui.choose = null; ui.chooseButton = null;
     releasePlaceholder(ui.doc);
     showPill();
@@ -833,6 +855,7 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   function closePanel(focus = false) {
+    focus = focus || holdsFocus(ui.panel);
     remove(ui.panel); ui.panel = null; ui.panelBox = null;
     ui.pill?.setAttribute('aria-expanded', 'false');
     if (focus) { try { ui.pill?.focus?.(); } catch { /* Focus is best-effort. */ } }

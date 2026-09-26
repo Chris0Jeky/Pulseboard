@@ -32,6 +32,7 @@ export function element(tag, log) {
     prepend(...nodes) { for (const n of [...nodes].reverse()) { n.parent = node; node.children.unshift(n); } log.order.push('dom'); },
     remove() { if (node.parent) node.parent.children.splice(node.parent.children.indexOf(node), 1); node.parent = null; node.removed = true; },
     focus() { node.focused += 1; log.focus = node; },
+    contains(other) { for (let n = other; n; n = n.parent) if (n === node) return true; return false; },
     addEventListener(type, fn) { (node.listeners[type] ||= []).push(fn); },
     removeEventListener(type, fn) { node.listeners[type] = (node.listeners[type] || []).filter(f => f !== fn); },
     emit(type, event = {}) { for (const fn of [...(node.listeners[type] || [])]) fn({ type, ...event }); },
@@ -64,6 +65,7 @@ export function makeRuntime({ region = 'eea', status = 202, nav = {}, local = st
     querySelector: selector => (selector === '[data-pulseboard-slot]' ? slotNode : selector === '[data-pulseboard-bar]' ? holderNode
       : selector === '[data-pulseboard-scroll]' ? paneNode : null),
   });
+  Object.defineProperty(document, 'activeElement', { get: () => log.focus ?? body, configurable: true });
   if (holderNode) body.append(holderNode);
   if (slotNode) body.append(slotNode);
   class PerformanceObserver {

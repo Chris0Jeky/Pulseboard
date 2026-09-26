@@ -128,3 +128,40 @@ test('#131: hostile referrer values on the collector side', () => {
   for (const bad of ['GitHub.com', 'github.com:443', 'github.com/path', '[::1]', 'a'.repeat(70) + '.com']) assert.equal(validateStatBatch(body(bad), project), false, bad);
   for (const ok of ['github.io.evil.com', '192.168.1.1', 'github.com.']) assert.equal(validateStatBatch(body(ok), project), true, ok + ' is admitted, then stored safely');
 });
+
+test('#133 review: focus inside the notice moves to the pill when a cross-tab update or consent.set removes it', async () => {
+  const local = storage();
+  const a = start({ region: 'eea', local });
+  const b = start({ region: 'eea', local });
+  await settle();
+  click(byClass(b.body, 'pb-choose')[0]);
+  const checkbox = byClass(b.body, 'pb-check')[0];
+  checkbox.focus(); // keyboard focus is inside b's bar
+  click(byClass(a.body, 'pb-ok')[0]);
+  b.runtime.emit('storage', { key: CONSENT });
+  assert.equal(b.log.focus, byClass(b.body, 'pb-pill')[0], 'focus is not dropped to body');
+  // Same for a host's consent.set while focus sits on the bar's OK button.
+  const h = start({ region: 'eea' });
+  await settle();
+  byClass(h.body, 'pb-ok')[0].focus();
+  h.sdk.consent.set({ journeys: false });
+  assert.equal(h.log.focus, byClass(h.body, 'pb-pill')[0]);
+});
+
+test('#133 review: a marked pane that does not scroll, or reports a non-numeric scrollTop, falls back safely', async () => {
+  const flat = start({ scrollPane: true, local: storage({ [CONSENT]: record(false, true, false) }) });
+  flat.pane.scrollHeight = 500; // equal to clientHeight: the pane does not scroll, the window does
+  flat.runtime.scrollY = 700;
+  flat.runtime.emit('scroll');
+  flat.runtime.emit('pagehide', { persisted: false });
+  await settle();
+  assert.equal(events(flat).find(e => e.name === 'page.engaged').props.scroll, 75, 'the window is measured');
+  const odd = start({ scrollPane: true, local: storage({ [CONSENT]: record(false, true, false) }) });
+  odd.pane.scrollTop = 'weird';
+  odd.document.emit('scroll', { target: odd.pane });
+  odd.runtime.emit('pagehide', { persisted: false });
+  await settle();
+  const scroll = events(odd).find(e => e.name === 'page.engaged').props.scroll;
+  assert.equal(Number.isFinite(scroll), true);
+  assert.equal(scroll, 25, 'a non-numeric scrollTop reads as 0: (0 + 500) / 2000');
+});
