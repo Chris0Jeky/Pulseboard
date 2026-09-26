@@ -5,14 +5,13 @@ export async function readStatistics(db, { days = 7, now = Date.now(), admitted 
   if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < 0) throw new RangeError('Unsupported window');
   const endDay = new Date(now).toISOString().slice(0, 10);
   const startDay = new Date(now - (days - 1) * 86400000).toISOString().slice(0, 10);
-  const [events, daily] = (await db.batch([
-    db.prepare(`SELECT event,SUM(n) AS n FROM statistics
-      WHERE project='alibi' AND day>=? AND day<=? GROUP BY event ORDER BY event`).bind(startDay, endDay),
-    db.prepare(`SELECT day,SUM(n) AS n FROM statistics
-      WHERE project='alibi' AND day>=? AND day<=? GROUP BY day ORDER BY day`).bind(startDay, endDay),
+  const grouped = (columns, order = columns) => db.prepare(`SELECT ${columns},SUM(n) AS n FROM statistics
+    WHERE project='alibi' AND day>=? AND day<=? GROUP BY ${columns} ORDER BY ${order}`).bind(startDay, endDay);
+  const [events, daily, routes, releases, eventDaily] = (await db.batch([
+    grouped('event'), grouped('day'), grouped('route', 'n DESC,route'), grouped('release', 'release'), grouped('day,event'),
   ])).map(result => result.results);
   return {
-    schema: 'pulseboard.statistics/1', project: 'alibi', generatedAt: now,
+    schema: 'pulseboard.statistics/2', project: 'alibi', generatedAt: now,
     window: { startDay, endDay, days, timezone: 'UTC', partialToday: true },
     collectionAdmitted: admitted, observationStatus: events.length ? 'observed' : 'no-admitted-counts',
     population: 'aggregate browser counts',
@@ -27,5 +26,8 @@ export async function readStatistics(db, { days = 7, now = Date.now(), admitted 
     total: events.reduce((sum, row) => sum + Number(row.n), 0),
     events: events.map(row => ({ event: row.event, n: Number(row.n) })),
     daily: daily.map(row => ({ day: row.day, n: Number(row.n) })),
+    routes: routes.map(row => ({ route: row.route, n: Number(row.n) })),
+    releases: releases.map(row => ({ release: row.release, n: Number(row.n) })),
+    eventDaily: eventDaily.map(row => ({ day: row.day, event: row.event, n: Number(row.n) })),
   };
 }
