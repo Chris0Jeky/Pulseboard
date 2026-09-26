@@ -69,7 +69,7 @@ The separate Alibi statistics producer admits only closed event counts, stores
 one aggregate row per UTC day, event, route and release, and retains at most
 14 UTC calendar dates including today. It accepts no session or event identifiers. The
 reviewed deployment configuration admits `alibi` through `COLLECT_STAT_PROJECTS`, which since #102 is an exact comma list of
-registered public ids (any malformed entry disables it; each id must also be in `COLLECT_PROJECTS`);
+registered public ids (any malformed entry disables it). It needs `COLLECT_ENABLED` and a valid session policy but not `COLLECT_PROJECTS` membership, so admitting counts never opens a host's session route;
 actual admission begins only when that configuration is deployed. The separate
 statistics reader keeps these counts out of the legacy opt-in readout. Repeated
 requests count repeatedly because aggregate-only payloads have no dedupe key.
