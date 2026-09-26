@@ -16,7 +16,7 @@ npm run build:sdk -- alibi ../../Alibi public/pulseboard.js 0.12.0   # pin a reg
 
 - The project must be registered in `src/projects.mjs` with a public origin. The release defaults to the
   newest registered release and must be one of them (counts only accept the registry's closed list).
-- The output is deterministic and LF-only. Its header names `pulseboard-sdk 3.1.0`, the project, and the
+- The output is deterministic and LF-only. Its header names `pulseboard-sdk 3.2.0`, the project, and the
   SHA-256 of the body below the header. The writer refuses absolute paths, `..`, symlinked parents that
   leave the repository, symlink targets, the installer's reserved paths, and any existing file that is not
   an unedited SDK artifact (the header hash must match), so it never overwrites host code.
@@ -53,7 +53,7 @@ Pulseboard.track('puzzle.completed', { puzzle: 'castle-3', seconds: 212, hints: 
 Pulseboard.consent.get();   // { counts, diagnostics, journeys, decided, region, blocked }
 Pulseboard.consent.set({ journeys: false });     // records a decision, as the switches do
 Pulseboard.consent.open();  // opens the switches (for a "Privacy choices" link)
-Pulseboard.version;         // '3.1.0'
+Pulseboard.version;         // '3.2.0'
 ```
 
 Every call returns `true` when the item was queued and `false` when it was dropped. Nothing throws into the
@@ -128,7 +128,10 @@ thanks for helping test <label>. We collect usage and diagnostics to improve it;
 with **Choose** and **OK** buttons. OK records every category on. Choose opens three labelled switches in
 place, each with a one-line description, plus **Save** and **Turn all off**. Once a choice is recorded the
 bar is replaced by a small **Beta** button fixed bottom-left (or rendered inside an element carrying
-`data-pulseboard-slot`) that reopens the switches; Escape closes them and returns focus to the pill. All
+`data-pulseboard-slot`) that reopens the switches; Escape closes them and returns focus to the pill.
+Only a direct action in this tab's notice moves focus (OK, Save, Turn all off, the pill, Escape). A
+choice recorded in another tab, or a host's `consent.set` call, updates the bar and switches without
+taking focus from whatever the visitor is typing in. All
 controls are native buttons and checkboxes with visible focus, and nothing animates.
 
 To avoid a layout shift when the deferred script inserts the bar, a host may reserve its space:
@@ -179,11 +182,19 @@ Product events (`v: 1`): `{ v, session, release, context: { device }, events: [{
 - `web.vital` `{ metric, value, rating }` once per page per metric: FCP and TTFB as soon as known, LCP, CLS
   and INP on the first hide. Ratings use the web.dev thresholds. **INP is an approximation**: the longest
   Event Timing duration of any interaction, not the high-percentile INP definition.
-- `js.error` `{ kind, message, source, line }`, at most 10 per page. The message is at most 160 characters
+- `js.error` `{ kind, message, source, line }`, at most 10 per page (counting only errors queued for
+  sending; ones held before the region hint and then dropped do not use up the cap). The message is at most 160 characters
   with e-mail addresses, URLs and digit runs of six or more masked; `source` is the script's file name only
   (`inline` for the page itself, `other` when it is not a `.js` file). Resource load failures are ignored.
 - `page.engaged` `{ seconds, scroll }` once, on the first time the page is hidden: visible seconds (at most
-  3,600) and the deepest scroll percentage.
+  3,600) and the deepest scroll percentage. An app that scrolls inside a pane rather than the window (an
+  editor shell, for example) marks that element, and the depth is measured on it instead:
+
+  ```html
+  <main data-pulseboard-scroll>…</main>
+  ```
+
+  Without the attribute the window is measured; a full-height app shell would otherwise read about 100%.
 
 Never sent: IP (the server sees it but stores none), user agent (classified server-side, never stored),
 page URL or path, referrer path or query, cookies, or any identifier other than the per-tab session UUID.
