@@ -16,7 +16,8 @@
     "dev:worker": "wrangler dev",
     "deploy:check": "wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
-    "db:local": "wrangler d1 execute pulseboard-observatory --local --file schema.sql"
+    "db:local": "wrangler d1 execute pulseboard-observatory --local --file schema.sql",
+    "build:sdk": "node adapters/build-sdk.mjs"
   },
   "devDependencies": {
     "wrangler": "4.130.0"
