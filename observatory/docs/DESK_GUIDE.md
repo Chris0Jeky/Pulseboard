@@ -88,7 +88,8 @@ A delayed response cannot revive a disconnected session.
 
 Local startup does not run external probes. Hosted cron deployment and collection
 activation require the existing rollout checklist. Browser events are still
-client-reported and opt-in; sessions are not unique people. Only attributed
+client-reported; the consent model is the SDK's (`SDK.md`: counts default-on, diagnostics and journeys default-on
+outside the EEA). Sessions are per tab and are not unique people. Only attributed
 release labels can be compared. The live registry initially allows `unattributed`;
 add explicit release labels on both the collector and SDK side before expecting
 real release comparisons.
