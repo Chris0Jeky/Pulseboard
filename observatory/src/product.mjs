@@ -109,9 +109,7 @@ export async function readProduct(db, { project, days = 7, now = Date.now(), adm
     journeys,
     exits: exits.slice(0, EXITS_CAP).map(row => ({ name: row.name, n: Number(row.n) })),
     exitsTruncated: exits.length > EXITS_CAP,
-    // The cap keeps the best-sampled pairs; the table itself stays grouped by metric, then route, like the demo.
-    vitals: vitals.slice(0, VITALS_CAP).map(row => ({ metric: row.metric, route: row.route, p75: Number(row.p75), n: Number(row.n) }))
-      .sort((a, b) => (a.metric < b.metric ? -1 : a.metric > b.metric ? 1 : a.route < b.route ? -1 : a.route > b.route ? 1 : 0)),
+    vitals: vitals.slice(0, VITALS_CAP).map(row => ({ metric: row.metric, route: row.route, p75: Number(row.p75), n: Number(row.n) })),
     vitalsTruncated: vitals.length > VITALS_CAP,
     errors: errorGroups(errors),
   };
