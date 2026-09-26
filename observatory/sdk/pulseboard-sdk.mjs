@@ -732,7 +732,7 @@ export function createPulseboard(config, runtime = globalThis) {
 
   function buildBar() {
     const bar = el('div', 'pb-bar', { ...SURFACE, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', padding: '6px 12px',
-      width: '100%', borderBottom: '1px solid #374151', position: 'relative', zIndex: '2147483000' });
+      width: '100%', boxSizing: 'border-box', borderBottom: '1px solid #374151' });
     bar.setAttribute('role', 'region');
     bar.setAttribute('aria-label', 'Beta notice for ' + cfg.label);
     const text = el('p', 'pb-text', { margin: '0', flex: '1 1 20em' });
@@ -899,7 +899,9 @@ export function createPulseboard(config, runtime = globalThis) {
         const bar = buildBar();
         let holder = null;
         try { holder = typeof doc.querySelector === 'function' ? doc.querySelector('[data-pulseboard-bar]') : null; } catch { holder = null; }
-        if (holder) holder.append(bar);
+        // The reserved space is a floor, not a cap: a bar that wraps on a narrow screen grows its placeholder and
+        // pushes the page down rather than spilling over the host's navigation.
+        if (holder) { if (holder.style) { holder.style.height = 'auto'; holder.style.overflow = 'visible'; } holder.removeAttribute?.('hidden'); holder.append(bar); }
         else if (typeof doc.body.prepend === 'function') doc.body.prepend(bar);
         else doc.body.insertBefore(bar, doc.body.firstChild ?? null);
       } else { releasePlaceholder(doc); showPill(); }
