@@ -128,7 +128,9 @@ Whenever no bar is showing (a choice was recorded, a privacy signal is on, the p
 bar has just collapsed after OK, Save or Turn all off) the SDK releases the placeholder: it sets its height
 and min-height to `0` and adds the `hidden` attribute. The placeholder is never removed from the DOM.
 While the bar shows, the SDK sets the placeholder's `height` to `auto`, so a bar that wraps onto several lines on a
-narrow screen pushes the page down instead of overlapping it. Use `min-height`, not `height`, for the reservation.
+narrow screen pushes the page down instead of overlapping it. Use `min-height`, not `height`, for the reservation. A host with a
+`position: fixed` header must use the placeholder (inside or below the header's flow): without it the bar is
+prepended to `body` in normal flow and a fixed header can cover it.
 
 ## What is sent
 

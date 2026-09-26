@@ -901,7 +901,7 @@ export function createPulseboard(config, runtime = globalThis) {
         try { holder = typeof doc.querySelector === 'function' ? doc.querySelector('[data-pulseboard-bar]') : null; } catch { holder = null; }
         // The reserved space is a floor, not a cap: a bar that wraps on a narrow screen grows its placeholder and
         // pushes the page down rather than spilling over the host's navigation.
-        if (holder) { if (holder.style) { holder.style.height = 'auto'; holder.style.overflow = 'visible'; } holder.append(bar); }
+        if (holder) { if (holder.style) { holder.style.height = 'auto'; holder.style.overflow = 'visible'; } holder.removeAttribute?.('hidden'); holder.append(bar); }
         else if (typeof doc.body.prepend === 'function') doc.body.prepend(bar);
         else doc.body.insertBefore(bar, doc.body.firstChild ?? null);
       } else { releasePlaceholder(doc); showPill(); }
