@@ -22,7 +22,7 @@ test('counts body is exactly contract v3: six context keys and closed-vocabulary
   assert.equal(call.url, 'https://collector.example/v1/collect-stat/demo');
   assert.deepEqual(Object.keys(call.body), ['v', 'context', 'counts']);
   assert.equal(call.body.v, 3);
-  assert.deepEqual(call.body.context, { device: 'tablet', source: 'search', visit: 'new', scheme: 'dark', referrer: 'google.co.uk', campaign: 'launch_2026' });
+  assert.deepEqual(call.body.context, { device: 'tablet', source: 'search', visit: 'new', scheme: 'dark', referrer: 'google.com', campaign: 'launch_2026' });
   assert.deepEqual(call.body.counts, [
     { event: 'page.view', route: 'home', release: '1.0.0', n: 1 },
     { event: 'page.view', route: 'puzzle', release: '1.0.0', n: 1 },
@@ -51,31 +51,31 @@ test('referrer, source and campaign classification table', () => {
     ['https://www.google.com/', 'search', 'google.com'],
     ['https://www.bing.com/search?q=a', 'search', 'bing.com'],
     ['https://duckduckgo.com/', 'search', 'duckduckgo.com'],
-    ['https://search.yahoo.co.jp/', 'search', 'search.yahoo.co.jp'],
+    ['https://search.yahoo.co.jp/', 'other', 'other'],
     ['https://www.ecosia.org/', 'search', 'ecosia.org'],
-    ['https://search.brave.com/', 'search', 'search.brave.com'],
-    ['https://yandex.ru/', 'search', 'yandex.ru'],
+    ['https://search.brave.com/', 'search', 'brave.com'],
+    ['https://yandex.ru/', 'search', 'yandex.com'],
     ['https://www.baidu.com/', 'search', 'baidu.com'],
-    ['https://t.co/abc', 'social', 't.co'],
+    ['https://t.co/abc', 'social', 'x.com'],
     ['https://x.com/someone/status/1', 'social', 'x.com'],
-    ['https://twitter.com/', 'social', 'twitter.com'],
-    ['https://m.facebook.com/', 'social', 'm.facebook.com'],
+    ['https://twitter.com/', 'social', 'x.com'],
+    ['https://m.facebook.com/', 'social', 'facebook.com'],
     ['https://www.linkedin.com/feed', 'social', 'linkedin.com'],
-    ['https://old.reddit.com/r/x', 'social', 'old.reddit.com'],
+    ['https://old.reddit.com/r/x', 'social', 'reddit.com'],
     ['https://mastodon.social/@a', 'social', 'mastodon.social'],
     ['https://bsky.app/profile/a', 'social', 'bsky.app'],
     ['https://www.youtube.com/', 'social', 'youtube.com'],
     ['https://discord.com/channels/1', 'social', 'discord.com'],
     ['https://github.com/Chris0Jeky/Pulseboard', 'github', 'github.com'],
-    ['https://gist.github.com/a', 'github', 'gist.github.com'],
-    ['https://someone.github.io/repo/', 'github', 'someone.github.io'],
-    ['https://example.org/private/path?x=1', 'other', 'example.org'],
-    ['https://Example.ORG:8443/', 'other', 'example.org'],
+    ['https://gist.github.com/a', 'github', 'github.com'],
+    ['https://someone.github.io/repo/', 'github', 'github.io'],
+    ['https://example.org/private/path?x=1', 'other', 'other'],
+    ['https://Example.ORG:8443/', 'other', 'other'],
     ['http://localhost:3000/', 'other', 'other'],
     ['https://' + 'a'.repeat(70) + '.com/', 'other', 'other'],
     ['https://[::1]/', 'other', 'other'],
     ['not a url', 'other', 'other'],
-    ['https://xn--bcher-kva.example/', 'other', 'xn--bcher-kva.example'],
+    ['https://xn--bcher-kva.example/', 'other', 'other'],
   ];
   for (const [referrer, source, host] of rows) assert.deepEqual(classifyReferrer(referrer, ORIGIN), { source, referrer: host }, referrer);
   const campaigns = [['', 'none'], ['?a=1', 'none'], ['?utm_campaign=Spring-Sale', 'spring-sale'], ['?utm_campaign=', 'other'],
