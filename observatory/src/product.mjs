@@ -1,7 +1,8 @@
 /** Product-event read models for the Desk (USAGE_PLAN.md section 4). Every query is bounded by project and UTC window,
  *  and one D1 batch gives the whole reading one snapshot. Percentiles come from raw values, never from other percentiles. */
 import { READ_WINDOWS } from './statistics.mjs';
-import { PRODUCT_NAME } from './product-contract.mjs';
+import { PRODUCT_NAME, cutText } from './product-contract.mjs';
+export { cutText };
 
 export const EVENTS_DEFAULT_LIMIT = 500;
 export const EVENTS_MAX_LIMIT = 5000;
@@ -10,6 +11,9 @@ const JOURNEYS = 100, ERRORS = 100, ERROR_ROWS = 500, VITALS = ['LCP', 'INP', 'C
 export const JOURNEY_STEPS = 60;
 /** Largest totals lists the Desk accepts; the top rows by n (ties by value) are kept and `totals.truncated` says so. */
 export const TOTALS_CAPS = Object.freeze({ names: 512, routes: 256, releases: 64 });
+/** Exits and vitals keep the top rows by n (#123): a forged Origin can otherwise end sessions on many distinct names or report
+ *  vitals on many routes, and the Desk refuses a read over its limits. `exitsTruncated` and `vitalsTruncated` say when. */
+export const EXITS_CAP = 512, VITALS_CAP = 1280;
 const LIMITATIONS = [
   'Product events are client-reported and spoofable; a session is one browser tab, not a person.',
   'Delivery is at most once: failed or dropped batches are missing, and repeated accepted requests store repeated rows.',
@@ -20,6 +24,7 @@ const LIMITATIONS = [
   'Vitals are the nearest-rank 75th percentile of the raw values per metric and route, never an average of percentiles; INP is an approximation.',
   'Journeys show the latest 100 sessions and their first 60 steps; errors show the 100 most frequent kind and message pairs, cut to 64 and 160 characters.',
   'Names, routes and releases show at most 512, 256 and 64 rows by count; a truncated list sums to less than the total.',
+  'Exits and vitals show at most 512 and 1,280 rows by count; truncated exits sum to less than the session count.',
   'Properties lose personal, identifier and link keys, e-mail and IP addresses and URL paths before storage; redaction is best effort, not a guarantee of anonymity.',
 ];
 function window(days, now) {
@@ -36,12 +41,6 @@ const median = source => `(SELECT AVG(v) FROM (SELECT v, ROW_NUMBER() OVER (ORDE
 
 /** The Desk requires non-empty text without control characters. Control characters become spaces and empty text reads
  *  'unknown'; groups that become equal are merged, so every kind and message pair stays unique. */
-/** Cut by UTF-16 length, as the Desk measures it, without leaving half of a surrogate pair at the end. */
-export function cutText(text, max) {
-  if (text.length <= max) return text;
-  const cut = text.slice(0, max), last = cut.charCodeAt(max - 1);
-  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
-}
 export const cleanText = (value, max) => cutText(String(value ?? '').replace(/[\x00-\x1f\x7f]/g, ' ') || 'unknown', max);
 function errorGroups(rows) {
   const groups = new Map();
@@ -73,7 +72,7 @@ export async function readProduct(db, { project, days = 7, now = Date.now(), adm
       WHERE s.step<=${JOURNEY_STEPS} ORDER BY l.last DESC, l.session, s.step`).bind(...bind, ...bind),
     db.prepare(`WITH ranked AS (SELECT name, ROW_NUMBER() OVER (PARTITION BY session ORDER BY seq DESC, received DESC) AS r
       FROM product_events WHERE ${W} AND session IS NOT NULL)
-      SELECT name, COUNT(*) AS n FROM ranked WHERE r=1 GROUP BY name ORDER BY n DESC, name`).bind(...bind),
+      SELECT name, COUNT(*) AS n FROM ranked WHERE r=1 GROUP BY name ORDER BY n DESC, name LIMIT ${EXITS_CAP + 1}`).bind(...bind),
     // Nearest rank: the value at position ceil(0.75 * n) of the sorted raw values, per metric and route.
     db.prepare(`WITH v AS (SELECT json_extract(props,'$.metric') AS metric, route, json_extract(props,'$.value') AS value
         FROM product_events WHERE ${W} AND name='web.vital' AND json_type(props,'$.value') IN ('integer','real')
@@ -81,7 +80,7 @@ export async function readProduct(db, { project, days = 7, now = Date.now(), adm
         AND json_extract(props,'$.metric') IN (${VITALS.map(() => '?').join(',')})),
       r AS (SELECT metric, route, value, ROW_NUMBER() OVER (PARTITION BY metric, route ORDER BY value) AS rn,
         COUNT(*) OVER (PARTITION BY metric, route) AS c FROM v)
-      SELECT metric, route, value AS p75, c AS n FROM r WHERE rn=(3*c+3)/4 ORDER BY metric, route`).bind(...bind, ...VITALS),
+      SELECT metric, route, value AS p75, c AS n FROM r WHERE rn=(3*c+3)/4 ORDER BY n DESC, metric, route LIMIT ${VITALS_CAP + 1}`).bind(...bind, ...VITALS),
     // Raw groups; cleaned, cut to the Desk's bounds in JavaScript and re-merged in errorGroups().
     db.prepare(`SELECT CAST(json_extract(props,'$.kind') AS TEXT) AS kind, CAST(json_extract(props,'$.message') AS TEXT) AS message,
       COUNT(*) AS n, MAX(received) AS lastSeen FROM product_events WHERE ${W} AND name='js.error'
@@ -108,8 +107,10 @@ export async function readProduct(db, { project, days = 7, now = Date.now(), adm
     },
     sessions: { n: sessionCount, medianEvents: orNull(s.medianEvents), medianDurationMs: orNull(s.medianDuration) },
     journeys,
-    exits: exits.map(row => ({ name: row.name, n: Number(row.n) })),
-    vitals: vitals.map(row => ({ metric: row.metric, route: row.route, p75: Number(row.p75), n: Number(row.n) })),
+    exits: exits.slice(0, EXITS_CAP).map(row => ({ name: row.name, n: Number(row.n) })),
+    exitsTruncated: exits.length > EXITS_CAP,
+    vitals: vitals.slice(0, VITALS_CAP).map(row => ({ metric: row.metric, route: row.route, p75: Number(row.p75), n: Number(row.n) })),
+    vitalsTruncated: vitals.length > VITALS_CAP,
     errors: errorGroups(errors),
   };
 }

@@ -121,7 +121,9 @@ Delivery is at most once; repeated requests store repeated rows.
 by name, route, release and day; sessions (count, median events, median duration between the first
 and last received batch); the latest 100 journeys as `{ session, startedAt, durationMs,
 steps, stepsTruncated }` (first 60 step names); exits (each session's last event inside the window, summing to the
-session count); vitals as the nearest-rank p75 of raw, non-negative `web.vital` values per metric and
+session count; the top 512 by count, ties by name, with `exitsTruncated`, when a capped list may sum to
+less, #123); vitals (the top 1,280 metric and route pairs by samples, ties by metric then route, with
+`vitalsTruncated`) as the nearest-rank p75 of raw, non-negative `web.vital` values per metric and
 route, never an average of percentiles; and the 100 most frequent `js.error` groups by `kind` (64
 characters, missing reads `unknown`) and `message` (160). Names, routes and releases keep the top 512,
 256 and 64 rows by count (ties by value) and report `totals.truncated`; a truncated list sums to less
