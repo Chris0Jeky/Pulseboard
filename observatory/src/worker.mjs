@@ -269,7 +269,7 @@ export async function handle(request, env) {
       // One per-dimension total per admitted count, written in the same transaction and gated on the same receipt.
       // Browser-derived values a batch's version does not carry read 'unknown'. Region, language, referrer and campaign
       // keep at most DIMENSION_CAP distinct values per project and day; a later new value is stored as 'other'.
-      const dimensionRows = batchDimensions(statBody, request, statNow).map(([dimension, value]) =>
+      const dimensionRows = batchDimensions(statBody, request, statNow, statProject).map(([dimension, value]) =>
         env.DB.prepare(`INSERT INTO statistics_dimensions(project,day,dimension,value,n)
           SELECT ?,?,?,${CAP_SQL},? FROM budget WHERE project=? AND day=? AND receipt=?
           ON CONFLICT(project,day,dimension,value) DO UPDATE SET n=n+excluded.n`)

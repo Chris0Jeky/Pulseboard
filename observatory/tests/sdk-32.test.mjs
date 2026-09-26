@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPulseboard, SDK_VERSION } from '../sdk/pulseboard-sdk.mjs';
-import { storedReferrer, validateStatBatch } from '../src/stat-contract.mjs';
+import { storedReferrer, validateStatBatch, batchDimensions } from '../src/stat-contract.mjs';
 import { buildSdk } from '../adapters/build-sdk.mjs';
 import { projects } from '../src/projects.mjs';
 import { config, makeRuntime, storage, byClass, settle } from './sdk-fakes.mjs';
@@ -164,4 +164,40 @@ test('#133 review: a marked pane that does not scroll, or reports a non-numeric 
   const scroll = events(odd).find(e => e.name === 'page.engaged').props.scroll;
   assert.equal(Number.isFinite(scroll), true);
   assert.equal(scroll, 25, 'a non-numeric scrollTop reads as 0: (0 + 500) / 2000');
+});
+
+test('campaign: only a tag registered in projects.mjs is counted, on both sides; none when absent, other otherwise', async () => {
+  // Registry: every project declares its tags; none are registered by default.
+  for (const [id, project] of Object.entries(projects)) assert.ok(Array.isArray(project.campaigns), id);
+  assert.deepEqual(projects.mdviewer.campaigns, []);
+  // SDK.
+  const cfg = config({ project: { ...config().project, campaigns: ['launch_2026'] } });
+  for (const [search, sent] of [['', 'none'], ['?utm_campaign=Launch_2026', 'launch_2026'], ['?utm_campaign=alice_smith', 'other'],
+    ['?utm_campaign=has%20space', 'other'], ['?utm_campaign=', 'other']]) {
+    const h = makeRuntime({ search, local: storage({ [CONSENT]: record(true, false, false) }) });
+    const sdk = createPulseboard(cfg, h.runtime);
+    sdk.mount();
+    h.fire();
+    await settle();
+    assert.equal(h.counts()[0].body.context.campaign, sent, search);
+  }
+  const unregistered = makeRuntime({ search: '?utm_campaign=alice_smith', local: storage({ [CONSENT]: record(true, false, false) }) });
+  createPulseboard(config(), unregistered.runtime).mount();
+  unregistered.fire();
+  await settle();
+  assert.equal(unregistered.counts()[0].body.context.campaign, 'other', 'a config without campaigns registers none');
+  // Builder: the artifact carries the project's list.
+  const built = JSON.parse(/^const config = (\{.*\});$/m.exec(buildSdk('mdviewer'))[1]);
+  assert.deepEqual(built.project.campaigns, []);
+  // Collector: enforced from the registry, so an older SDK that sends any valid tag is covered too.
+  const project = { ...projects.mdviewer, campaigns: ['launch_2026'] };
+  const body = campaign => ({ v: 3, context: { device: 'desktop', source: 'other', visit: 'new', scheme: 'light', referrer: 'none', campaign },
+    counts: [{ event: 'page.view', route: 'home', release: project.releases[0], n: 1 }] });
+  const stored = (campaign, p = project) => Object.fromEntries(batchDimensions(body(campaign), { headers: new Headers() }, Date.UTC(2026, 8, 26), p)).campaign;
+  for (const [sent, kept] of [['launch_2026', 'launch_2026'], ['alice_smith', 'other'], ['none', 'none'], ['other', 'other']]) {
+    assert.equal(validateStatBatch(body(sent), project), true, sent);
+    assert.equal(stored(sent), kept, sent);
+  }
+  assert.equal(stored('launch_2026', projects.mdviewer), 'other', 'the real registry registers nothing yet');
+  assert.equal(stored('launch_2026', null), 'other', 'no project means no registered tags');
 });

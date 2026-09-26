@@ -75,13 +75,14 @@ export function classifyReferrer(referrer, pageOrigin) {
   return domain ? { source: referrerSource(url.hostname), referrer: domain } : { source: 'other', referrer: 'other' };
 }
 
-/** `utm_campaign` from a location search string: `none` when absent, `other` when outside the contract. */
-export function campaignOf(search) {
+/** `utm_campaign` from a location search string: `none` when absent; the tag only when the project registered it
+ * (a free-form tag can carry a name, ?utm_campaign=alice_smith); `other` for anything else. */
+export function campaignOf(search, campaigns = []) {
   try {
     const params = new URLSearchParams(typeof search === 'string' ? search : '');
     if (!params.has('utm_campaign')) return 'none';
     const value = String(params.get('utm_campaign')).toLowerCase();
-    return CAMPAIGN_RE.test(value) ? value : 'other';
+    return CAMPAIGN_RE.test(value) && Array.isArray(campaigns) && campaigns.includes(value) ? value : 'other';
   } catch { return 'none'; }
 }
 
@@ -178,7 +179,8 @@ function checkConfig(config) {
     if (!isPlain(project) || !strings(project.events) || !strings(project.routes) || !strings(project.releases)) return null;
     const release = typeof config.release === 'string' && RELEASE_RE.test(config.release) ? config.release : 'unattributed';
     const route = typeof config.route === 'string' && project.routes.includes(config.route) ? config.route : 'home';
-    return { id: config.id, label: config.label, collector, origin, release, route,
+    const campaigns = strings(project.campaigns) ? project.campaigns.filter(tag => CAMPAIGN_RE.test(tag)) : [];
+    return { id: config.id, label: config.label, collector, origin, release, route, campaigns,
       events: [...project.events], routes: [...project.routes], releases: [...project.releases] };
   } catch { return null; }
 }
@@ -242,7 +244,7 @@ export function createPulseboard(config, runtime = globalThis) {
   const context = (() => {
     let referral = { source: 'direct', referrer: 'none' }, campaign = 'none';
     try { referral = classifyReferrer(runtime.document?.referrer ?? '', cfg.origin); } catch { /* Direct. */ }
-    try { campaign = campaignOf(runtime.location?.search ?? ''); } catch { /* None. */ }
+    try { campaign = campaignOf(runtime.location?.search ?? '', cfg.campaigns); } catch { /* None. */ }
     return { ...referral, campaign };
   })();
   current = effective();

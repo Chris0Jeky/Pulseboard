@@ -166,7 +166,11 @@ Counts (`v: 3`): `{ v, context: { device, source, visit, scheme, referrer, campa
 - `source` follows the same list: `search` (the eight search engines), `github` (github.com, github.io),
   `social` (the other platforms except gitlab.com and stackoverflow.com, which are `other`), `direct`,
   `internal` (same origin), else `other`.
-- `campaign` is `utm_campaign` lowercased if it matches `^[a-z0-9_-]{1,40}$`; `none` when absent, else `other`.
+- `campaign` is `utm_campaign` lowercased, sent only when the project registered that tag; `none` when absent,
+  `other` otherwise. A free-form tag can carry a name (`?utm_campaign=alice_smith`), so nothing unregistered is
+  counted. **To count a campaign, add its tag to the project's `campaigns` in `src/projects.mjs`** and rebuild
+  the artifact; the builder embeds the list, and the collector checks the same registry, so a tag sent by an
+  older build is stored as `other` until it is registered.
 - `scheme` is `prefers-color-scheme` (`light` or `dark`).
 - `visit` is `new` or `returning`: `returning` when the marker holds this or one of the previous twelve UTC
   months. The marker is one `localStorage` key holding only a month, plus a `sessionStorage` copy of the

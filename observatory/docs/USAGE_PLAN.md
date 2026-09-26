@@ -97,7 +97,7 @@ Versions 1 and 2 stay accepted. Counts are unchanged: `{ event, route, release, 
 | visit | browser, month marker (below) | `new returning` |
 | scheme | browser, `prefers-color-scheme` | `light dark` |
 | referrer | browser, the referrer's registrable platform domain from a fixed allowlist (`sdk/referrers.mjs`, shared by the SDK and the collector); subdomains collapse to the platform (`jane.github.io` → `github.io`, `t.co` → `x.com`); `none` when direct or internal | one of the allowlisted domains, else `other`; the collector stores `other` for any off-list host, including from SDK 3.0 builds |
-| campaign | browser, `utm_campaign` lowercased | `^[a-z0-9_-]{1,40}$`; `none` when absent; `other` when invalid |
+| campaign | browser, `utm_campaign` lowercased, counted only when the project registered the tag (`campaigns` in `src/projects.mjs`; a free-form tag can carry a name) | a registered tag; `none` when absent; `other` when unregistered or invalid. The collector enforces the registry too, so older SDK builds are covered |
 
 Server-derived dimensions apply to every version. For v1 every browser-derived dimension reads
 `unknown`; v2 keeps its device, source and visit, and only scheme, referrer and campaign read
@@ -211,7 +211,7 @@ retired once no host loads the old embed.
 
 - Default-on now covers usage counts everywhere, and diagnostics and journeys outside the EEA, with
   the bar as notice and objection. Session-level data is no longer opt-in only.
-- Referral categories, allowlisted referrer platform domains and campaign tags are default-on inside
+- Referral categories, allowlisted referrer platform domains and registered campaign tags are default-on inside
   aggregate counts; referrer URLs, paths and any off-list host (which can carry a name) are never sent or
   stored (SDK 3.1, CommitAtlas#247).
 - Product events carry bounded open JSON properties, not a closed vocabulary. Their contract bounds
