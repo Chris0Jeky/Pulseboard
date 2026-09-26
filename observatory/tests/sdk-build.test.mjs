@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { buildSdk, writeSdk, isPristineSdk, SDK_COLLECTOR } from '../adapters/build-sdk.mjs';
 import { projects } from '../src/projects.mjs';
+import { SDK_VERSION } from '../sdk/pulseboard-sdk.mjs';
 import { makeRuntime, byClass } from './sdk-fakes.mjs';
 
 const configOf = code => JSON.parse(/^const config = (\{.*\});$/m.exec(code)[1]);
@@ -18,7 +19,7 @@ test('the artifact is deterministic, LF-only, hash-stamped and carries only the 
   assert.equal(a, b);
   assert.equal(a.includes('\r'), false);
   const [header] = a.split('(function () {');
-  assert.match(header, /pulseboard-sdk 3\.1\.0 for alibi\./);
+  assert.ok(header.includes('pulseboard-sdk ' + SDK_VERSION + ' for alibi.'));
   const hash = /sha256 of the body below: ([0-9a-f]{64})/.exec(header)[1];
   assert.equal(createHash('sha256').update(a.slice(header.length)).digest('hex'), hash);
   assert.equal(isPristineSdk(a), true);
@@ -29,7 +30,7 @@ test('the artifact is deterministic, LF-only, hash-stamped and carries only the 
   assert.equal(config.collector, SDK_COLLECTOR);
   assert.equal(config.origin, projects.alibi.origin);
   assert.equal(config.release, projects.alibi.releases.at(-1), 'defaults to the newest registered release');
-  assert.deepEqual(Object.keys(config.project), ['events', 'routes', 'releases']);
+  assert.deepEqual(Object.keys(config.project), ['events', 'routes', 'releases', 'campaigns']);
   for (const secret of ['probe', 'marker', 'dailyLimit', 'binding', 'ALIBI']) assert.equal(JSON.stringify(config).includes(secret), false, secret);
   assert.equal(configOf(buildSdk('alibi', { release: '0.12.0' })).release, '0.12.0');
   assert.throws(() => buildSdk('alibi', { release: '9.9.9' }), /registered releases/);
@@ -53,7 +54,7 @@ test('the artifact parses under node --check and runs as a classic script exposi
   vm.runInContext(code, context);
   const api = context.Pulseboard;
   assert.deepEqual(Object.keys(api), ['version', 'route', 'count', 'track', 'consent']);
-  assert.equal(api.version, '3.1.0');
+  assert.equal(api.version, SDK_VERSION);
   assert.equal(Object.isFrozen(api), true);
   assert.equal(h.body.children.length, 0, 'waits for DOMContentLoaded');
   h.document.emit('DOMContentLoaded');

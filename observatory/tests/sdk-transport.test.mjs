@@ -22,7 +22,7 @@ test('counts body is exactly contract v3: six context keys and closed-vocabulary
   assert.equal(call.url, 'https://collector.example/v1/collect-stat/demo');
   assert.deepEqual(Object.keys(call.body), ['v', 'context', 'counts']);
   assert.equal(call.body.v, 3);
-  assert.deepEqual(call.body.context, { device: 'tablet', source: 'search', visit: 'new', scheme: 'dark', referrer: 'google.com', campaign: 'launch_2026' });
+  assert.deepEqual(call.body.context, { device: 'tablet', source: 'search', visit: 'new', scheme: 'dark', referrer: 'google.com', campaign: 'other' });
   assert.deepEqual(call.body.counts, [
     { event: 'page.view', route: 'home', release: '1.0.0', n: 1 },
     { event: 'page.view', route: 'puzzle', release: '1.0.0', n: 1 },
@@ -80,7 +80,9 @@ test('referrer, source and campaign classification table', () => {
   for (const [referrer, source, host] of rows) assert.deepEqual(classifyReferrer(referrer, ORIGIN), { source, referrer: host }, referrer);
   const campaigns = [['', 'none'], ['?a=1', 'none'], ['?utm_campaign=Spring-Sale', 'spring-sale'], ['?utm_campaign=', 'other'],
     ['?utm_campaign=has%20space', 'other'], ['?utm_campaign=' + 'x'.repeat(41), 'other'], ['?utm_campaign=ok_1', 'ok_1']];
-  for (const [search, value] of campaigns) assert.equal(campaignOf(search), value, search);
+  // Only registered tags are counted (SDK 3.2); the rest of the table is the shape check.
+  for (const [search, value] of campaigns) assert.equal(campaignOf(search, ['spring-sale', 'ok_1']), value, search);
+  assert.equal(campaignOf('?utm_campaign=ok_1'), 'other', 'unregistered by default');
   for (const [width, device] of [[320, 'mobile'], [767, 'mobile'], [768, 'tablet'], [1023, 'tablet'], [1024, 'desktop'], [undefined, 'desktop'], [NaN, 'desktop']]) {
     assert.equal(deviceOf(width), device, String(width));
   }

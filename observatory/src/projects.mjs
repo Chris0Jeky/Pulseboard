@@ -4,9 +4,11 @@ const common = ['page.view', 'app.ready', 'app.error', 'action.requested', 'acti
 // A Worker cannot fetch another Worker on the same account through its public hostname (Cloudflare error 1042),
 // so same-account targets are probed through a service binding named here; the public edge of those two is
 // covered by .github/workflows/collector-canary.yml instead. buildEmbed() never publishes the probe record.
+// `campaigns` lists the utm_campaign tags the owner actually uses; any other tag can carry a name
+// (?utm_campaign=alice_smith), so the SDK and the collector count it as `other` (MDviewer review, SDK 3.2).
 const p = (label, origin, path, marker, events = [], routes = ['home'], binding = null) => ({
   label, origin, probe: { url: origin + path, marker, ...(binding ? { binding } : {}) }, events: [...common, ...events], routes,
-  releases: ['unattributed'], measurements: ['duration.ms'], dailyLimit: 1000, productLimit: 1000,
+  releases: ['unattributed'], campaigns: [], measurements: ['duration.ms'], dailyLimit: 1000, productLimit: 1000,
 });
 export const projects = {
   mdviewer: p('MDviewer', 'https://mdviewer-c9r.pages.dev', '/', 'MDviewer', ['export.print_requested', 'export.pdf_completed'], ['home', 'editor']),
@@ -19,5 +21,5 @@ export const projects = {
   portfolio: p('Portfolio', 'https://chris0jeky.github.io', '/CV_and_Portfolio/Portfolio/portfolio.html', 'Tcaci', ['project.opened', 'contact.requested'], ['home', 'project', 'cv']),
   wealthlens: p('WealthLens site', 'https://chris0jeky.github.io', '/wealthlens-hq/', 'Wealth', [], ['home']),
   taskdeck: { label: 'Taskdeck (local-first)', origin: null, probe: null, events: common,
-    routes: ['home', 'board', 'settings'], releases: ['unattributed'], measurements: ['duration.ms'], dailyLimit: 1000 },
+    routes: ['home', 'board', 'settings'], releases: ['unattributed'], campaigns: [], measurements: ['duration.ms'], dailyLimit: 1000 },
 };

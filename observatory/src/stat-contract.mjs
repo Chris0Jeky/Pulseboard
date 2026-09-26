@@ -111,9 +111,16 @@ export function storedReferrer(value) {
   if (SENTINELS.includes(value)) return value;
   return referrerDomain(value) ?? 'other';
 }
-export function batchDimensions(body, request, now) {
+/** The campaign dimension as stored: a sentinel as sent, a tag the project registered (`campaigns` in projects.mjs)
+ *  as sent, anything else `other`. A free-form tag can carry a name; this also covers SDK builds before 3.2. */
+export function storedCampaign(value, project) {
+  if (SENTINELS.includes(value)) return value;
+  return Array.isArray(project?.campaigns) && project.campaigns.includes(value) ? value : 'other';
+}
+export function batchDimensions(body, request, now, project) {
   const context = { ...UNKNOWN_CONTEXT, ...(body.v === STAT_VERSION ? {} : body.context) };
   context.referrer = storedReferrer(context.referrer);
+  context.campaign = storedCampaign(context.campaign, project);
   const values = { ...serverDimensions(request, now), ...context };
   return DIMENSION_NAMES.map(name => [name, values[name]]);
 }
