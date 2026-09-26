@@ -91,4 +91,4 @@ probe cron over the seven origins; unattended ticks run about 96 times a day (1,
 2026-09-26, #43 closed; `observatory/docs/HOSTING.md`). The scratch-D1 admission
 gate passed the same day. Collection is on for Alibi only since the owner chose it as the first pilot and approved
 its notice (q-7, 2026-09-10): `COLLECT_PROJECTS` in `wrangler.jsonc` lists the admitted ids and every other
-host artifact keeps an empty endpoint; adding a host there is a new owner decision, not cleanup. Global laws are auto-loaded; nothing here restates them.
+host artifact keeps an empty endpoint; adding a host there is a new owner decision, not cleanup. Usage plan v2 (owner decisions q-13, q-20, q-21, 2026-09-26) admits each public host to `COLLECT_STAT_PROJECTS` and `COLLECT_PRODUCT_PROJECTS` once its SDK v3 PR has shipped (#105); `wrangler.jsonc` is the current list. Global laws are auto-loaded; nothing here restates them.
