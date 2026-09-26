@@ -10,7 +10,7 @@
  * CSSOM (element.style), which a strict `style-src` without 'unsafe-inline' does not block.
  */
 import { referrerDomain, referrerSource } from './referrers.mjs';
-export const SDK_VERSION = '3.1.0';
+export const SDK_VERSION = '3.2.0';
 const COUNT_BATCH = 20;
 const PRODUCT_BATCH = 20;
 const PRODUCT_BODY_LIMIT = 16384;
@@ -556,10 +556,15 @@ export function createPulseboard(config, runtime = globalThis) {
       early.push({ category, name, props, ms, route: where });
       return true;
     }
+    // The ten-error page cap counts errors actually queued for sending, not ones buffered and later dropped.
+    const isError = name === 'js.error';
+    if (isError && errorsSent >= ERROR_LIMIT) { stats.dropped += 1; return false; }
     const seq = nextSeq();
     if (!seq) { stats.dropped += 1; return false; }
     const sid = sessionRecord && current.journeys ? sessionRecord.id : null;
-    return enqueue('product', category, { name, route: where, seq, ms, props }, sid);
+    const queuedOk = enqueue('product', category, { name, route: where, seq, ms, props }, sid);
+    if (queuedOk && isError) errorsSent += 1;
+    return queuedOk;
   }
 
   /** The hint answered, failed, or a choice was recorded: send each buffered item its category now allows, drop the rest. */
@@ -651,7 +656,8 @@ export function createPulseboard(config, runtime = globalThis) {
 
   function onError(event) {
     try {
-      if ((!current.diagnostics && !regionPending()) || errorsSent >= ERROR_LIMIT || disposed) return;
+      const held = early.filter(item => item.name === 'js.error').length;
+      if ((!current.diagnostics && !regionPending()) || errorsSent >= ERROR_LIMIT || held >= ERROR_LIMIT || disposed) return;
       const nameOf = value => { try { const n = value?.name; return typeof n === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(n) ? n : null; } catch { return null; } };
       let props;
       if (event?.type === 'unhandledrejection') {
@@ -667,12 +673,19 @@ export function createPulseboard(config, runtime = globalThis) {
         try { href = String(runtime.location?.href ?? ''); } catch { href = ''; }
         props = { kind: nameOf(event.error) || 'error', message: maskMessage(event.message), source: scriptName(event.filename, href), line };
       }
-      if (product('diagnostics', 'js.error', props)) errorsSent += 1;
+      product('diagnostics', 'js.error', props);
     } catch { /* Error reporting never raises its own error. */ }
   }
 
+  /** A host that scrolls inside a pane marks it `[data-pulseboard-scroll]` (MDviewer#105); otherwise the window. */
   function measureScroll() {
     try {
+      const pane = typeof runtime.document?.querySelector === 'function' ? runtime.document.querySelector('[data-pulseboard-scroll]') : null;
+      if (pane && typeof pane.scrollHeight === 'number' && pane.scrollHeight > 0) {
+        const seenPane = (pane.scrollTop ?? 0) + (pane.clientHeight ?? 0);
+        scrollMax = Math.max(scrollMax, Math.min(100, Math.max(0, Math.round((seenPane / pane.scrollHeight) * 100))));
+        return;
+      }
       const doc = runtime.document?.documentElement;
       const total = Math.max(doc?.scrollHeight ?? 0, runtime.document?.body?.scrollHeight ?? 0);
       const seen = (runtime.scrollY ?? doc?.scrollTop ?? 0) + (runtime.innerHeight ?? doc?.clientHeight ?? 0);
@@ -763,7 +776,7 @@ export function createPulseboard(config, runtime = globalThis) {
     choose.setAttribute('aria-expanded', 'false');
     on(choose, 'click', () => openChoose());
     // OK accepts every category; in the EEA this is what turns Diagnostics and Journeys on.
-    on(ok, 'click', () => { decide({ counts: true, diagnostics: true, journeys: true }); collapse(); });
+    on(ok, 'click', () => { decide({ counts: true, diagnostics: true, journeys: true }); collapse(true); });
     bar.append(text, choose, ok);
     ui.bar = bar; ui.chooseButton = choose;
     return bar;
@@ -772,18 +785,19 @@ export function createPulseboard(config, runtime = globalThis) {
   function openChoose() {
     if (!ui.bar) return openPanel();
     if (ui.choose) { try { ui.choose.inputs.counts.focus?.(); } catch { /* Focus is best-effort. */ } return true; }
-    ui.choose = switches(collapse);
+    ui.choose = switches(() => collapse(true));
     ui.bar.append(ui.choose);
     ui.chooseButton?.setAttribute('aria-expanded', 'true');
     try { ui.choose.inputs.counts.focus?.(); } catch { /* Focus is best-effort. */ }
     return true;
   }
 
-  function collapse() {
+  /** `focus` only for a direct action in this tab's notice; a cross-tab update or a host call never moves focus. */
+  function collapse(focus = false) {
     remove(ui.bar); ui.bar = null; ui.choose = null; ui.chooseButton = null;
     releasePlaceholder(ui.doc);
     showPill();
-    try { ui.pill?.focus?.(); } catch { /* Focus is best-effort. */ }
+    if (focus) { try { ui.pill?.focus?.(); } catch { /* Focus is best-effort. */ } }
   }
 
   function showPill() {
@@ -794,7 +808,7 @@ export function createPulseboard(config, runtime = globalThis) {
     pill.type = 'button';
     pill.setAttribute('aria-label', 'Beta: privacy choices for ' + cfg.label);
     pill.setAttribute('aria-expanded', 'false');
-    on(pill, 'click', () => (ui.panel ? closePanel() : openPanel()));
+    on(pill, 'click', () => (ui.panel ? closePanel(true) : openPanel()));
     ui.pill = pill;
     try { (ui.slot ?? ui.doc.body).append(pill); } catch { ui.pill = null; }
   }
@@ -808,9 +822,9 @@ export function createPulseboard(config, runtime = globalThis) {
     panel.setAttribute('role', 'region');
     panel.setAttribute('aria-label', 'Privacy choices for ' + cfg.label);
     panel.append(el('p', 'pb-text', { margin: '0' }, 'Beta — choose what ' + cfg.label + ' may collect. No names, emails or IPs.'));
-    const box = switches(closePanel);
+    const box = switches(() => closePanel(true));
     panel.append(box);
-    on(panel, 'keydown', event => { if (event?.key === 'Escape') closePanel(); });
+    on(panel, 'keydown', event => { if (event?.key === 'Escape') closePanel(true); });
     ui.panel = panel; ui.panelBox = box;
     try { (ui.slot ?? ui.doc.body).append(panel); } catch { ui.panel = null; return false; }
     ui.pill.setAttribute('aria-expanded', 'true');
@@ -818,10 +832,10 @@ export function createPulseboard(config, runtime = globalThis) {
     return true;
   }
 
-  function closePanel() {
+  function closePanel(focus = false) {
     remove(ui.panel); ui.panel = null; ui.panelBox = null;
     ui.pill?.setAttribute('aria-expanded', 'false');
-    try { ui.pill?.focus?.(); } catch { /* Focus is best-effort. */ }
+    if (focus) { try { ui.pill?.focus?.(); } catch { /* Focus is best-effort. */ } }
     return false;
   }
 
@@ -933,6 +947,8 @@ export function createPulseboard(config, runtime = globalThis) {
       listen(runtime, 'unhandledrejection', onError);
       listen(runtime, 'storage', onStorage);
       listen(runtime, 'scroll', measureScroll, { passive: true });
+      // Element scrolls do not bubble; the capture phase on the document sees a marked pane's scrolling.
+      listen(doc, 'scroll', measureScroll, { passive: true, capture: true });
       if (visible()) visibleSince = now();
       if (!blocked()) {
         // The host may name the landing route (<html data-pulseboard-route="studio">) so a direct visit records it,

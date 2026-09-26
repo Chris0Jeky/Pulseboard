@@ -45,7 +45,7 @@ export const text = root => walk(root).map(n => n.textContent || '').join('');
 
 /** A controllable runtime. `region`: 'eea' | 'other' | 'fail' | 'pending'. `status`: POST status code. */
 export function makeRuntime({ region = 'eea', status = 202, nav = {}, local = storage(), session = storage(), referrer = '',
-  search = '', width = 1280, dark = false, slot = false, barHolder = false, origin = ORIGIN, loading = false } = {}) {
+  search = '', width = 1280, dark = false, slot = false, barHolder = false, scrollPane = false, origin = ORIGIN, loading = false } = {}) {
   const log = { html: 0, order: [], focus: null };
   const timers = new Map();
   let nextTimer = 1, clock = 0, uuidCount = 0;
@@ -55,12 +55,14 @@ export function makeRuntime({ region = 'eea', status = 202, nav = {}, local = st
   const body = element('body', log);
   const slotNode = slot ? element('div', log) : null;
   const holderNode = barHolder ? element('div', log) : null;
+  const paneNode = scrollPane ? Object.assign(element('main', log), { scrollTop: 0, clientHeight: 500, scrollHeight: 2000 }) : null;
   if (holderNode) holderNode.style.height = '2.5rem';
   Object.assign(document, {
     body, referrer, readyState: loading ? 'loading' : 'complete', visibilityState: 'visible',
     documentElement: { scrollHeight: 2000, clientHeight: 800, scrollTop: 0 },
     createElement: tag => element(tag, log),
-    querySelector: selector => (selector === '[data-pulseboard-slot]' ? slotNode : selector === '[data-pulseboard-bar]' ? holderNode : null),
+    querySelector: selector => (selector === '[data-pulseboard-slot]' ? slotNode : selector === '[data-pulseboard-bar]' ? holderNode
+      : selector === '[data-pulseboard-scroll]' ? paneNode : null),
   });
   if (holderNode) body.append(holderNode);
   if (slotNode) body.append(slotNode);
@@ -98,7 +100,7 @@ export function makeRuntime({ region = 'eea', status = 202, nav = {}, local = st
   runtime.status = status;
   runtime.hold = false;
   return {
-    runtime, document, body, slot: slotNode, holder: holderNode, log, calls, timers, observers,
+    runtime, document, body, slot: slotNode, holder: holderNode, pane: paneNode, log, calls, timers, observers,
     posts: () => calls.filter(c => c.init.method === 'POST'),
     counts: () => calls.filter(c => c.url.includes('/v1/collect-stat/')),
     products: () => calls.filter(c => c.url.includes('/v1/product/')),
