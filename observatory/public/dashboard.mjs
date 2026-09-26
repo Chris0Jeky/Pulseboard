@@ -1,8 +1,10 @@
 import { DAY, sum, count, percent, fraction, monitorState, monitorDisplay, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff } from './desk-model.mjs';
-import { makeDemo, makeGithubDemo, SCENARIOS } from './desk-demo.mjs';
+import { makeDemo, makeGithubDemo, makeProductDemo, makeProductEventsDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
 import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
-import { requestStatistics, assertStatistics, usageReading, usageQuestions, makeStatisticsDemo, STATISTICS_MAX_BYTES } from './desk-usage.mjs';
+import { requestStatistics, assertStatistics, usageReading, usageQuestions, makeStatisticsDemo, foldTop, hourSeries, STATISTICS_MAX_BYTES, USAGE_WINDOWS } from './desk-usage.mjs';
+import { requestProduct, requestProductEvents, assertProduct, assertProductEvents, propertyBreakdown, vitalRating, PRODUCT_MAX_BYTES, PRODUCT_EVENTS_MAX_BYTES, PRODUCT_EVENTS_LIMIT } from './desk-product.mjs';
+import { productPanel } from './products/index.mjs';
 import { assertGithubEvidence, deploymentLeads, pinInvestigation, makeReleaseNote, releaseNoteMarkdown } from './desk-release.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -10,13 +12,15 @@ const $ = selector => document.querySelector(selector);
 const REFRESH_MS = 30_000;
 const state = { snapshot: null, token: '', days: 7, scenario: 'release', phase: 1, query: '', sort: 'attention',
   view: 'overview', reviewed: false, reviews: {}, releaseProject: '', baseline: '', candidate: '',
-  stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null, usage: null, usageError: '', usageRead: null, usageProject: 'alibi' };
+  stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null, usage: null, product: null, errors: { usage: '', product: '' }, reads: { usage: null, product: null }, usageProject: 'alibi', usageDays: 7,
+  explorer: null, explorerName: '', plugin: null };
 const views = {
   overview: ['The desk.', 'A clear place to see what needs you.'],
   signals: ['Signal inbox.', 'Observations you can inspect, park, or turn into a next step.'],
   releases: ['Release lab.', 'Compare what changed. Be careful about why.'],
   connections: ['Connections.', 'Small contracts between useful tools. No surprise data routes.'],
   usage: ['Usage.', 'How your sites are used: aggregate counts, never people.'],
+  product: ['Product.', 'What happens inside a site: events, journeys and diagnostics.'],
 };
 const labels = { up: 'Probe up', down: 'Probe down', stale: 'Stale probe', unknown: 'No probe evidence', local: 'Local boundary' };
 const e = (tag, attrs = {}, ...children) => {
@@ -322,42 +326,97 @@ function connections() {
       card('EXTENSION SEAM', 'OpenTelemetry / specialist backends', 'Keep traces and high-volume metrics in suitable backends. A future bounded adapter can bring evidence and links into this desk. No OTLP receiver is claimed.')),
     ...importedContext()];
 }
-/** Read only while the Usage view is open: the 30 s portfolio poll pays for this read on this view alone. */
-async function readUsage() {
-  // Keyed by read epoch, so a read cancelled by a window change or disconnect cannot leave the view stuck busy.
-  if (!state.token || (state.usageRead?.epoch === state.epoch && state.usageRead.project === state.usageProject)) return;
-  const epoch = state.epoch, days = state.days, project = state.usageProject, read = { epoch, project }; state.usageRead = read;
+const siteReads = {
+  usage: { request: requestStatistics, check: assertStatistics, max: STATISTICS_MAX_BYTES, fail: 'Usage statistics are unavailable.' },
+  product: { request: requestProduct, check: assertProduct, max: PRODUCT_MAX_BYTES, fail: 'Product data is unavailable.' },
+};
+/** Read only while the Usage or Product view is open: the 30 s portfolio poll pays for one of these reads on that view alone. */
+async function readSite(kind) {
+  // Keyed by read epoch, site and window, so a read cancelled by a change or disconnect cannot leave the view stuck busy.
+  const epoch = state.epoch, days = state.usageDays, project = state.usageProject, busy = state.reads[kind];
+  if (!state.token || (busy?.epoch === epoch && busy.project === project && busy.days === days)) return;
+  const read = { epoch, project, days }, current = () => epoch === state.epoch && days === state.usageDays && project === state.usageProject;
+  state.reads[kind] = read;
   try {
-    const response = await requestStatistics(fetch, { project, token: state.token, days, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+    const { request, check, max, fail } = siteReads[kind];
+    const response = await request(fetch, { project, token: state.token, days, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
     if (epoch !== state.epoch) return;
     if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return; }
-    if (!response.ok) throw new Error('Usage statistics are unavailable.');
-    const data = assertStatistics(await readLimitedJson(response, STATISTICS_MAX_BYTES), days, project);
-    if (epoch !== state.epoch || days !== state.days || project !== state.usageProject) return;
-    state.usage = data; state.usageError = '';
-  } catch (error) { if (epoch === state.epoch && project === state.usageProject) state.usageError = error.message || 'Could not read usage statistics.'; }
-  finally { if (state.usageRead === read) state.usageRead = null; if (epoch === state.epoch && state.view === 'usage') render(); }
+    if (!response.ok) throw new Error(fail);
+    const data = check(await readLimitedJson(response, max), days, project);
+    if (current()) { state[kind] = data; state.errors[kind] = ''; }
+  } catch (error) { if (current()) state.errors[kind] = error.message || 'Could not read this site.'; }
+  finally { if (state.reads[kind] === read) state.reads[kind] = null; if (epoch === state.epoch && state.view === kind) render(); }
+}
+/** Raw events for one name, on demand only. Returns null when a disconnect, site or window change overtook the read. */
+async function productEvents(name, limit) {
+  const epoch = state.epoch, project = state.usageProject, days = state.usageDays;
+  let data;
+  if (state.snapshot?.mode === 'demo') data = makeProductEventsDemo(days, state.product?.generatedAt ?? Date.now(), project, name, limit);
+  else {
+    if (!state.token) throw new Error('Connect the collector first.');
+    const response = await requestProductEvents(fetch, { project, token: state.token, days, name, limit, signal: AbortSignal.timeout(3 * READ_TIMEOUT_MS) });
+    if (epoch !== state.epoch) return null;
+    if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return null; }
+    if (!response.ok) throw new Error('Product events are unavailable.');
+    data = await readLimitedJson(response, PRODUCT_EVENTS_MAX_BYTES);
+  }
+  return epoch === state.epoch && project === state.usageProject && days === state.usageDays ? assertProductEvents(data, days, project, name) : null;
+}
+/** One on-demand read at a time per slot; a later click or a site change supersedes the earlier one. */
+async function onDemand(slot, work) {
+  const key = {}; state[slot] = { key, busy: true }; render();
+  try { const value = await work(); if (state[slot]?.key === key) state[slot] = value ? { key, ...value } : null; }
+  catch (error) { if (state[slot]?.key === key) state[slot] = { key, error: error.message || 'Could not read product events.' }; }
+  finally { render(); }
+}
+function readExplorer() {
+  const name = explorerName(); if (!name) return;
+  onDemand('explorer', async () => { const data = await productEvents(name, 1000); return data && { name, data, rows: propertyBreakdown(data.events) }; });
+}
+function readPlugin(plugin) {
+  onDemand('plugin', async () => {
+    const reads = [];
+    for (const name of plugin.names) { const data = await productEvents(name, PRODUCT_EVENTS_LIMIT); if (!data) return null; reads.push(data); }
+    return { model: plugin.compute(reads.flatMap(r => r.events)), truncated: reads.filter(r => r.truncated).map(r => r.name) };
+  });
 }
 const ratio = value => value === null ? '—' : value.toFixed(2);
+const every = length => Math.max(1, Math.ceil(length / 12));
 function usageChart(reading) {
   const width = 680, left = 38, right = 8, plot = width - left - right, totals = reading.series.all, starts = reading.series.started, max = Math.max(1, ...totals);
-  const slot = plot / Math.max(1, totals.length);
+  const slot = plot / Math.max(1, totals.length), gap = Math.min(10, slot * 0.3);
   const image = svg('svg', { viewBox: `0 0 ${width} 190`, class: 'chart', role: 'img', 'aria-label': `Aggregate counts by UTC day: ${totals.join(', ')}. ${reading.journey} starts: ${starts.join(', ')}. Today is partial.` });
   for (const r of [0, 0.5, 1]) { const y = 148 - r * 126; image.append(svg('line', { x1: left, x2: width - right, y1: y, y2: y, class: 'chart-grid' }), svg('text', { x: left - 7, y: y + 4, 'text-anchor': 'end', class: 'chart-text' }, count(Math.round(max * r)))); }
   totals.forEach((n, i) => {
-    const x = left + i * slot + 5, w = Math.max(1, slot - 10), h = n / max * 126, hs = starts[i] / max * 126;
+    const x = left + i * slot + gap / 2, w = Math.max(1, slot - gap), h = n / max * 126, hs = starts[i] / max * 126;
     image.append(svg('rect', { x, y: 148 - h, width: w, height: h, rx: 2, class: 'chart-bar' }, svg('title', {}, `${reading.days[i]}: ${count(n)} counts, ${count(starts[i])} ${reading.journey} starts`)),
       svg('rect', { x: x + w * 0.3, y: 148 - hs, width: w * 0.4, height: hs, rx: 1, class: 'chart-bar-accent' }));
-    if (totals.length <= 9 || i % 2 === 0) image.append(svg('text', { x: x + w / 2, y: 175, 'text-anchor': 'middle', class: 'chart-text' }, new Date(reading.days[i] + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })));
+    if (i % every(totals.length) === 0) image.append(svg('text', { x: x + w / 2, y: 175, 'text-anchor': 'middle', class: 'chart-text' }, new Date(reading.days[i] + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })));
   });
   return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', {}, `All counts · inner bar: ${reading.journey} starts`), e('span', {}, 'UTC · today is partial')),
     e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'All counts', 'Page views', 'Starts', 'Completions'],
       reading.days.map((d, i) => [d, count(totals[i]), count(reading.series.views[i]), count(starts[i]), count(reading.series.completed[i])]))));
 }
-function share(rows, key, total, heading = key[0].toUpperCase() + key.slice(1)) {
+/** One series of bars with its numbers in an accessible table; used for UTC hours and product days. */
+function barChart(values, labels, aria, caption, heading = 'Bucket') {
+  const width = 680, left = 38, right = 8, plot = width - left - right, max = Math.max(1, ...values), slot = plot / Math.max(1, values.length), gap = Math.min(10, slot * 0.3);
+  const image = svg('svg', { viewBox: `0 0 ${width} 190`, class: 'chart', role: 'img', 'aria-label': `${aria}: ${values.join(', ')}` });
+  for (const r of [0, 0.5, 1]) { const y = 148 - r * 126; image.append(svg('line', { x1: left, x2: width - right, y1: y, y2: y, class: 'chart-grid' }), svg('text', { x: left - 7, y: y + 4, 'text-anchor': 'end', class: 'chart-text' }, count(Math.round(max * r)))); }
+  values.forEach((n, i) => {
+    const x = left + i * slot + gap / 2, w = Math.max(1, slot - gap), h = n / max * 126;
+    image.append(svg('rect', { x, y: 148 - h, width: w, height: h, rx: 2, class: 'chart-bar' }, svg('title', {}, `${labels[i]}: ${count(n)}`)));
+    if (i % every(values.length) === 0) image.append(svg('text', { x: x + w / 2, y: 175, 'text-anchor': 'middle', class: 'chart-text' }, labels[i]));
+  });
+  return e('div', {}, image, e('div', { class: 'chart-caption' }, caption.map(text => e('span', {}, text))),
+    e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect counts'), table([heading, 'Counts'], labels.map((l, i) => [l, count(values[i])]))));
+}
+function share(rows, key, total, heading = key[0].toUpperCase() + key.slice(1), fold = false) {
   if (!rows.length) return e('p', { class: 'muted' }, 'No counts in this window.');
-  return e('div', { class: 'table-shell' }, table([heading, 'Counts', 'Share'], rows.map(r => [r[key], count(r.n),
-    e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, total), value: r.n, 'aria-label': `${r[key]}: ${r.n} of ${total}` })])));
+  const shown = fold ? foldTop(rows) : { rows, other: null };
+  const meter = (label, n) => e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, total), value: n, 'aria-label': `${label}: ${n} of ${total}` });
+  return e('div', { class: 'table-shell' }, table([heading, 'Counts', 'Share'], [...shown.rows.map(r => [r[key], count(r.n), meter(r[key], r.n)]),
+    ...(shown.other ? [[`All others (${count(shown.other.values)} values)`, count(shown.other.n), meter('All others', shown.other.n)]] : [])]));
 }
 function coverage() {
   const describe = p => p.id === state.usage?.project && state.usage.collectionAdmitted ? 'Aggregate counts admitted (shown above)'
@@ -366,23 +425,47 @@ function coverage() {
   return panel('Coverage across your sites', e('div', { class: 'table-shell' }, table(['Site', 'Usage measurement', 'Opt-in events (window)', 'Reachability'],
     state.snapshot.projects.map(p => [p.label, describe(p), count(p.totals.events), chip(p)]))), e('span', { class: 'mini-label' }, 'WHAT IS MEASURED'));
 }
-function chooseUsageProject(id) {
-  state.usageProject = id; state.usageError = '';
-  state.usage = state.snapshot?.mode === 'demo' ? makeStatisticsDemo(state.days, Date.now(), id) : null;
-  readUsage(); render();
+/** Site and window are shared by Usage and Product; changing either drops every read and on-demand result for the old pair. */
+function resetSiteReads() {
+  const demo = state.snapshot?.mode === 'demo', now = Date.now();
+  state.usage = demo ? makeStatisticsDemo(state.usageDays, now, state.usageProject) : null;
+  state.product = demo ? makeProductDemo(state.usageDays, now, state.usageProject) : null;
+  state.errors = { usage: '', product: '' }; state.explorer = null; state.plugin = null;
+  if (Object.hasOwn(siteReads, state.view)) readSite(state.view);
+  render();
 }
-function usagePicker() {
+function sitePicker(detail) {
   const eligible = state.snapshot.projects.filter(p => p.collectionEligible);
-  return e('div', { class: 'filter-row' }, selectControl('Site', 'usage-project', eligible.map(p => [p.id, p.label]), state.usageProject, id => chooseUsageProject(id)),
-    e('p', { class: 'muted' }, 'Aggregate counts for one site at a time. Counts are events, never people.'));
+  return e('div', { class: 'filter-row' }, e('div', { class: 'site-controls' },
+    selectControl('Site', 'usage-project', eligible.map(p => [p.id, p.label]), state.usageProject, id => { state.usageProject = id; resetSiteReads(); }),
+    selectControl('Window', 'usage-window', USAGE_WINDOWS.map(d => [String(d), d === 1 ? '24 hours' : `${d} days`]), String(state.usageDays), d => { state.usageDays = Number(d); resetSiteReads(); })),
+  e('p', { class: 'muted' }, detail));
+}
+const siteLabel = () => state.snapshot.projects.find(p => p.id === state.usageProject)?.label ?? state.usageProject;
+function siteMissing(kind, noun) {
+  return state.reads[kind] !== null || !state.errors[kind] ? empty(`Reading ${kind}…`, `Fetching ${siteLabel()} ${noun} for this window.`)
+    : empty(`${kind[0].toUpperCase()}${kind.slice(1)} unavailable.`, state.errors[kind], button('Try again', () => { readSite(kind); render(); }, 'primary'));
+}
+const tag = text => e('span', { class: 'mini-label' }, text);
+const DIMENSION_PANELS = [['country', 'Country', 'FROM THE EDGE · NO IP KEPT', true], ['region', 'Region', 'FROM THE EDGE · TOP 10', true],
+  ['device', 'Device', 'VIEWPORT CLASS'], ['browser', 'Browser', 'CLASSIFIED ON THE SERVER · UA NOT KEPT'], ['os', 'Operating system', 'CLASSIFIED ON THE SERVER'],
+  ['scheme', 'Colour scheme', 'PREFERS-COLOR-SCHEME'], ['source', 'Came from', 'CATEGORY · NO URLS'], ['referrer', 'Referrer host', 'HOST ONLY · TOP 10', true],
+  ['visit', 'New or returning', 'THIS MONTH · NO ID'], ['campaign', 'Campaign', 'UTM_CAMPAIGN · TOP 10', true], ['language', 'Language', 'ACCEPT-LANGUAGE · TOP 10', true]];
+function dimensionPanels(u) {
+  const panels = DIMENSION_PANELS.filter(([name]) => u.dimensions[name]).map(([name, title, label, fold]) => panel(title, share(u.dimensions[name], 'value', u.total, title, fold), tag(label)));
+  if (u.dimensions.hour) {
+    const { hours, unknown } = hourSeries(u.dimensions.hour), labels = hours.map((_, h) => String(h).padStart(2, '0'));
+    panels.push(panel('Hour of day', barChart(hours, labels, 'Counts by UTC hour of receipt', ['UTC hour of receipt', unknown ? `${count(unknown)} without an hour` : 'Every count has an hour'], 'UTC hour'), tag('SERVER CLOCK')));
+  }
+  return Array.from({ length: Math.ceil(panels.length / 2) }, (_, i) => e('div', { class: 'overview-grid' }, panels.slice(i * 2, i * 2 + 2)));
 }
 function usageView() {
-  const u = state.usage, label = state.snapshot.projects.find(p => p.id === state.usageProject)?.label ?? state.usageProject;
-  if (!u) return [usagePicker(), state.usageRead !== null || !state.usageError ? empty('Reading usage…', `Fetching aggregate ${label} counts for this window.`)
-    : empty('Usage unavailable.', state.usageError, button('Try again', () => { readUsage(); render(); }, 'primary')), coverage()];
+  const u = state.usage, label = siteLabel();
+  const picker = sitePicker('Aggregate counts for one site at a time. Counts are events, never people.');
+  if (!u) return [picker, siteMissing('usage', 'aggregate counts'), coverage()];
   const r = usageReading(u), qs = usageQuestions(u, r);
   const synthetic = u.mode === 'demo' ? 'SYNTHETIC · ' : '';
-  return [usagePicker(), e('p', { class: 'tiny muted' }, `${synthetic}${label} · ${u.window.startDay} to ${u.window.endDay} UTC · ${u.population} · read ${date(u.generatedAt)}${state.usageError ? ' · last read failed, showing previous' : ''}`),
+  return [picker, e('p', { class: 'tiny muted' }, `${synthetic}${label} · ${u.window.startDay} to ${u.window.endDay} UTC · ${u.population} · read ${date(u.generatedAt)}${state.errors.usage ? ' · last read failed, showing previous' : ''}`),
     e('section', { class: 'stats-grid', 'aria-label': `${label} usage summary` },
       stat('Page views', count(r.views), r.busiest ? `Busiest day ${r.busiest.day} (${count(r.busiest.n)} counts)` : 'No counts in this window', 'lime'),
       stat(r.journey === 'puzzle' ? 'Puzzle starts' : 'Action starts', count(r.started), `${count(r.failed)} reported failures`),
@@ -390,23 +473,94 @@ function usageView() {
       r.journey === 'puzzle' ? stat('Hints per start', ratio(r.hintsPerStart), `${count(r.hints)} hint requests · ${count(r.errors)} app errors`, r.errors ? 'orange' : '')
         : stat('Errors per 100 views', r.errorsPer100Views === null ? '—' : r.errorsPer100Views.toFixed(1), `${count(r.errors)} app errors · two independent counts`, r.errors ? 'orange' : '')),
     e('div', { class: 'overview-grid' },
-      panel('Questions worth asking', qs.length ? e('ul', {}, qs.map(q => e('li', { class: q.kind === 'boundary' ? 'notice' : '' }, q.text))) : e('p', { class: 'muted' }, 'Nothing stands out in these counts. That is not proof the experience is good; watch a real session.'), e('span', { class: 'mini-label' }, 'LEADS, NOT VERDICTS')),
-      panel('Day by day', usageChart(r), e('span', { class: 'mini-label' }, 'AGGREGATE COUNTS'))),
+      panel('Questions worth asking', qs.length ? e('ul', {}, qs.map(q => e('li', { class: q.kind === 'boundary' ? 'notice' : '' }, q.text))) : e('p', { class: 'muted' }, 'Nothing stands out in these counts. That is not proof the experience is good; watch a real session.'), tag('LEADS, NOT VERDICTS')),
+      panel('Day by day', usageChart(r), tag('AGGREGATE COUNTS'))),
     e('div', { class: 'overview-grid' },
-      panel('Where activity happens', share(u.routes, 'route', u.total), e('span', { class: 'mini-label' }, 'ROUTE MIX')),
-      panel('What gets done', share(u.events, 'event', u.total), e('span', { class: 'mini-label' }, 'EVENT MIX'))),
+      panel('Where activity happens', share(u.routes, 'route', u.total), tag('ROUTE MIX')),
+      panel('What gets done', share(u.events, 'event', u.total), tag('EVENT MIX'))),
     e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Who and where'),
       e('p', {}, 'Share of counts, not of visitors: a busy visit weighs more than a quick one. Separate totals, never crossed. With a handful of testers, a row can still describe one person.')),
-      e('div', { class: 'overview-grid' },
-        panel('Country', share(u.dimensions.country, 'value', u.total, 'Country'), e('span', { class: 'mini-label' }, 'FROM THE EDGE · NO IP KEPT')),
-        panel('Device', share(u.dimensions.device, 'value', u.total, 'Device'), e('span', { class: 'mini-label' }, 'VIEWPORT CLASS'))),
-      e('div', { class: 'overview-grid' },
-        panel('Came from', share(u.dimensions.source, 'value', u.total, 'Source'), e('span', { class: 'mini-label' }, 'CATEGORY · NO URLS')),
-        panel('New or returning', share(u.dimensions.visit, 'value', u.total, 'Visit'), e('span', { class: 'mini-label' }, 'THIS MONTH · NO ID')))),
+      dimensionPanels(u)),
     e('div', { class: 'overview-grid' },
-      panel('Which build sent counts', share(u.releases, 'release', u.total), e('span', { class: 'mini-label' }, 'RELEASE MIX')),
+      panel('Which build sent counts', share(u.releases, 'release', u.total), tag('RELEASE MIX')),
       panel('Reading limits', e('ul', { class: 'tiny muted' }, u.limitations.map(text => e('li', {}, text))))),
     coverage()];
+}
+const seconds = ms => ms === null ? '—' : ms < 60_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.floor(ms / 60_000)} min ${Math.round(ms % 60_000 / 1000)} s`;
+const vitalClass = { good: 'up', 'needs-improvement': 'stale', poor: 'down', unknown: 'unknown' };
+const vitalValue = (metric, v) => metric === 'CLS' ? v.toFixed(3) : `${count(v)} ms`;
+function explorerName() {
+  const names = state.product?.totals.names ?? [];
+  return names.some(r => r.name === state.explorerName) ? state.explorerName : names[0]?.name ?? '';
+}
+function histogram(numeric) {
+  const max = Math.max(1, ...numeric.histogram.map(b => b.n)), w = 120 / numeric.histogram.length;
+  return svg('svg', { viewBox: '0 0 120 28', class: 'histogram', role: 'img', 'aria-label': `Histogram: ${numeric.histogram.map(b => `${b.lo}–${b.hi}: ${b.n}`).join(', ')}` },
+    numeric.histogram.map((b, i) => svg('rect', { x: i * w + 0.5, y: 28 - b.n / max * 26, width: Math.max(1, w - 1), height: b.n / max * 26, class: 'chart-bar' }, svg('title', {}, `${b.lo} to ${b.hi}: ${b.n}`))));
+}
+function explorerResult(x) {
+  const n = x.data.events.length;
+  const rows = x.rows.map(r => [e('code', {}, r.key), r.kind, `${count(r.present)} / ${count(n)}`,
+    r.numeric ? e('div', {}, e('span', { class: 'mono' }, `min ${r.numeric.min} · median ${r.numeric.median} · p90 ${r.numeric.p90} · max ${r.numeric.max}`), histogram(r.numeric)) : null,
+    r.values.length ? e('div', {}, r.values.map(v => e('span', { class: 'step-chip' }, `${v.value} × ${count(v.n)}`)), r.otherValues ? e('span', { class: 'tiny muted' }, ` +${count(r.otherValues)} more values`) : null) : null]);
+  return [e('p', { class: 'tiny muted' }, `${x.data.mode === 'demo' ? 'SYNTHETIC · ' : ''}${count(n)} ${x.name} events, newest first${x.data.truncated ? `, capped at ${count(x.data.limit)}` : ''} · read ${date(x.data.generatedAt)} · computed in this tab`),
+    rows.length ? e('div', { class: 'table-shell' }, table(['Property', 'Kind', 'Present', 'Numbers', 'Top values'], rows)) : e('p', { class: 'muted' }, 'These events carry no properties.'),
+    e('h3', { class: 'subhead' }, 'Recent events'),
+    n ? e('div', { class: 'table-shell' }, table(['Received', 'Route', 'Release', 'Device', 'Properties'], x.data.events.slice(0, 50).map(v =>
+      [date(v.received), v.route, v.release, v.device, e('code', { class: 'props-json' }, JSON.stringify(v.props))]))) : e('p', { class: 'muted' }, 'No events with this name in this window.')];
+}
+function explorer() {
+  const names = state.product.totals.names, x = state.explorer, name = explorerName();
+  const controls = e('div', { class: 'site-controls' }, selectControl('Event name', 'explorer-name', names.map(r => [r.name, `${r.name} (${count(r.n)})`]), name, v => { state.explorerName = v; state.explorer = null; render(); }),
+    button(x?.busy ? 'Reading…' : 'Read events', () => readExplorer(), 'primary'));
+  const body = !names.length ? [e('p', { class: 'muted' }, 'No product events in this window.')] : !x ? [e('p', { class: 'muted' }, 'Not read. Raw events load only when you ask; their properties are summarised in this tab and never sent anywhere.')]
+    : x.busy ? [e('p', { class: 'muted' }, 'Reading raw events…')] : x.error ? [e('p', { class: 'notice' }, x.error)] : explorerResult(x);
+  return panel('Explorer', e('div', {}, names.length ? controls : null, ...body), tag('ANY EVENT · ANY PROPERTY'));
+}
+function pluginSection(plugin) {
+  const x = state.plugin, ui = { e, table, panel, count, percent };
+  let body;
+  if (!x) body = [e('p', { class: 'muted' }, `Reads the raw ${plugin.names.join(', ')} events for this window on demand, newest ${count(PRODUCT_EVENTS_LIMIT)} per name.`)];
+  else if (x.busy) body = [e('p', { class: 'muted' }, 'Reading raw events…')];
+  else if (x.error) body = [e('p', { class: 'notice' }, x.error)];
+  else {
+    try { body = plugin.render(x.model, ui); } catch { body = [e('p', { class: 'notice' }, 'This product panel could not render the events it read.')]; }
+    if (x.truncated.length) body.push(e('p', { class: 'notice' }, `Capped at the newest ${count(PRODUCT_EVENTS_LIMIT)} for ${x.truncated.join(', ')}: older events in the window are not counted here.`));
+  }
+  return e('section', { class: 'product-plugin' }, e('div', { class: 'section-heading' }, e('h2', {}, plugin.title), button(x && !x.busy && !x.error ? 'Read again' : 'Read events', () => readPlugin(plugin), 'primary')), ...body);
+}
+function productView() {
+  const p = state.product, label = siteLabel(), plugin = productPanel(state.usageProject);
+  const picker = sitePicker('Product events from browsers that allow them. Sessions are browser tabs, never people.');
+  if (!p) return [picker, siteMissing('product', 'product events')];
+  const days = [];
+  for (let t = Date.parse(p.window.startDay); t <= Date.parse(p.window.endDay); t += 86400000) days.push(new Date(t).toISOString().slice(0, 10));
+  const perDay = days.map(d => p.totals.days.find(r => r.day === d)?.n ?? 0), s = p.sessions;
+  return [picker, e('p', { class: 'tiny muted' }, `${p.mode === 'demo' ? 'SYNTHETIC · ' : ''}${label} · ${p.window.startDay} to ${p.window.endDay} UTC · ${p.population} · read ${date(p.generatedAt)}${state.errors.product ? ' · last read failed, showing previous' : ''}`),
+    e('section', { class: 'stats-grid', 'aria-label': `${label} product summary` },
+      stat('Product events', count(p.total), `${count(p.totals.names.length)} event names`, 'lime'),
+      stat('Sessions', count(s.n), 'Browser tabs with Journeys allowed. Not people.'),
+      stat('Events per session', s.medianEvents === null ? '—' : count(s.medianEvents), 'Median'),
+      stat('Session length', seconds(s.medianDurationMs), 'Median, first to last event')),
+    e('div', { class: 'overview-grid' },
+      panel('Event names', share(p.totals.names, 'name', p.total, 'Event'), tag('ALL EVENTS')),
+      panel('Day by day', barChart(perDay, days.map(d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })), 'Product events by UTC day', ['Product events', 'UTC · today is partial'], 'UTC day'), tag('RAW COUNTS'))),
+    e('div', { class: 'overview-grid' },
+      panel('Journeys', p.journeys.length ? e('div', { class: 'journey-list', tabindex: '0', role: 'region', 'aria-label': 'Latest journeys' }, p.journeys.map(j => e('div', { class: 'journey' },
+        e('div', { class: 'tiny muted' }, `${date(j.startedAt)} · ${seconds(j.durationMs)} · ${j.steps.length} steps`),
+        e('div', {}, j.steps.slice(0, 30).map(step => e('span', { class: 'step-chip' }, step)), j.steps.length > 30 ? e('span', { class: 'tiny muted' }, ` +${j.steps.length - 30} more`) : null))))
+        : e('p', { class: 'muted' }, 'No sessions in this window. Journeys need the Journeys category allowed.'), tag(`LATEST ${p.journeys.length}`)),
+      panel('Last step before leaving', share(p.exits, 'name', s.n, 'Last event'), tag('EXITS · PER SESSION'))),
+    e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Diagnostics'), e('p', {}, 'p75 from raw values per metric and route; web.dev thresholds. INP is approximate in this SDK.')),
+      e('div', { class: 'overview-grid' },
+        panel('Web vitals', p.vitals.length ? e('div', { class: 'table-shell' }, table(['Metric', 'Route', 'p75', 'Samples', 'Rating'], p.vitals.map(v => {
+          const rating = vitalRating(v.metric, v.p75);
+          return [v.metric === 'INP' ? 'INP (approximate)' : v.metric, v.route, vitalValue(v.metric, v.p75), count(v.n), e('span', { class: `state-chip ${vitalClass[rating]}` }, rating)];
+        }))) : e('p', { class: 'muted' }, 'No web vitals in this window.'), tag('P75 · NEVER AVERAGED')),
+        panel('Errors', p.errors.length ? e('div', { class: 'table-shell' }, table(['Kind', 'Message', 'Count', 'Last seen'], p.errors.map(x => [x.kind, x.message, count(x.n), date(x.lastSeen)])))
+          : e('p', { class: 'muted' }, 'No errors reported in this window.'), tag('GROUPED BY KIND AND MESSAGE')))),
+    plugin ? pluginSection(plugin) : null, explorer(),
+    panel('Reading limits', e('ul', { class: 'tiny muted' }, p.limitations.map(text => e('li', {}, text))))].filter(Boolean);
 }
 function render() {
   const focusId = document.activeElement?.id;
@@ -416,6 +570,8 @@ function render() {
   $('#signal-count').textContent = state.snapshot ? String(signalSet().filter(s => reviewState(s, state.reviews) === 'open').length) : '0';
   $('#density').textContent = document.body.dataset.density === 'compact' ? 'Comfortable view' : 'Compact view';
   $('#brief').disabled = !state.snapshot; $('#refresh').disabled = state.busy || (!state.token && !state.snapshot);
+  // The portfolio window does not drive the site views, which carry their own.
+  $('#window').closest('label').hidden = Object.hasOwn(siteReads, state.view);
   $('#disconnect').hidden = !state.snapshot && !state.token && !Object.keys(state.imported).length; $('#demo-controls').hidden = state.snapshot?.mode !== 'demo';
   const mode = $('#mode'); mode.className = 'badge';
   if (!state.snapshot) { mode.textContent = state.busy ? 'CONNECTING' : 'NOT CONNECTED'; $('#message').textContent = state.busy ? 'Reading this origin’s protected API…' : state.error || 'Your desk is empty. No health claims until there is evidence.'; }
@@ -428,13 +584,13 @@ function render() {
   else if (!state.snapshot) view.replaceChildren(empty('Your projects have a story. Start with a reading.',
     'Connect the collector for real evidence, or explore a deterministic scenario. Nothing is collected by opening this page.',
     e('div', { class: 'onramp-actions' }, button('Explore the desk →', () => beginDemo(), 'primary'), button('Connect my data', () => showDialog('#connect-dialog')))));
-  else { const content = state.view === 'overview' ? overview() : state.view === 'signals' ? inbox() : state.view === 'usage' ? usageView() : releaseLab(); view.replaceChildren(...(Array.isArray(content) ? content : [content])); }
+  else { const content = state.view === 'overview' ? overview() : state.view === 'signals' ? inbox() : state.view === 'usage' ? usageView() : state.view === 'product' ? productView() : releaseLab(); view.replaceChildren(...(Array.isArray(content) ? content : [content])); }
   if (focusId && document.activeElement === document.body) document.getElementById(focusId)?.focus({ preventScroll: true });
 }
 function navigate(view) { if (!Object.hasOwn(views, view)) return; if (location.hash === '#' + view) { state.view = view; render(); } else location.hash = view; }
 function cancelRead() { state.epoch++; clearTimeout(state.timer); state.controller?.abort(); state.controller = null; state.busy = false; }
-function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.usage = null; state.usageError = ''; state.usageRead = null; state.drawerSnapshot = null; state.drawerStale = false; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
-function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); state.usage = makeStatisticsDemo(state.days, Date.now(), state.usageProject); render(); }
+function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.usage = null; state.product = null; state.errors = { usage: '', product: '' }; state.reads = { usage: null, product: null }; state.explorer = null; state.plugin = null; state.drawerSnapshot = null; state.drawerStale = false; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
+function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); resetSiteReads(); }
 async function refresh() {
   if (!state.token) { if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } return; }
   if (state.busy || document.hidden) return;
@@ -451,7 +607,7 @@ async function refresh() {
     assertPortfolio(data);
     if (data.window.days !== state.days) throw new Error('Unexpected portfolio window');
     state.snapshot = data; state.stale = false; state.error = '';
-    if (state.view === 'usage') readUsage();
+    if (Object.hasOwn(siteReads, state.view)) readSite(state.view);
   } catch { if (epoch === state.epoch) { state.stale = true; state.error = 'Could not read the collector. No demo data was substituted.'; notify(state.error); } }
   finally {
     clearTimeout(timeout);
@@ -470,7 +626,7 @@ $('#brief').addEventListener('click', fieldNote); $('#density').addEventListener
 $('#search').addEventListener('input', event => { state.query = event.target.value.toLowerCase().trim(); render(); });
 $('#scenario').addEventListener('change', event => { state.scenario = event.target.value; beginDemo(); });
 $('#replay').addEventListener('input', event => { state.phase = Number(event.target.value); if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } });
-$('#window').addEventListener('change', event => { state.days = Number(event.target.value); if (state.token) { state.usage = null; state.usageError = ''; } if (state.token) { cancelRead(); refresh(); } else if (state.snapshot?.mode === 'demo') beginDemo(); });
+$('#window').addEventListener('change', event => { state.days = Number(event.target.value); if (state.token) { cancelRead(); refresh(); } else if (state.snapshot?.mode === 'demo') beginDemo(); });
 $('#export-confirm').addEventListener('change', () => { $('#download-export').disabled = !$('#export-confirm').checked; });
 $('#accept-import').addEventListener('click', () => { if (!state.pendingImport) return; state.imported[state.pendingImport.kind] = state.pendingImport; state.pendingImport = null; $('#import-preview').textContent = ''; $('#import-dialog').close(); render(); notify('Reviewed context kept in this tab only.'); });
 $('#import-dialog').addEventListener('close', () => { state.pendingImport = null; $('#import-preview').textContent = ''; });
@@ -493,12 +649,12 @@ $('#download-export').addEventListener('click', () => {
 $('#command-list').replaceChildren(...Object.entries(views).map(([view, [title]]) => button(title, () => { $('#palette').close(); navigate(view); })),
   button('Explore a synthetic scenario', () => { $('#palette').close(); beginDemo(); }), button('Prepare a field note', () => { $('#palette').close(); fieldNote(); }), button('Toggle density', () => { $('#palette').close(); density(); }));
 $('#commands').addEventListener('click', () => showDialog('#palette'));
-window.addEventListener('hashchange', () => { state.view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; if (state.view === 'usage') readUsage(); render(); $('#page-title').focus({ preventScroll: true }); });
+window.addEventListener('hashchange', () => { state.view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; if (Object.hasOwn(siteReads, state.view)) readSite(state.view); render(); $('#page-title').focus({ preventScroll: true }); });
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); showDialog('#palette'); return; }
   if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
   if (event.key === '/') { event.preventDefault(); $('#search').focus(); }
-  if (!event.ctrlKey && !event.altKey && !event.metaKey && /^[1-5]$/.test(event.key)) navigate(Object.keys(views)[Number(event.key) - 1]);
+  if (!event.ctrlKey && !event.altKey && !event.metaKey && /^[1-6]$/.test(event.key)) navigate(Object.keys(views)[Number(event.key) - 1]);
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelRead(); render(); } else if (state.token) refresh(); });
 window.addEventListener('pagehide', disconnect);
