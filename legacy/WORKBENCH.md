@@ -1,5 +1,9 @@
 # Pulseboard
 
+> **Frozen legacy runtime.** Since 2026-09-26 this workbench lives under `legacy/`: run every
+> command below from the `legacy/` directory (for example `cd legacy && ./scripts/dev_start.sh`).
+> See [README.md](README.md) in this directory for its status.
+
 Real-time, pluggable data dashboard for developers and tinkerers.
 
 Pulseboard is a web-first, real-time dashboard platform that lets users monitor arbitrary data feeds (system metrics, repo stats, financial prices, IoT sensors, etc.) via a modern browser UI. It is designed to run both locally (offline-first, via `localhost`) and as a deployed web application.
@@ -504,8 +508,8 @@ pulseboard/
 ## License
 
 The owner-authored application is licensed under GNU GPL version 3 only
-(`GPL-3.0-only`). See `LICENSE`, `RELICENSING.md`, and
-`THIRD_PARTY_NOTICES.md`. Dependencies, generated Tailwind output, and framework
+(`GPL-3.0-only`). See `../LICENSE`, `../RELICENSING.md`, and
+`../THIRD_PARTY_NOTICES.md` at the repository root. Dependencies, generated Tailwind output, and framework
 assets retain their own licences.
 
 ## Contributing

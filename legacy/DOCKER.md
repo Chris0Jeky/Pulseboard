@@ -34,7 +34,7 @@ docker-compose --version
 
 ```bash
 git clone https://github.com/yourusername/Pulseboard.git
-cd Pulseboard
+cd Pulseboard/legacy   # the workbench lives under legacy/ since 2026-09-26
 ```
 
 ### 2. Start Services
@@ -432,7 +432,7 @@ docker system prune -a --volumes
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/yourusername/Pulseboard/issues)
-- **Documentation**: [Main README](./README.md)
+- **Documentation**: [Workbench README](./WORKBENCH.md)
 - **Logs**: Use `docker-compose logs` for debugging
 
 ---

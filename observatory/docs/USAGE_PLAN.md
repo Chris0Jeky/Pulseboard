@@ -221,4 +221,4 @@ retired once no host loads the old embed.
 ## Legacy workbench
 
 Decision (q-16, confirmed q-21): frozen, and moved under `legacy/` with CI paths updated. Its feed
-pattern (`BaseFeed`, registry, manager) is the model for Desk adapters (#24).
+pattern (`legacy/backend/app/feeds/`: `BaseFeed`, registry, manager) is the model for Desk adapters (#24).
