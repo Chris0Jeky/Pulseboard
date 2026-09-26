@@ -37,16 +37,119 @@ Use a unique random token of at least 32 characters and the secret command's sec
 Never put a production token in a command argument, source file, URL or PR. The live read token
 belongs in an operator-controlled secret store; the browser only keeps it in memory.
 
-On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
-`%LOCALAPPDATA%/Pulseboard/read-token.dpapi`. To copy it for **Connect data** without printing it,
-run this in PowerShell as the same Windows user, then clear the clipboard after connecting:
+For the schema-2 Alibi statistics producer, migrate the existing D1 database
+with `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0002-alibi-statistics.sql`
+before deploying a Worker that requires schema 2. For schema 3 (per-dimension totals, #103), run
+`npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0003-statistics-dimensions.sql`
+before deploying; it only adds `statistics_dimensions`. Rolling back to a schema-2 Worker needs
+`UPDATE schema_version SET version=2 WHERE id=1 AND version=3` after the deploy, and the table stays. The migration creates only an
+aggregate table and preserves historical session event rows. For schema 4 (product events, collector v4), run
+`npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0004-product-events.sql`
+before deploying; it only adds `product_events` and its three indexes. Rolling back to a schema-3
+Worker needs `UPDATE schema_version SET version=3 WHERE id=1 AND version=4` after the deploy; the
+table stays, and nothing writes to it while `COLLECT_PRODUCT_PROJECTS` is empty (as committed).
+Aggregate retention stays 14 days (`AGGREGATE_RETENTION_DAYS` in `src/statistics.mjs`) until no deployed
+host shows the old 14-day statistics notice; raising it to 400 is its own reviewed change. Deploy the schema-4 Worker only together with a Desk that accepts
+`pulseboard.statistics/4`: the Desk and the Worker ship from the same build, and a Desk that still
+validates `/3` refuses the Usage read. Confirm `/readyz`
+returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103, 4 since collector v4). The `/v1/collect-stat/<id>` route is
+disabled for every id not listed in `COLLECT_STAT_PROJECTS` (an exact comma list since #102; it was exactly `alibi` before). Production now
+admits that project following issue #89's browser, notice and opt-out checks;
+the deployment and first accepted payload are recorded below. Alibi's client
+deployment is a separate release step.
+If the Worker must be rolled back to a schema-1 build, first remove
+`COLLECT_STAT_PROJECTS`, stop the statistics consumer, and deploy the prior
+Worker. Its old readiness check expects version 1, so run
+`UPDATE schema_version SET version=1 WHERE id=1 AND version IN (2,3)` against this D1
+database as the final rollback step and confirm `/readyz` returns 200. Leave
+the additive `statistics` table in place for forward recovery; do not drop it
+or delete historical event rows. The rollback was exercised on scratch D1 and
+the disposable preview Worker on 2026-09-25; production rollback was not exercised.
 
-```powershell
-$saved = Get-Content "$env:LOCALAPPDATA/Pulseboard/read-token.dpapi" | ConvertTo-SecureString
-Set-Clipboard -Value ([PSCredential]::new('operator', $saved)).GetNetworkCredential().Password
-# After pasting into the Desk:
-Set-Clipboard -Value ''
-```
+## 2026-09-25: Alibi aggregate producer preview
+
+Scratch D1 was migrated from schema 1 to 2 without dropping historical events.
+Preview Worker version `c0ff3f29-c167-4424-b6c4-73685b9743dc` ran with
+`COLLECT_STAT_PROJECTS=alibi`; `/readyz` returned 200/schema 2 and unauthenticated
+`/v1/portfolio` returned 401. One synthetic two-count Alibi POST returned 202;
+scratch D1 held exactly one aggregate row with `n=2`. An identifier-bearing
+payload returned 400 and a foreign Origin returned 403. No real player event
+was sent. The preview's aggregate budget-exhaustion path was not exercised;
+local SQLite tests cover both sides of that transaction.
+
+For rollback proof, the scratch schema marker was set to 1. The new Worker
+reported 503 readiness as expected. The previous main Worker was deployed to
+the preview as version `8388a892-4d5e-433d-9b96-c8a48fb119c6`; its readiness
+returned 200/schema 1 and the new route returned 404. The two aggregate counts
+and seven pre-existing raw event rows were still present in scratch D1. The
+preview Worker was then deleted (`/healthz` 404), and the additive migration
+restored scratch's schema marker to 2. The live production Worker and D1 were
+not changed by this proof.
+
+Production cutover later on 2026-09-25: PR #90 merged as `717a0580aa97c69c1657215ab5880a9f1520d3ee`.
+The additive migration moved production D1 from schema 1 to 2 before Worker
+version `6c521e83-3907-4e94-885e-c46cff517d17` was deployed. Actual HTTPS
+`/healthz` and `/readyz` returned 200 (schema 2), unauthenticated
+`/v1/portfolio` returned 401, and a synthetic statistics POST returned 503.
+`COLLECT_STAT_PROJECTS` was unset at this cutover; the Alibi player still used
+explicit opt-in. No public default or production statistics collection was activated then.
+
+The aggregate reader and 14-UTC-date retention fix were deployed from merged
+`main` on 2026-09-25 as Worker version
+`76ab45a7-fe14-4156-b608-08770c0d3992`. A production Wrangler dry run
+passed; live `/healthz` and `/readyz` returned 200 and unauthenticated
+`/v1/statistics/alibi` returned 401. `COLLECT_STAT_PROJECTS` was still unset
+at that deployment, so the public default and statistics admission were off. The aggregate
+read model is separate from the legacy opt-in portfolio.
+
+The production statistics admission switch was deployed later on 2026-09-25
+from merged `main` as Worker version `51871cc3-75ef-40e8-80b8-3e4bb0336cb0`,
+with `COLLECT_STAT_PROJECTS=alibi`. Actual hosted responses were `/healthz`
+200, `/readyz` 200 with schema 2, and unauthenticated
+`/v1/statistics/alibi` 401. An identifier-bearing aggregate POST returned 400,
+a wrong-Origin POST returned 403, and one valid Alibi aggregate POST returned
+202. That last admission inserted one **synthetic QA** count for
+`page.view` / `home` / `unattributed` / `n=1` in the production statistics
+table; it is not a player visit. The Alibi default-on client was not yet
+deployed at this collector checkpoint.
+
+The consumer subsequently deployed as [Alibi 0.12.0](https://github.com/Chris0Jeky/Alibi/releases/tag/v0.12.0)
+from merge commit `0ebe3541837561a3f12da373ccfe266dc6a2260e`, Cloudflare
+Worker version `8edf7ab7-a92e-4963-be7a-d1bebcd68fe8`. A disposable hosted
+Chromium visit saw the notice open with Usage sharing on, received 202 for one
+aggregate-only `page.view` / `home` / `0.12.0` / `n=1`, persisted an explicit
+off choice, and sent no additional count after navigation. This added a second
+synthetic QA count to production statistics. The separate Sites fallback runs
+the same Alibi release but does not collect. The Alibi receipt PR records both
+origins' HTTP and offline/save acceptance. Alibi's physical-device checks
+remain open; the statistical-purpose exception and international applicability
+remain subject to the product-specific review described in `ENGINEERING.md`.
+
+## Read token: rotate, copy, recover
+
+The read token is the password to the hosted Desk's private data. The owner lets agents rotate it
+(2026-09-26). It was last rotated on 2026-09-26 from Kraspyon; every copy saved before then no longer
+works. Two scripts in `observatory/scripts/` do everything, in Windows PowerShell 5.1 or later:
+
+1. **Rotate** (new token, old ones stop working):
+   `powershell -NoProfile -ExecutionPolicy Bypass -File observatory\scripts\rotate-read-token.ps1`.
+   It needs Node and a Wrangler login (`cd observatory; npx.cmd wrangler whoami`; if not logged in, run
+   `npx.cmd wrangler login`; in PowerShell use `npx.cmd`, because the `npx.ps1` shim can be blocked). It generates a random token, saves it encrypted for your Windows user at
+   `%LOCALAPPDATA%\Pulseboard\read-token.dpapi` (the old file is kept as `.previous`), pipes it to
+   `npx wrangler secret put READ_TOKEN --env=""`, and checks that the hosted Worker answers 200 with
+   the new token and 401 without one. It never prints the token.
+2. **Copy** (to paste into the Desk's **Connect data**):
+   `powershell -NoProfile -ExecutionPolicy Bypass -File observatory\scripts\copy-read-token.ps1`.
+   It clears the clipboard when you press Enter or after two minutes (Windows clipboard history, Win+V,
+   keeps its own copy if you have it turned on).
+
+Another machine: a DPAPI file only opens for the Windows user that wrote it, so it cannot be copied.
+Either rotate on the new machine (logging the others out), or keep the token in a password manager
+and paste it from there. On Linux or macOS, generate the token into a file only you can read, save
+it in your password manager, then install it from that file, then delete the file:
+`umask 077; openssl rand -base64 32 | tr -d '=+/' > ~/.pulseboard-token`, copy it into the password
+manager, `npx wrangler secret put READ_TOKEN --env="" < ~/.pulseboard-token`, `rm ~/.pulseboard-token`.
+A lost token is not a problem: rotate again.
 
 ## Verified 2026-09-10
 
@@ -105,7 +208,7 @@ Set-Clipboard -Value ''
   updates to Cron Triggers may take some time to take effect." The cron stays registered and needs
   no change; confirming the first unattended tick once the incident resolves is tracked as an agent
   follow-up. Until then the Desk shows every probe as `unknown` or `stale` and the GitHub canary is the
-  only unattended monitor.
+  only unattended monitor. **Superseded 2026-09-26:** unattended ticks run (receipt below, #43 closed).
 - `.github/workflows/collector-canary.yml` checks `/healthz`, `/readyz` and the closed
   `/v1/portfolio` from GitHub's runners at :07 and :37 each hour; a red run is the only
   out-of-band signal today.
@@ -137,7 +240,7 @@ this browser." Receipts, 2026-09-10 18:00–18:11Z, Alibi 0.11.1 (Chris0Jeky/Ali
   page sessions, `used` 2. Unticking stored `allow: false`; a further reload made no collect request
   and the total stayed at 2. Every other registered project still answers 503.
 - The Desk therefore shows Alibi with two opted-in page sessions and every probe still `unknown`
-  or `stale` until Cloudflare's cron incident clears (#43).
+  or `stale` until Cloudflare's cron incident clears (#43). (Resolved: see the 2026-09-26 cron receipt.)
 
 Check `/healthz` and `/readyz`, confirm unauthenticated `/v1/portfolio` returns 401, then use
 the Desk's Connect control with the read token. Run `tests/desk-browser.py --origin <url>` with
@@ -150,3 +253,86 @@ account-wide usage still apply; consult the official [Workers pricing](https://d
 and [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) before activation.
 The OAuth token used here cannot read account subscriptions (403), so account plan identity
 and spending notifications require the owner's dashboard check.
+
+## GitHub evidence token (q-9, decided 2026-09-22)
+
+The owner chose Alibi as the first mapped project and approved a token. The mapping ships in
+`src/github-map.mjs` (revision 2: repository `1360756863`, workflow `352677495` = `.github/workflows/check.yml`
+on `main`, the latest 5 releases, no deployment environment). Creating the token and setting the secret are
+owner actions; no agent holds either.
+
+1. Create a fine-grained personal access token: resource owner `Chris0Jeky`, repository access "Only select
+   repositories" with `Alibi` alone, permissions **Actions: read** and **Contents: read** (Metadata: read is
+   added automatically), and a short expiry (90 days or less). Nothing else.
+2. Local Desk: export `GITHUB_EVIDENCE_TOKEN` in the foreground shell before `node src/local.mjs`. The banner
+   says whether the connector was built; the token is never printed.
+3. Hosted Desk: the Worker deployed on 2026-09-10 predates `/v1/github-evidence`, so deploy current `main`
+   first (`npx wrangler deploy --dry-run`, then `npx wrangler deploy`), then run
+   `npx wrangler secret put GITHUB_EVIDENCE_TOKEN` and paste the token at the prompt (never on the command
+   line). Rotate with the same command; remove with `npx wrangler secret delete GITHUB_EVIDENCE_TOKEN`.
+4. Check: open the Alibi dossier, press **Read workflow evidence**. Expect the `check.yml` row as `passing`,
+   `failing` or `pending` with a run id and head SHA, and releases as `observed`. If every item reads
+   `unavailable/network` on the hosted Worker only, the edge rejected the fetch option set: record it in #20
+   and remove the secret; it can never read as a false pass.
+
+### First live reading, 2026-09-23
+
+- Worker version `1d071326-6c6d-4594-83a8-c5ea2d5865bb` deployed from `main` at `93b73ed` (previous
+  `a40b5c40…`, per `wrangler deployments list`). Schema and bindings unchanged; `/healthz` and `/readyz` 200,
+  `/v1/portfolio` and `/v1/github-evidence` 401 without the read token.
+- `GITHUB_EVIDENCE_TOKEN` set by the owner (fine-grained, `Chris0Jeky/Alibi` only, Actions and Contents read).
+- Authenticated `GET /v1/github-evidence?project=alibi`: `configuration: ready`, repository `observed`;
+  `check.yml` on `main` `passing` (run 35794927343, attempt 1, head `9a35ff1`); releases `observed`
+  (v0.11.4, v0.11.3, v0.11.2, v0.11.1, v0.11.0). No item read `unavailable/network`, so the edge accepts
+  the fetch option set.
+- The same portfolio read showed Alibi admitted with its probe `up` but zero events over 7 days: live Alibi
+  serves 0.11.5 and its served artifact (`assets/observatory.742e8aa3bb5e.js`) lists `0.11.5`, so the client sent
+  `release: "0.11.5"`, which the closed release allowlist did not list: every consented event from the current
+  release was rejected. #71 added `0.11.5`; Worker version `d76f3d16-6a34-4b8c-bca1-ba47009b5701` deployed it from `main` at
+  `60e7880` the same day (`/healthz`, `/readyz` 200; `/v1/portfolio` 401 unauthenticated). A consented
+  production event from 0.11.5 has not been observed yet.
+
+### `puzzle.failed` admitted, 2026-09-23 (q-11)
+
+- #63 merged as `f53420b`: Alibi registers `puzzle.failed` and the named operation `puzzle.solve` v1.
+- Admission gate on a preview Worker (`pulseboard-observatory-preview`, scratch D1, version `3554a37b…`): one Alibi
+  batch with the registered `Origin`, release `0.11.5`, route `puzzle` and `puzzle.started`, `hint.requested`,
+  `puzzle.failed`, `puzzle.started`, `puzzle.completed` → 202; an unregistered event name → 400 `contract`; an
+  unregistered release → 400 `contract`. The preview was deleted afterwards (`/healthz` 404).
+- Production Worker version `eda4e81d-70f2-4731-95ce-f8be1362315f` deployed from `f53420b`; bindings unchanged
+  (`COLLECT_ENABLED` `"true"`, `COLLECT_PROJECTS` `"alibi"`). `/healthz`, `/readyz` 200; `/v1/portfolio` 401
+  unauthenticated and 200 with the read token, where Alibi carries `puzzle.solve` v1 with zero attempts, so the
+  operation query runs on the production database. Rollback goes to `d76f3d16…`.
+- Alibi's host artifact was regenerated with `puzzle.failed` and journey hooks (Chris0Jeky/Alibi#183, merged
+  `a3b48da`) and deployed to `alibi-after-hours-preview` as Worker version `3d83bc77…`: the served
+  `assets/observatory.1e4e10824d07.js` lists `puzzle.failed` and `0.11.5`, and 291/291 public files match the
+  build. No consented production journey event has been observed yet.
+
+### Usage view deployed, 2026-09-26
+
+- #100 merged as `2bd2bcd`: statistics reader schema 2 (route, release and per-day event totals) and the Desk's Usage view.
+- Production Worker version `5bb0321e-a80a-47ab-bba1-06cd57318fa2` deployed from `2bd2bcd` on Kraspyon. Bindings and schema are unchanged (`COLLECT_ENABLED` `"true"`, `COLLECT_PROJECTS` and `COLLECT_STAT_PROJECTS` `"alibi"`, D1 schema 2). `/healthz` and `/readyz` return 200, `/desk-usage.mjs` 200, and `/v1/statistics/alibi` 401 unauthenticated. Rollback goes to `51871cc3…`.
+- Not verified at the time: an authenticated hosted read, because this machine's token copy was stale. Closed on 2026-09-26: after the rotation below, `/v1/statistics/alibi?days=14` returned 200 with schema 3 and 4 counts.
+- #110 merged as `934f29f` (per-project statistics routes; statistics admission separated from `COLLECT_PROJECTS`) and deployed as Worker version `bffba8a7-d066-46a8-887a-bf1c916f2648`. Bindings are unchanged. `/readyz` returns 200 with `"statistics":{"configured":true,"admitted":["alibi"]}`, and `/v1/statistics/alibi` and `/v1/statistics/mdviewer` both return 401 unauthenticated. Rollback goes to `5bb0321e…`.
+
+### Schema 3 dimension gate on preview, 2026-09-26 (#103)
+
+- Scratch D1 `pulseboard-observatory-scratch` went from schema 2 to 3 with `migrations/0002-alibi-statistics.sql` (no-op) and then `0003-statistics-dimensions.sql`.
+- Preview Worker `a50d8201-df7a-4b2e-a2f7-456988df34b1` from `feat/usage-dimensions`. `/readyz` returned 200, schema 3.
+- Alibi-origin requests: a v2 batch with context `desktop/direct/new` and two counts returned 202; a v1 batch with one count (the live embed's shape) returned 202; a v2 batch with `device: phone` returned 400.
+- Scratch rows afterwards: `country GB 3`, taken from Cloudflare's edge country with no IP read; `device desktop 2 / unknown 1`, `source direct 2 / unknown 1`, `visit new 2 / unknown 1`. Every dimension sums to the three admitted counts.
+- The preview Worker was deleted afterwards (`/healthz` 404). Production D1 is not migrated yet; that happens at deploy time, after merge.
+
+### Schema 3 in production, 2026-09-26 (#111)
+
+- #111 merged as `38164bf`. Production D1 was migrated with `migrations/0003-statistics-dimensions.sql` (additive, and `statistics_dimensions` is `WITHOUT ROWID`, confirmed in `sqlite_master`). Worker version `9a9fcfac-4d4c-4ca2-9d5c-e14264a2088b` was deployed from `38164bf` right after. `/healthz` and `/readyz` return 200, schema 3, statistics admitted `["alibi"]`.
+- At deploy time, production `statistics` held 3 rows and 4 counts, including earlier QA counts. The live Alibi embed still posts v1 batches, so its device, source and visit read `unknown` until slice 3 (#104). The country is recorded from the edge from now on.
+- Rollback: check out `859adb2` (the #109 merge: schema 2, and it admits Alibi 0.13.0), run `npx wrangler deploy` from `observatory/`, then `UPDATE schema_version SET version=2 WHERE id=1 AND version=3`. The table stays. Do not roll back to `bffba8a7…`: it was built before #109, so it rejects every Alibi 0.13.0 batch with a 400 `contract` response.
+
+### Unattended cron ticks confirmed, 2026-09-26 (#43)
+
+- Read-only query on production D1 (`npx wrangler d1 execute pulseboard-observatory --remote --command`
+  grouping `probe_history` by project) at about 20:20Z: 1,538 rows for each of the seven origins, first
+  2026-09-10 15:18:32Z, last 2026-09-26 20:15:31Z. That is about 96 ticks a day, which is what `*/15`
+  produces, so the scheduled handler runs without manual triggers. Probe history keeps 30 days, so the
+  count stops rising once retention catches up. #43 is closed.

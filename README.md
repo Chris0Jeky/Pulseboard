@@ -104,7 +104,7 @@ Longer-term designs include reversible investigations, bounded specialist adapte
 
 ## Existing feed workbench
 
-The earlier FastAPI/Vue pluggable-feed application remains in the repository as a separate runtime. Its original setup and behavior are preserved in [WORKBENCH.md](WORKBENCH.md). It has not been silently migrated into the Desk, and historical test/readiness claims in that document are not current certification. Its open quality-gate and packaging debt remain separate from the Observatory/Desk stack.
+The earlier FastAPI/Vue pluggable-feed application remains in the repository as a separate runtime. Its original setup and behavior are preserved in [legacy/WORKBENCH.md](legacy/WORKBENCH.md); it now lives under [`legacy/`](legacy/README.md), frozen but kept green in CI. It has not been silently migrated into the Desk, and historical test/readiness claims in that document are not current certification. Its open quality-gate and packaging debt remain separate from the Observatory/Desk stack.
 
 ## Documentation
 

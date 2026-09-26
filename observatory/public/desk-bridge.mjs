@@ -1,24 +1,24 @@
 /** Bounded, local-only ecosystem adapters. Imported claims are not authenticated evidence. */
 import { monitorState, STALE_AFTER } from './desk-model.mjs';
 export const BRIDGE_MAX_BYTES = 262144;
-const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
-const requireValue = (condition, message) => { if (!condition) throw new TypeError(message); };
-const boundedString = (value, max = 160) => {
+export const plain = value => value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+export const requireValue = (condition, message) => { if (!condition) throw new TypeError(message); };
+export const boundedString = (value, max = 160) => {
   requireValue(typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value), 'Invalid bounded text');
   return value;
 };
 const integer = value => { requireValue(Number.isSafeInteger(value) && value >= 0, 'Invalid count'); return value; };
-const isoTime = value => {
+export const isoTime = value => {
   boundedString(value, 32);
   requireValue(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(value) && Number.isFinite(Date.parse(value)), 'Invalid UTC timestamp');
   const stamp = Date.parse(value);
   requireValue(new Date(stamp).toISOString() === value.replace(/(?<!\.\d{3})Z$/, '.000Z'), 'Non-canonical UTC timestamp');
   return stamp;
 };
-const exactKeys = (value, keys) => requireValue(plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key)), 'Unexpected projection fields');
-const list = (value, max) => { requireValue(Array.isArray(value) && value.length <= max, 'Array limit'); return value; };
-const unique = values => requireValue(new Set(values).size === values.length, 'Duplicate identity');
-const safeFindingText = value => {
+export const exactKeys = (value, keys) => requireValue(plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key)), 'Unexpected projection fields');
+export const list = (value, max) => { requireValue(Array.isArray(value) && value.length <= max, 'Array limit'); return value; };
+export const unique = values => requireValue(new Set(values).size === values.length, 'Duplicate identity');
+export const safeFindingText = value => {
   boundedString(value, 500);
   requireValue(!/(?:https?:\/\/|github_pat_|gh[pousr]_[A-Za-z0-9]|sk-[A-Za-z0-9]|[A-Za-z]:[\\/]|\/(?:Users|home)\/)/.test(value), 'Projection contains a URL, path or credential-shaped text');
   return value;
@@ -79,7 +79,7 @@ export function readLensProjection(input) {
 }
 /** Public export is an explicit projection, not serialization of the desk or an imported artifact. */
 export function makePublicPulse(snapshot, selected, now = Date.now()) {
-  requireValue(snapshot?.schema === 'pulseboard.portfolio/1' && ['demo', 'live'].includes(snapshot.mode), 'No supported snapshot');
+  requireValue(snapshot?.schema === 'pulseboard.portfolio/2' && ['demo', 'live'].includes(snapshot.mode), 'No supported snapshot');
   assertPortfolio({ ...snapshot, mode: 'live' });
   requireValue(Number.isSafeInteger(now) && Number.isSafeInteger(snapshot.generatedAt) && snapshot.generatedAt <= now && now - snapshot.generatedAt <= STALE_AFTER, 'Refresh before preparing a public pulse');
   list(selected, 16); unique(selected); requireValue(selected.length > 0, 'Select at least one project');
@@ -113,7 +113,7 @@ export async function readLimitedJson(response, maxBytes = 524288) {
 }
 /** Validate all fields consumed by the desk before replacing a last-good snapshot. */
 export function assertPortfolio(input) {
-  requireValue(plain(input) && input.schema === 'pulseboard.portfolio/1' && input.mode === 'live' && typeof input.collectionEnabled === 'boolean', 'Unexpected portfolio contract');
+  requireValue(plain(input) && input.schema === 'pulseboard.portfolio/2' && input.mode === 'live' && typeof input.collectionEnabled === 'boolean', 'Unexpected portfolio contract');
   const stamp = value => { requireValue(Number.isSafeInteger(value) && value >= 0 && value <= 8640000000000000, 'Invalid timestamp'); return value; };
   stamp(input.generatedAt); requireValue(plain(input.window), 'Missing window');
   const { start, end, days } = input.window;
@@ -122,7 +122,9 @@ export function assertPortfolio(input) {
   list(input.limitations, 16).forEach(value => boundedString(value, 500));
   const projects = list(input.projects, 64);
   for (const p of projects) {
-    requireValue(plain(p) && /^[a-z0-9-]{1,64}$/.test(boundedString(p.id, 64)) && typeof p.probeExpected === 'boolean', 'Invalid project');
+    requireValue(plain(p) && /^[a-z0-9-]{1,64}$/.test(boundedString(p.id, 64)) && typeof p.probeExpected === 'boolean'
+      && typeof p.collectionEligible === 'boolean' && typeof p.collectionAdmitted === 'boolean', 'Invalid project');
+    requireValue(!p.collectionAdmitted || input.collectionEnabled && p.collectionEligible, 'Invalid collection admission');
     boundedString(p.label, 160);
     requireValue(plain(p.monitor) && ['up', 'down', 'stale', 'unknown'].includes(p.monitor.state), 'Invalid monitor');
     if (p.monitor.checked !== null) stamp(p.monitor.checked);
@@ -134,6 +136,36 @@ export function assertPortfolio(input) {
     for (const f of [p.flow, p.probeSamples]) {
       requireValue(plain(f), 'Missing fraction'); integer(f.numerator); integer(f.denominator);
       requireValue(f.numerator <= f.denominator && (f.denominator ? Number.isFinite(f.value) && Math.abs(f.value - f.numerator / f.denominator) < 1e-12 : f.value === null), 'Invalid fraction');
+    }
+    const operations = p.operations === undefined ? [] : list(p.operations, 16);
+    unique(operations.map(operation => operation.id));
+    for (const operation of operations) {
+      exactKeys(operation, ['id', 'version', 'attempts', 'completed', 'failed', 'open', 'retries', 'completion', 'releases']);
+      requireValue(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(boundedString(operation.id, 80)) && operation.version === 1,
+        'Invalid operation identity or version');
+      for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) integer(operation[key]);
+      requireValue(operation.completed + operation.failed + operation.open === operation.attempts
+        && operation.retries <= operation.attempts, 'Invalid operation totals');
+      const completion = operation.completion;
+      requireValue(plain(completion), 'Missing operation completion fraction');
+      integer(completion.numerator); integer(completion.denominator);
+      requireValue(completion.numerator === operation.completed && completion.denominator === operation.attempts
+        && (completion.denominator ? Number.isFinite(completion.value)
+          && Math.abs(completion.value - completion.numerator / completion.denominator) < 1e-12 : completion.value === null),
+        'Invalid operation completion fraction');
+      const operationReleases = list(operation.releases, 64);
+      unique(operationReleases.map(row => row.release));
+      for (const row of operationReleases) {
+        exactKeys(row, ['release', 'attempts', 'completed', 'failed', 'open', 'retries']);
+        boundedString(row.release, 160);
+        for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) integer(row[key]);
+        requireValue(row.completed + row.failed + row.open === row.attempts && row.retries <= row.attempts,
+          'Invalid operation release totals');
+      }
+      for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) {
+        requireValue(operationReleases.reduce((total, row) => total + row[key], 0) === operation[key],
+          'Operation release totals do not reconcile');
+      }
     }
     requireValue(plain(p.budget), 'Missing budget'); integer(p.budget.used); integer(p.budget.limit); boundedString(p.budget.day, 10);
     const daily = list(p.daily, 15), routes = list(p.routes, 128), releases = list(p.releases, 64);

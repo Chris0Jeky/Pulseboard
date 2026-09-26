@@ -1,0 +1,58 @@
+name: Workbench backend
+
+on:
+  pull_request:
+    paths:
+      - 'legacy/backend/**'
+      - 'pyproject.toml'
+      - '.github/workflows/workbench-backend.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'legacy/backend/**'
+      - 'pyproject.toml'
+      - '.github/workflows/workbench-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workbench-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-lint-type:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: legacy/backend
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: legacy/backend/requirements.txt
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt
+      - name: Run backend tests
+        run: python -m pytest -q -p no:cacheprovider
+      - name: Run Ruff
+        run: python -m ruff check app
+      - name: Run mypy
+        run: python -m mypy app
+      - name: Verify patch whitespace
+        working-directory: .
+        env:
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$PULL_REQUEST_BASE" ]; then
+            git diff --check "$PULL_REQUEST_BASE"...HEAD
+          else
+            git diff --check HEAD^
+          fi

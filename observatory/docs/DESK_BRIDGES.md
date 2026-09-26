@@ -4,9 +4,10 @@
 
 | Direction | Implemented here | Still needs a producer / consumer |
 | --- | --- | --- |
-| Observatory -> Desk | Authenticated aggregate API and browser client | Production rollout remains opt-in |
+| Observatory -> Desk | Authenticated aggregate API, legacy opt-in client and separate Alibi statistics client | Other projects remain opt-in; no further statistics consumer is admitted |
 | CommitAtlas -> Desk | Reader for existing native v2 `projects.json` | Automatic refresh and explicit repo-to-project mapping |
 | Developer Lens -> Desk | Strict reader for `pulseboard.lens-projection/1` | Native Lens exporter for this new contract |
+| GitHub -> Desk | Server-side connector for a reviewed numeric-id mapping, `pulseboard.github-evidence/1`, release notebook | An owner-approved mapping (q-9: Alibi) and a server-side token |
 | Desk -> CommitAtlas / status card | Selected, expiring `pulseboard.public-pulse/1` export | Upstream renderer / consumer |
 | Desk -> Taskdeck / agent | Reviewed `pulseboard.handoff/1` JSON | Native task importer with preview, deduplication and approval |
 | Legacy feeds / OTel -> Desk | Architecture seam only | Bounded adapter implementation |
@@ -15,6 +16,51 @@ These are not automatic account connections. Selecting a file does not follow it
 URLs, contact GitHub, call an LLM or upload it. Imports have a 256 KiB limit and
 bounded object/array fields. Only projected fields survive in tab memory. Imports
 are never mixed into telemetry totals, operational rules or public pulse exports.
+
+## Alibi collection contract
+
+Alibi's `package.json` version is sent as the release label on opted-in events.
+The collector and the copied browser adapter share one closed release list in
+`observatory/src/alibi-releases.mjs`; `projects.mjs` feeds that list to both
+collector validation and artifact generation. The generated Alibi host checker
+compares the app version with the installed artifact and prints the version,
+registered releases and artifact hash, so release drift fails during host CI.
+
+From a Pulseboard checkout, synchronize a candidate Alibi release with:
+
+```sh
+cd observatory
+npm run sync:alibi
+npm run check:alibi
+```
+
+When there is exactly one Alibi checkout beside Pulseboard, the commands find it
+automatically. Set `ALIBI_REPO` to choose a checkout elsewhere; a positional path
+overrides that setting. If discovery finds more than one candidate, it stops and
+asks for an explicit choice. Both commands also accept `--json` for machine-readable
+success and failure receipts.
+
+The sync command requires `alibi-puzzle-club`, a stable package version and one
+matching `content/releases.json` record with the matching `v<version>` tag. It
+adds only that version to the closed collector list and regenerates the
+Pulseboard-owned `observatory/browser.js`, lock and shared host checker in the
+Alibi checkout. The existing approved collector endpoint is preserved. Locally
+edited or unowned host files, a mismatched lock, or a different endpoint stop the
+sync for manual reconciliation. The JSON receipt reports the resolved checkout
+source, package version, complete accepted list, target, byte count, SHA-256 and
+exact files changed in both repositories. `check:alibi` is read-only and reports
+`in-sync` only when the candidate host artifact matches the Pulseboard source and
+lock.
+
+The **Alibi connection watch** workflow checks public Alibi `main` once a day and
+can be run on demand. It writes a release and adapter receipt to the Actions
+summary; drift fails the run with the specific reconciliation command. The watch
+does not write either repository, deploy the collector or change collection
+settings.
+
+Merge the Pulseboard contract before the Alibi release that first sends the new
+label. Do not deploy or publish as part of synchronization; hosted collection
+and Alibi publication remain separate release gates.
 
 ## CommitAtlas: consume the contract that already exists
 
