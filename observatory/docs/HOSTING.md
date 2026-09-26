@@ -132,7 +132,8 @@ works. Two scripts in `observatory/scripts/` do everything, in Windows PowerShel
    the new token and 401 without one. It never prints the token.
 2. **Copy** (to paste into the Desk's **Connect data**):
    `powershell -NoProfile -ExecutionPolicy Bypass -File observatory\scripts\copy-read-token.ps1`.
-   It clears the clipboard when you press Enter or after two minutes.
+   It clears the clipboard when you press Enter or after two minutes (Windows clipboard history, Win+V,
+   keeps its own copy if you have it turned on).
 
 Another machine: a DPAPI file only opens for the Windows user that wrote it, so it cannot be copied.
 Either rotate on the new machine (logging the others out), or keep the token in a password manager

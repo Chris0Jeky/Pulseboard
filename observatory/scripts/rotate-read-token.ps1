@@ -22,7 +22,8 @@ param(
   [int]$WaitSeconds = 60
 )
 $ErrorActionPreference = 'Stop'
-Set-Location (Join-Path $PSScriptRoot '..')
+Push-Location (Join-Path $PSScriptRoot '..')
+try {
 
 $bytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
@@ -30,16 +31,23 @@ $token = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replac
 
 $dir = Join-Path $env:LOCALAPPDATA 'Pulseboard'
 $file = Join-Path $dir 'read-token.dpapi'
+$pending = "$file.pending"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
-if (Test-Path $file) { Copy-Item $file "$file.previous" -Force }
-# Saved before the secret changes, so a failure below never leaves the new token unrecorded.
-ConvertTo-SecureString $token -AsPlainText -Force | ConvertFrom-SecureString | Set-Content -Path $file -Encoding ascii
-Write-Host "Saved the new token (DPAPI, this Windows user only) to $file"
+# Written to a pending file first: read-token.dpapi keeps the live token until Wrangler accepts the new one,
+# and the pending file keeps the new one if Wrangler succeeds but a later step fails.
+ConvertTo-SecureString $token -AsPlainText -Force | ConvertFrom-SecureString | Set-Content -Path $pending -Encoding ascii
 
+$ErrorActionPreference = 'Continue'  # Wrangler writes warnings to stderr; judge it by its exit code alone.
 $token | npx wrangler secret put READ_TOKEN --env=""
-if ($LASTEXITCODE -ne 0) {
-  throw "wrangler secret put failed; the hosted token is unchanged. The previous local copy is at $file.previous."
+$exit = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($exit -ne 0) {
+  Remove-Item $pending -Force
+  throw "wrangler secret put failed (exit $exit); the hosted token and $file are unchanged."
 }
+if (Test-Path $file) { Move-Item $file "$file.previous" -Force }
+Move-Item $pending $file -Force
+Write-Host "Saved the new token (DPAPI, this Windows user only) to $file; the replaced copy is $file.previous"
 
 function Get-Status([hashtable]$Headers) {
   try { return (Invoke-WebRequest -Uri "$Origin/v1/portfolio" -Headers $Headers -UseBasicParsing -TimeoutSec 15).StatusCode }
@@ -58,3 +66,4 @@ if ($status -ne 200) { throw "The hosted Worker returned $status for the new tok
 if ($anonymous -ne 401) { throw "An unauthenticated read returned $anonymous, expected 401. Investigate before using the Desk." }
 Write-Host "Verified: authenticated read 200, unauthenticated read 401. Old copies no longer work."
 Write-Host 'Next: run scripts\copy-read-token.ps1 and paste into the Desk (Connect data).'
+} finally { Pop-Location }
