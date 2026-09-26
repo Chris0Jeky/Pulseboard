@@ -301,3 +301,27 @@ test('consent.set and consent.open work through the API and never throw', async 
   assert.doesNotThrow(() => h.sdk.consent.set(null));
   assert.doesNotThrow(() => h.sdk.consent.set({ get counts() { throw new Error('x'); } }));
 });
+
+test('a [data-pulseboard-bar] placeholder receives the bar and is released when it collapses', async () => {
+  const h = start({ region: 'eea', barHolder: true });
+  await settle();
+  assert.equal(h.holder.children[0].className, 'pb-bar');
+  assert.equal(h.holder.style.height, '2.5rem');
+  click(byClass(h.body, 'pb-ok')[0]);
+  assert.equal(h.holder.children.length, 0);
+  assert.equal(h.holder.style.height, '0');
+  assert.equal(h.holder.attributes.hidden, '');
+  assert.equal(byClass(h.body, 'pb-pill').length, 1);
+});
+
+test('the placeholder is released at once when no bar is shown: decided, GPC, or an inert page', async () => {
+  const decided = start({ barHolder: true, local: storage({ [CONSENT]: JSON.stringify({ counts: true, diagnostics: true, journeys: true, decided: true, month: '2026-09' }) }) });
+  const gpc = start({ barHolder: true, nav: { globalPrivacyControl: true } });
+  const inert = start({ barHolder: true, nav: { webdriver: true } });
+  await settle();
+  for (const h of [decided, gpc, inert]) {
+    assert.equal(h.holder.style.height, '0');
+    assert.equal(h.holder.children.length, 0);
+  }
+  assert.equal(inert.calls.length, 0);
+});

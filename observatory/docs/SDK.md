@@ -63,13 +63,18 @@ host. Unknown events are dropped; an unknown route becomes `other` when the voca
 ### What `track` accepts
 
 - `name` matches `^[a-z][a-z0-9_.:-]{0,63}$` and is not reserved (`web.vital`, `js.error`, `page.engaged`).
-- `props` is a plain object: nesting depth 4, 32 keys per object and 32 items per array, keys
-  `^[A-Za-z0-9_.-]{1,48}$`, strings up to 256 characters, finite numbers, at most 2,048 bytes serialized.
-  Anything else drops the event.
-- Before validation the SDK removes personal keys (after lower-casing and removing `_ - .`: email,
-  password, phone, token, secret, apikey, ip, address, postcode, ssn, iban, card number, cvv, date of birth,
-  first/last/full/real/given/sur name, username, nickname, display name, player, player name, user, handle,
-  and their variants) and masks e-mail-looking strings as `[email]`. The server repeats both.
+- `props` is a plain object: nesting depth 4 **counting the root object** (the root plus at most three
+  nested levels of objects or arrays; `{a:{b:{c:{d:1}}}}` passes, one more level fails), 32 keys per
+  object and 32 items per array, keys `^[A-Za-z0-9_.-]{1,48}$`, strings up to 256 characters, finite
+  numbers, at most 2,048 bytes serialized. Anything else drops the event.
+- Before validation the SDK removes personal and identifier keys (after lower-casing and removing
+  `_ - .`: email, password, phone, token, secret, apikey, ip, ipaddress, ipaddr, clientip, remoteaddr,
+  address, postcode, ssn, iban, card number, cvv, date of birth, first/last/full/real/given/sur name,
+  username, nickname, display name, player, player name, user, userid, uid, handle, url, href, and their
+  variants) and scrubs every string value: e-mail-looking text becomes `[email]`, a `scheme://…` URL is cut
+  to its host (`https://x.test/private/path?q=1` becomes `x.test`, credentials and port dropped), and
+  IPv4- or IPv6-looking text becomes `[ip]` (IPv6 needs `::` or five or more groups, so clock times survive).
+  The server repeats the key removal and e-mail masking.
 
 **Host rule: props never carry user-entered free text or identity.** No names, handles, player names, typed
 answers, search text, document text, file names or export contents. Send ids from the product's own closed
@@ -104,6 +109,17 @@ place, each with a one-line description, plus **Save** and **Turn all off**. Onc
 bar is replaced by a small **Beta** button fixed bottom-left (or rendered inside an element carrying
 `data-pulseboard-slot`) that reopens the switches; Escape closes them and returns focus to the pill. All
 controls are native buttons and checkboxes with visible focus, and nothing animates.
+
+To avoid a layout shift when the deferred script inserts the bar, a host may reserve its space:
+
+```html
+<div data-pulseboard-bar style="min-height: 2.5rem"></div>   <!-- or a class in the host stylesheet -->
+```
+
+When `[data-pulseboard-bar]` exists the bar is rendered into it instead of being prepended to `<body>`.
+Whenever no bar is showing (a choice was recorded, a privacy signal is on, the page is not eligible, or the
+bar has just collapsed after OK, Save or Turn all off) the SDK releases the placeholder: it sets its height
+and min-height to `0` and adds the `hidden` attribute. The placeholder is never removed from the DOM.
 
 ## What is sent
 
