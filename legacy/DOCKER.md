@@ -432,7 +432,7 @@ docker system prune -a --volumes
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/yourusername/Pulseboard/issues)
-- **Documentation**: [Main README](./README.md)
+- **Documentation**: [Workbench README](./WORKBENCH.md)
 - **Logs**: Use `docker-compose logs` for debugging
 
 ---

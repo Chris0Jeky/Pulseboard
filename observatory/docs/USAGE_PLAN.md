@@ -130,8 +130,8 @@ This plan changes three statements in `ENGINEERING.md`:
 
 Decision: **freeze, and reuse through adapters.** The FastAPI + Vue workbench keeps building and
 stays green in CI, but gets no new features. Its reusable part is the pluggable feed pattern
-(`backend/app/feeds/`: `BaseFeed`, registry, manager). Issue #24 carries that pattern into the
+(`legacy/backend/app/feeds/`: `BaseFeed`, registry, manager). Issue #24 carries that pattern into the
 Desk as bounded evidence adapters: the Cloudflare adapter in slice 6 is the first adapter written
 to that shape, and `http_json`/`system_metrics` feeds can run as a sidecar that produces a Desk
-bridge file. After one adapter works end to end, decide whether the rest of the workbench moves to
-a `legacy/` directory or a separate repository. Nothing is deleted before that.
+bridge file. On 2026-09-26 the owner decided to move the frozen workbench under `legacy/` with its
+CI paths updated, and it now lives there (HUMAN_TODO q-21, recorded in #115); nothing was deleted.
