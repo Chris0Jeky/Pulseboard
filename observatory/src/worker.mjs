@@ -92,7 +92,10 @@ export async function handle(request, env) {
       if (url.pathname === '/healthz') return json({ live: true, productData: 'not checked' });
       const schema = await ready(env.DB), admission = collectionAdmission(env);
       const collection = { enabled: admission.enabled, configured: admission.configured, admitted: admission.admitted, invalid: admission.invalid };
-      return json({ ready: admission.valid, schema, collection }, admission.valid ? 200 : 503);
+      // Reported, not gating: a malformed statistics list already disables itself, and this makes that visible.
+      const statistics = { configured: typeof env.COLLECT_STAT_PROJECTS === 'string' && env.COLLECT_STAT_PROJECTS !== '',
+        admitted: admission.enabled && admission.valid ? statAdmission(env) : [] };
+      return json({ ready: admission.valid, schema, collection, statistics }, admission.valid ? 200 : 503);
     }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
@@ -108,15 +111,18 @@ export async function handle(request, env) {
       if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
       return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: admission.enabled, admittedProjects: admission.admitted }));
     }
-    if (url.pathname === '/v1/statistics/alibi' && request.method === 'GET') {
+    const readMatch = /^\/v1\/statistics\/([a-z0-9-]{1,64})$/.exec(url.pathname);
+    if (readMatch && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const readId = readMatch[1];
+      if (!Object.hasOwn(projects, readId) || !projects[readId].origin) return json({ error: 'project' }, 404);
       const values = url.searchParams.getAll('days');
       if ([...url.searchParams.keys()].some(key => key !== 'days') || values.length > 1 ||
         (values.length && !/^(1|7|14)$/.test(values[0]))) return json({ error: 'window', allowedDays: WINDOWS }, 400);
       const admission = collectionAdmission(env);
       if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
-      return json(await readStatistics(env.DB, { days: Number(values[0] ?? 7),
-        admitted: admission.admitted.includes('alibi') && statAdmission(env) }));
+      return json(await readStatistics(env.DB, { project: readId, days: Number(values[0] ?? 7),
+        admitted: admission.enabled && statAdmission(env).includes(readId) }));
     }
     // Read only on explicit desk action, never by the portfolio poll; its own contract keeps /v1/portfolio closed.
     if (url.pathname === '/v1/github-evidence' && request.method === 'GET') {
@@ -125,22 +131,23 @@ export async function handle(request, env) {
       if (ids.length !== 1 || [...url.searchParams.keys()].some(key => key !== 'project') || !Object.hasOwn(projects, ids[0])) return json({ error: 'project' }, 400);
       return json(await githubEvidence(env).read(ids[0]));
     }
-    // Alibi-only aggregate admission (producer half). The Desk does not read the
-    // statistics table until a consumer slice lands; this endpoint only admits counts.
+    // Aggregate admission (producer half) for any registered public project; the Desk reads it through /v1/statistics/<id>.
     const statMatch = /^\/v1\/collect-stat\/([a-z0-9-]+)$/.exec(url.pathname);
     if (statMatch) {
       const statId = statMatch[1];
       if (url.search) return json({ error: 'not_found' }, 404);
-      if (statId !== 'alibi') return json({ error: 'not_found' }, 404);
       const statProject = Object.hasOwn(projects, statId) ? projects[statId] : null;
-      if (!statProject || !statProject.origin || request.headers.get('origin') !== statProject.origin) return json({ error: 'origin' }, 403);
+      if (!statProject || !statProject.origin) return json({ error: 'not_found' }, 404);
+      if (request.headers.get('origin') !== statProject.origin) return json({ error: 'origin' }, 403);
       cors = { 'Access-Control-Allow-Origin': statProject.origin, 'Vary': 'Origin' };
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, ...cors,
         'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
       if (request.method !== 'POST') return json({ error: 'method' }, 405, cors);
+      // COLLECT_ENABLED and a valid policy are required, but not COLLECT_PROJECTS membership: admitting a host's counts
+      // must not also open its identifier-bearing /v1/collect/<id> session route.
       const statAdmissionCheck = collectionAdmission(env);
-      if (!statAdmissionCheck.valid || !statAdmissionCheck.admitted.includes(statId)) return json({ error: 'disabled' }, 503, cors);
-      if (!statAdmission(env)) return json({ error: 'disabled' }, 503, cors);
+      if (!statAdmissionCheck.valid || !statAdmissionCheck.enabled) return json({ error: 'disabled' }, 503, cors);
+      if (!statAdmission(env).includes(statId)) return json({ error: 'disabled' }, 503, cors);
       if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers.get('content-type') || '')) return json({ error: 'media_type' }, 415, cors);
       let statBody;
       try { statBody = await readBounded(request); } catch { return json({ error: 'invalid_body' }, 400, cors); }

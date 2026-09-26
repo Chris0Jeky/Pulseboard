@@ -101,11 +101,16 @@ test('registry rejection: unsupported event, route, release and non-1 n', async 
   assert.equal((await handle(statRequest({ v: 1, counts: [count('puzzle.started', 'castle', '0.12.0')] }), statEnv(DB))).status, 202);
 });
 
-test('wrong Origin is refused and other ids are not found', async t => {
+test('wrong Origin is refused and unregistered or local-only ids are not found', async t => {
   const DB = database(t);
   assert.equal((await handle(statRequest(validBody(), { Origin: 'https://other.test' }), statEnv(DB))).status, 403);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM statistics').first()).n, 0);
-  for (const id of ['mdviewer', 'other', 'ALIBI']) {
+  // A registered public project answers only its own origin.
+  const foreign = await handle(new Request('https://collector.example/v1/collect-stat/mdviewer', {
+    method: 'POST', headers: { Origin: ALIBI_ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify(validBody()),
+  }), statEnv(DB));
+  assert.equal(foreign.status, 403);
+  for (const id of ['taskdeck', 'other', 'ALIBI']) {
     const r = await handle(new Request('https://collector.example/v1/collect-stat/' + id, {
       method: 'POST', headers: { Origin: ALIBI_ORIGIN, 'Content-Type': 'application/json' }, body: JSON.stringify(validBody()),
     }), statEnv(DB));
@@ -140,19 +145,20 @@ test('preflight, media type, method and oversized body match the existing collec
 
 test('disabled switch and registry rejection both fail closed with CORS', async t => {
   const DB = database(t);
-  assert.equal(statAdmission({ COLLECT_STAT_PROJECTS: 'alibi' }), true);
-  for (const value of [undefined, '', 'Alibi', ' alibi', 'alibi ', 'alibi,mdviewer', 'mdviewer']) {
+  assert.deepEqual(statAdmission({ COLLECT_STAT_PROJECTS: 'alibi' }), ['alibi']);
+  assert.deepEqual(statAdmission({ COLLECT_STAT_PROJECTS: 'alibi,mdviewer' }), ['alibi', 'mdviewer']);
+  for (const value of [undefined, '', 'Alibi', ' alibi', 'alibi ', 'mdviewer', 'alibi,alibi', 'alibi,', ',alibi',
+    'alibi, mdviewer', 'alibi,other', 'alibi,taskdeck', 'alibi,MDVIEWER', 'alibi;mdviewer']) {
     const env = { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi', ...(value === undefined ? {} : { COLLECT_STAT_PROJECTS: value }) };
     const r = await handle(statRequest(validBody()), env);
     assert.equal(r.status, 503, String(value));
     assert.equal(r.headers.get('Access-Control-Allow-Origin'), ALIBI_ORIGIN);
   }
-  // Existing collectionAdmission must also admit alibi.
+  // The global switch and a valid session policy still gate statistics; COLLECT_PROJECTS membership does not.
   for (const env of [
     { DB, COLLECT_ENABLED: 'false', COLLECT_PROJECTS: 'alibi', COLLECT_STAT_PROJECTS: 'alibi' },
-    { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'mdviewer', COLLECT_STAT_PROJECTS: 'alibi' },
+    { DB, COLLECT_PROJECTS: 'alibi', COLLECT_STAT_PROJECTS: 'alibi' },
     { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi,Alibi', COLLECT_STAT_PROJECTS: 'alibi' },
-    { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: '', COLLECT_STAT_PROJECTS: 'alibi' },
   ]) {
     const r = await handle(statRequest(validBody()), env);
     assert.equal(r.status, 503);
@@ -250,4 +256,49 @@ test('legacy collect, summary and portfolio behavior is unchanged', async t => {
   }), env)).json();
   assert.equal(portfolio.schema, 'pulseboard.portfolio/2');
   assert.ok(!('statistics' in portfolio));
+});
+
+test('several admitted projects count separately and stay inside their own origin, vocabulary and budget', async t => {
+  const DB = database(t);
+  const env = { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi,mdviewer', COLLECT_STAT_PROJECTS: 'alibi,mdviewer', READ_TOKEN: 'r'.repeat(32) };
+  const post = (id, body, origin = projects[id].origin) => handle(new Request('https://collector.example/v1/collect-stat/' + id, {
+    method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }), env);
+  const md = { v: 1, counts: [count('export.print_requested', 'editor', 'unattributed'), count('page.view', 'home', 'unattributed')] };
+  assert.equal((await post('mdviewer', md)).status, 202);
+  assert.equal((await post('alibi', validBody())).status, 202);
+  // Another project's vocabulary is refused whole.
+  assert.equal((await post('mdviewer', validBody())).status, 400);
+  const rows = (await DB.prepare('SELECT project,SUM(n) n FROM statistics GROUP BY project ORDER BY project').all()).results;
+  assert.deepEqual(rows.map(r => [r.project, r.n]), [['alibi', 2], ['mdviewer', 2]]);
+  const budgets = (await DB.prepare('SELECT project,used FROM budget ORDER BY project').all()).results;
+  assert.deepEqual(budgets.map(r => [r.project, r.used]), [['alibi', 2], ['mdviewer', 2]]);
+  // Statistics admission does not open the identifier-bearing session route, and needs no COLLECT_PROJECTS entry.
+  const countsOnly = { ...env, COLLECT_PROJECTS: '' };
+  const session = await handle(new Request('https://collector.example/v1/collect/mdviewer', {
+    method: 'POST', headers: { Origin: projects.mdviewer.origin, 'Content-Type': 'application/json' }, body: '{}',
+  }), countsOnly);
+  assert.equal(session.status, 503);
+  assert.equal((await post('mdviewer', md, undefined)).status, 202);
+  assert.equal((await handle(new Request('https://collector.example/v1/collect-stat/mdviewer', {
+    method: 'POST', headers: { Origin: projects.mdviewer.origin, 'Content-Type': 'application/json' }, body: JSON.stringify(md),
+  }), countsOnly)).status, 202);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 0);
+  // Admitted for session events but not for statistics: disabled, nothing written.
+  const partial = { ...env, COLLECT_PROJECTS: 'alibi,mdviewer,commitatlas' };
+  const ca = await handle(new Request('https://collector.example/v1/collect-stat/commitatlas', {
+    method: 'POST', headers: { Origin: projects.commitatlas.origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ v: 1, counts: [count('page.view', 'home', 'unattributed')] }),
+  }), partial);
+  assert.equal(ca.status, 503);
+  // The reader returns one project's rows and its own admission state.
+  const read = async id => handle(new Request('https://desk.test/v1/statistics/' + id + '?days=1', { headers: { authorization: 'Bearer ' + env.READ_TOKEN } }), partial);
+  const mdStats = await (await read('mdviewer')).json();
+  assert.equal(mdStats.project, 'mdviewer');
+  assert.equal(mdStats.total, 6);
+  assert.equal(mdStats.collectionAdmitted, true);
+  const caStats = await (await read('commitatlas')).json();
+  assert.equal(caStats.total, 0);
+  assert.equal(caStats.collectionAdmitted, false, 'collection admitted without the statistics switch is not statistics admission');
+  for (const id of ['taskdeck', 'other']) assert.equal((await read(id)).status, 404, id);
 });

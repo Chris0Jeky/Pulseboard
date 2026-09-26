@@ -1,4 +1,5 @@
-/** Alibi-only aggregate admission contract (producer half of issue #89).
+import { projects as registry } from './projects.mjs';
+/** Aggregate admission contract (producer half of issue #89; multi-project since #102).
  * Accepted body is exactly { v: 1, counts: [{ event, route, release, n: 1 }, ...] }
  * with 1..20 items. No event IDs, session IDs, puzzle IDs, text, URLs or IPs
  * are accepted or persisted; any unexpected key fails the whole batch closed.
@@ -31,7 +32,14 @@ export function validateStatBatch(body, project) {
   return body.counts.every(count => validateStatCount(count, project));
 }
 
-/** The producer switch admits exactly one value. Anything else means disabled. */
-export function statAdmission(env = {}) {
-  return env.COLLECT_STAT_PROJECTS === 'alibi';
+/** The producer switch is an exact comma list of registered public ids: no spaces, case changes, empty
+ *  entries or duplicates. Any malformed entry disables the whole switch, so a typo never widens admission.
+ *  Independent of COLLECT_PROJECTS (session events); COLLECT_ENABLED still gates both channels. */
+export function statAdmission(env = {}, projects = registry) {
+  const raw = env.COLLECT_STAT_PROJECTS;
+  if (typeof raw !== 'string' || raw.length === 0 || raw.length > 4096) return [];
+  const ids = raw.split(',');
+  if (ids.length > 64 || new Set(ids).size !== ids.length) return [];
+  if (!ids.every(id => /^[a-z0-9-]{1,64}$/.test(id) && Object.hasOwn(projects, id) && projects[id]?.origin)) return [];
+  return ids;
 }

@@ -24,7 +24,7 @@ The original Desk reader needed no new runtime dependency, database table or
 schema migration. The later Alibi statistics producer adds the `statistics`
 table in schema version 2; its migration is `migrations/0002-alibi-statistics.sql`.
 `src/portfolio.mjs` still consumes only the existing opt-in session event rows.
-The separate `GET /v1/statistics/alibi?days=7` read (1, 7 or 14 UTC calendar
+The separate `GET /v1/statistics/<project>?days=7` read (any registered public project since #102; 1, 7 or 14 UTC calendar
 days) authenticates with the Desk read token, reads only daily aggregate rows,
 and returns `pulseboard.statistics/2`: event, daily, route and release totals plus
 per-day event totals, every breakdown summing to the same total. Schema 1 carried
@@ -60,7 +60,8 @@ SQL still scans the selected window. This is not a high-volume analytics engine.
 The separate Alibi statistics producer admits only closed event counts, stores
 one aggregate row per UTC day, event, route and release, and retains at most
 14 UTC calendar dates including today. It accepts no session or event identifiers. The
-reviewed deployment configuration admits `alibi` through `COLLECT_STAT_PROJECTS`;
+reviewed deployment configuration admits `alibi` through `COLLECT_STAT_PROJECTS`, which since #102 is an exact comma list of
+registered public ids (any malformed entry disables it; each id must also be in `COLLECT_PROJECTS`);
 actual admission begins only when that configuration is deployed. The separate
 statistics reader keeps these counts out of the legacy opt-in readout. Repeated
 requests count repeatedly because aggregate-only payloads have no dedupe key.
