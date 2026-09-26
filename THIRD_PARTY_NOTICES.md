@@ -3,7 +3,7 @@
 The root GPL licence covers owner-authored Pulseboard application code and
 documentation. It does not relicense dependencies or third-party assets.
 
-- `frontend/pulseboard-web/src/tailwind.generated.css` is generated from
+- `legacy/frontend/pulseboard-web/src/tailwind.generated.css` is generated from
   Tailwind CSS and preserves its embedded MIT label. Tailwind Labs' complete
   MIT licence is in `LICENSES/Tailwind-MIT.txt` and is shipped in the frontend
   runtime image.

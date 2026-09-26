@@ -1,19 +1,19 @@
 # Pulseboard — agent map
 
 Pulseboard is a public GPL-3.0-only repository carrying two runtimes side by side. The
-**workbench** on `main` is a FastAPI + Vue 3 real-time feed dashboard (pluggable feeds →
-WebSocket → ECharts panels). The **Desk** in `observatory/` is the new primary direction: a
+frozen **workbench** in `legacy/` is a FastAPI + Vue 3 real-time feed dashboard (pluggable feeds →
+WebSocket → ECharts panels), kept green in CI but given no new features. The **Desk** in `observatory/` is the new primary direction: a
 dependency-free Node collector, an aggregate read model and an operations desk, with collection
 disabled by default. The Desk landed on `main` on 2026-09-10 through PRs #15 → #16 → #17 after a
 three-region adversarial review and fix round; issues #18–#24 are its delivery order, the seven
 host-repo PRs carry regenerated inert artifacts (#31), and #32/#33 hold the tracked low findings. `AGENTS.md` is the thin Codex
-adapter of this file; `WORKBENCH.md` is the legacy runtime's user README.
+adapter of this file; `legacy/WORKBENCH.md` is the legacy runtime's user README.
 
-## Run it (Kraspyon, measured 2026-09-10: Python 3.13, Node 24.19, no Docker Desktop)
+## Run it (Kraspyon, measured 2026-09-26: Python 3.13, Node 24.19, no Docker Desktop)
 
-- Workbench backend: `python -m venv venv && venv/Scripts/python -m pip install -r backend/requirements.txt`,
-  then `cd backend && ../venv/Scripts/python -m uvicorn app.main:app --reload --port 8000`.
-- Workbench frontend: `cd frontend/pulseboard-web && npm ci && npm run dev` → http://localhost:5173.
+- Workbench backend: `cd legacy && python -m venv venv && venv/Scripts/python -m pip install -r backend/requirements.txt`,
+  then, from the repo root, `cd legacy/backend && ../venv/Scripts/python -m uvicorn app.main:app --reload --port 8000`.
+- Workbench frontend: `cd legacy/frontend/pulseboard-web && npm ci && npm run dev` → http://localhost:5173.
 - Desk: `cd observatory && npm start` → http://127.0.0.1:8788; the read token is printed only when generated
   (set `READ_TOKEN`, at least 32 characters, to supply your own).
 
@@ -21,10 +21,11 @@ adapter of this file; `WORKBENCH.md` is the legacy runtime's user README.
 
 | Seam | Command from the repo root | Measured 2026-09-10 |
 |---|---|---|
-| `backend/**` | `cd backend && ../venv/Scripts/python -m pytest -q -p no:cacheprovider` | 67 passed, 9 s |
-| backend lint/types | `cd backend && ../venv/Scripts/python -m ruff check app` and `-m mypy app` | clean since #58 (2026-09-22, Linux, Python 3.11) |
-| `frontend/**` | `cd frontend/pulseboard-web && npx vitest run --maxWorkers=2` | 64 passed, 4 s; `npm audit --audit-level=low` 0 findings (#57, #59; 2026-09-22) |
-| frontend build | `cd frontend/pulseboard-web && npm run build && npm run build:budget` | passes, budget verified (#57, #61; 2026-09-22) |
+| `legacy/backend/**` | `cd legacy/backend && ../venv/Scripts/python -m pytest -q -p no:cacheprovider` | 144 passed, 9 s (2026-09-26) |
+| backend lint/types | `cd legacy/backend && ../venv/Scripts/python -m ruff check app` and `-m mypy app` | clean (2026-09-26, Python 3.13; since #58) |
+| `legacy/frontend/**` | `cd legacy/frontend/pulseboard-web && npx vitest run --maxWorkers=2` | 64 passed, 5 s; `npm audit --audit-level=low` 0 findings (2026-09-26) |
+| frontend build | `cd legacy/frontend/pulseboard-web && npm run build && npm run build:budget` | passes, budget verified (2026-09-26) |
+| packaging | `python -m build --no-isolation` (with `setuptools==77.0.3`, `wheel`, `build`) then `python scripts/verify_python_package.py` | verified (2026-09-26); root `pyproject.toml` packages `legacy/backend/app` |
 | `observatory/**` | `cd observatory && npm test` | 216 passed, under 2 s; CRLF-safe since #15 (#25 was line endings, not Node 24) |
 | Desk browser | once: `python -m venv .browser-venv && .browser-venv/Scripts/pip install playwright==1.57.0 && .browser-venv/Scripts/playwright install chromium`; then, with `READ_TOKEN` exported in the foreground shell, `cd observatory && node src/local.mjs` in one shell and `cd observatory && ../.browser-venv/Scripts/python tests/desk-browser.py --origin http://127.0.0.1:8788` in another | 15 checks passed; `kill` does not stop node.exe here, free port 8788 via PowerShell `Stop-Process` |
 | Desk hosted | `cd observatory && npx wrangler deploy --dry-run`; admission gate on a preview: `npx wrangler deploy --env preview` then `node tests/hosted-admission.mjs --origin <preview> --project mdviewer --events 1 --expect 202 --repeat` (delete the preview after) | 2026-09-10: 202/202, one event row; 429 on both budget branches |
@@ -39,9 +40,9 @@ repo-side; merge with a merge commit.
 
 ## Map
 
-- `backend/app/` — FastAPI: `feeds/` (BaseFeed + registry), `hub/` (DataHub latest + history,
+- `legacy/backend/app/` — FastAPI: `feeds/` (BaseFeed + registry), `hub/` (DataHub latest + history,
   per-dashboard broadcast), `ws/` (`/ws/dashboards/{id}`), `models/` (SQLModel), `api/`.
-- `frontend/pulseboard-web/src/` — Pinia stores (`dashboards`, `liveData`, `ui`), the
+- `legacy/frontend/pulseboard-web/src/` — Pinia stores (`dashboards`, `liveData`, `ui`), the
   `useDashboardWebSocket` composable, `components/panels/*.vue` (ECharts).
 - `observatory/` — `src/` collector, worker, sqlite, portfolio, contracts; `public/` the Desk
   UI (native ESM, no build step); `adapters/` embed installer; `docs/DESK_*.md` architecture,
@@ -56,7 +57,7 @@ repo-side; merge with a merge commit.
 
 ## Desk boundaries
 
-Session events are admitted only for the ids in `COLLECT_PROJECTS`, and aggregate counts only for the ids in `COLLECT_STAT_PROJECTS` (`observatory/docs/USAGE_PLAN.md`): never add one, deploy a Worker, broaden probe targets or publish a
+Session events are admitted only for the ids in `COLLECT_PROJECTS`, aggregate counts only for the ids in `COLLECT_STAT_PROJECTS`, and product events only for the ids in `COLLECT_PRODUCT_PROJECTS` (`observatory/docs/USAGE_PLAN.md`): never add one, deploy a Worker, broaden probe targets or publish a
 private projection as incidental cleanup. Closed versioned contracts, bounded payloads, explicit
 missingness and source times; never average percentiles; demo fixtures never reach collector
 storage. Imported claims never become verified CI, user identity, public health or causality by
@@ -71,7 +72,7 @@ measurement or data boundary. Prefer a tested vertical slice to scaffolding.
   sources must normalise line endings (the embed builder does since #15).
 - Paths above are Windows (`venv/Scripts/python`); on Linux or macOS, including Codex cloud, use `venv/bin/python`.
 - The frontend audit is clean since #59 and CI enforces it; triage any new finding individually, never `audit fix --force`.
-- `STATUS.md`, `DEMO_GUIDE.md`, `IMPROVEMENT_PROPOSALS.md` and `UI_IMPROVEMENTS.md` describe the
+- `legacy/STATUS.md`, `DEMO_GUIDE.md`, `IMPROVEMENT_PROPOSALS.md` and `UI_IMPROVEMENTS.md` describe the
   2025-11 workbench and are history, not verification.
 
 ## Authority

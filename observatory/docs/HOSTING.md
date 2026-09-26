@@ -125,17 +125,31 @@ origins' HTTP and offline/save acceptance. Alibi's physical-device checks
 remain open; the statistical-purpose exception and international applicability
 remain subject to the product-specific review described in `ENGINEERING.md`.
 
-The read token was rotated on 2026-09-23 from DESKTOP-IHKOOJS (owner choice); copies saved on other machines
-before that date no longer authenticate. On the deployment machine, the generated token is encrypted with current-user Windows DPAPI at
-`%LOCALAPPDATA%/Pulseboard/read-token.dpapi`. To copy it for **Connect data** without printing it,
-run this in PowerShell as the same Windows user, then clear the clipboard after connecting:
+## Read token: rotate, copy, recover
 
-```powershell
-$saved = Get-Content "$env:LOCALAPPDATA/Pulseboard/read-token.dpapi" | ConvertTo-SecureString
-Set-Clipboard -Value ([PSCredential]::new('operator', $saved)).GetNetworkCredential().Password
-# After pasting into the Desk:
-Set-Clipboard -Value ''
-```
+The read token is the password to the hosted Desk's private data. The owner lets agents rotate it
+(2026-09-26). It was last rotated on 2026-09-26 from Kraspyon; every copy saved before then no longer
+works. Two scripts in `observatory/scripts/` do everything, in Windows PowerShell 5.1 or later:
+
+1. **Rotate** (new token, old ones stop working):
+   `powershell -NoProfile -ExecutionPolicy Bypass -File observatory\scripts\rotate-read-token.ps1`.
+   It needs Node and a Wrangler login (`cd observatory; npx.cmd wrangler whoami`; if not logged in, run
+   `npx.cmd wrangler login`; in PowerShell use `npx.cmd`, because the `npx.ps1` shim can be blocked). It generates a random token, saves it encrypted for your Windows user at
+   `%LOCALAPPDATA%\Pulseboard\read-token.dpapi` (the old file is kept as `.previous`), pipes it to
+   `npx wrangler secret put READ_TOKEN --env=""`, and checks that the hosted Worker answers 200 with
+   the new token and 401 without one. It never prints the token.
+2. **Copy** (to paste into the Desk's **Connect data**):
+   `powershell -NoProfile -ExecutionPolicy Bypass -File observatory\scripts\copy-read-token.ps1`.
+   It clears the clipboard when you press Enter or after two minutes (Windows clipboard history, Win+V,
+   keeps its own copy if you have it turned on).
+
+Another machine: a DPAPI file only opens for the Windows user that wrote it, so it cannot be copied.
+Either rotate on the new machine (logging the others out), or keep the token in a password manager
+and paste it from there. On Linux or macOS, generate the token into a file only you can read, save
+it in your password manager, then install it from that file, then delete the file:
+`umask 077; openssl rand -base64 32 | tr -d '=+/' > ~/.pulseboard-token`, copy it into the password
+manager, `npx wrangler secret put READ_TOKEN --env="" < ~/.pulseboard-token`, `rm ~/.pulseboard-token`.
+A lost token is not a problem: rotate again.
 
 ## Verified 2026-09-10
 
@@ -298,7 +312,7 @@ owner actions; no agent holds either.
 
 - #100 merged as `2bd2bcd`: statistics reader schema 2 (route, release and per-day event totals) and the Desk's Usage view.
 - Production Worker version `5bb0321e-a80a-47ab-bba1-06cd57318fa2` deployed from `2bd2bcd` on Kraspyon. Bindings and schema are unchanged (`COLLECT_ENABLED` `"true"`, `COLLECT_PROJECTS` and `COLLECT_STAT_PROJECTS` `"alibi"`, D1 schema 2). `/healthz` and `/readyz` return 200, `/desk-usage.mjs` 200, and `/v1/statistics/alibi` 401 unauthenticated. Rollback goes to `51871cc3…`.
-- Not verified: an authenticated hosted read. This machine's DPAPI token copy predates the 2026-09-23 rotation (HUMAN_TODO q-18).
+- Not verified at the time: an authenticated hosted read, because this machine's token copy was stale. Closed on 2026-09-26: after the rotation below, `/v1/statistics/alibi?days=14` returned 200 with schema 3 and 4 counts.
 - #110 merged as `934f29f` (per-project statistics routes; statistics admission separated from `COLLECT_PROJECTS`) and deployed as Worker version `bffba8a7-d066-46a8-887a-bf1c916f2648`. Bindings are unchanged. `/readyz` returns 200 with `"statistics":{"configured":true,"admitted":["alibi"]}`, and `/v1/statistics/alibi` and `/v1/statistics/mdviewer` both return 401 unauthenticated. Rollback goes to `5bb0321e…`.
 
 ### Schema 3 dimension gate on preview, 2026-09-26 (#103)

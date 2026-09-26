@@ -46,7 +46,7 @@
   },
   "worktree": {
     "symlinkDirectories": [
-      "frontend/pulseboard-web/node_modules"
+      "legacy/frontend/pulseboard-web/node_modules"
     ]
   }
 }

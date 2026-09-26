@@ -44,16 +44,16 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["backend"]
+where = ["legacy/backend"]
 include = ["app*"]
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
+testpaths = ["legacy/backend/tests"]
 asyncio_mode = "auto"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=backend/app --cov-report=term-missing"
+addopts = "-v --cov=legacy/backend/app --cov-report=term-missing"
 
 [tool.black]
 line-length = 100
