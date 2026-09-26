@@ -10,5 +10,8 @@ export const assets = new Map([
   ['/desk-bridge.mjs', ['desk-bridge.mjs', 'text/javascript; charset=utf-8']],
   ['/desk-release.mjs', ['desk-release.mjs', 'text/javascript; charset=utf-8']],
   ['/desk-usage.mjs', ['desk-usage.mjs', 'text/javascript; charset=utf-8']],
+  ['/desk-product.mjs', ['desk-product.mjs', 'text/javascript; charset=utf-8']],
+  ['/products/index.mjs', ['products/index.mjs', 'text/javascript; charset=utf-8']],
+  ['/products/alibi.mjs', ['products/alibi.mjs', 'text/javascript; charset=utf-8']],
   ['/mark.svg', ['mark.svg', 'image/svg+xml']],
 ]);
