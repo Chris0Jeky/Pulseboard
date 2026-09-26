@@ -43,13 +43,13 @@ test('every committed wrangler collection allowlist resolves to eligible registe
   }
 });
 
-test('every committed product allowlist admits exactly the ids it lists, and production admits Alibi and Portfolio', async () => {
+test('every committed product allowlist admits exactly the ids it lists, and production admits the shipped SDK v3 hosts', async () => {
   const { productAdmission } = await import('../src/admission.mjs');
   const source = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   const lists = [...source.matchAll(/"COLLECT_PRODUCT_PROJECTS"\s*:\s*"([^"]*)"/g)].map(match => match[1]);
   assert.equal(lists.length, 2);
   for (const value of lists.filter(Boolean)) assert.deepEqual(productAdmission({ COLLECT_PRODUCT_PROJECTS: value }), value.split(','), value);
-  assert.deepEqual(lists, ['portfolio,alibi', ''], 'production admits the shipped SDK v3 hosts (q-13, q-20, q-21); preview admits none');
+  assert.deepEqual(lists, ['portfolio,alibi,commitatlas,idleharbor', ''], 'production admits the shipped SDK v3 hosts (q-13, q-20, q-21); preview admits none');
 });
 
 test('readiness exposes admission and rejects an invalid allowlist', async t => {
