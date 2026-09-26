@@ -24,18 +24,23 @@ The original Desk reader needed no new runtime dependency, database table or
 schema migration. The later Alibi statistics producer adds the `statistics`
 table in schema version 2; its migration is `migrations/0002-alibi-statistics.sql`.
 `src/portfolio.mjs` still consumes only the existing opt-in session event rows.
-The separate `GET /v1/statistics/<project>?days=7` read (any registered public project since #102; 1, 7 or 14 UTC calendar
-days) authenticates with the Desk read token, reads only daily aggregate rows,
-and returns `pulseboard.statistics/3`: event, daily, route and release totals, per-day event
-totals, and separate country, device, source and visit totals (schema 3, #103), every breakdown
-summing to the same total. Dimension totals live in `statistics_dimensions`, keyed by day,
+The separate `GET /v1/statistics/<project>?days=7` read (any registered public project since #102; 1, 7, 14, 30 or 90 UTC
+calendar days since collector v4) authenticates with the Desk read token, reads only daily aggregate rows,
+and returns `pulseboard.statistics/4`: event, daily, route and release totals, per-day event
+totals, and twelve separate dimension totals, every breakdown summing to the same total. Country
+(schema 3, #103) plus region, browser, os, language and hour (collector v4) come from the request on the
+server; device, source and visit (v2 context) plus scheme, referrer and campaign (v3 context) come from
+the browser. Region, language, referrer and campaign keep at most 50 distinct values per project and UTC
+day; a later new value is stored as `other`, while `unknown`, `none` and `other` are never capped. Dimension totals live in `statistics_dimensions`, keyed by day,
 dimension and value only, with no timestamp finer than the day, and stored `WITHOUT ROWID` so
 storage order is key order rather than arrival order. That makes re-joining a request's rows to its
 event counts harder, not impossible: an operator who polls the one-day read repeatedly while
 traffic is sparse can still difference single requests, and `statistics.received` keeps the last
-write time. With a handful of testers this is not anonymity (`USAGE_PLAN.md`). Counts from before schema 3 read `unknown`. The browser sends
-device, source and visit in a v2 batch's closed `context`; the country is Cloudflare's edge
-country code, and the collector never reads the IP. Schema 1 carried
+write time. With a handful of testers this is not anonymity (`USAGE_PLAN.md`). Counts from before a dimension was recorded read `unknown`, and so do the browser dimensions a
+batch's version does not carry (v1 has none, v2 has device, source and visit). The country and region
+are Cloudflare's edge codes; the User-Agent is classified into a closed browser and OS vocabulary and
+dropped, the first `Accept-Language` tag is reduced to its primary subtag, and the collector never reads
+the IP. Schema 1 carried
 only event and daily totals; route and release totals were added for the Desk's
 Usage view, matching the route receipts and release cohorts the operator already
 reads for opt-in data. It returns no session estimate, visitor count or flow. Its `collectionAdmitted` and `observationStatus`
@@ -61,18 +66,48 @@ session or receipt identifier is returned. Projects without data remain present.
 
 The reader performs nine SELECTs in one D1-compatible transactional batch. Its
 range is `[start, end)`: the lower bound is included, the upper bound and future
-rows are excluded. Daily buckets use UTC; both edge days may be partial. Event
-retention is still 14 days, probe history 30 days. Counts are admitted events,
+rows are excluded. Daily buckets use UTC; both edge days may be partial. Session and product
+event retention is 90 days, aggregates 400 days, budget rows 14 days and probe history 30 days
+(collector v4, `USAGE_PLAN.md`). Counts are admitted events,
 not offered traffic or verified people. The contract bounds possible groups;
 SQL still scans the selected window. This is not a high-volume analytics engine.
 The separate Alibi statistics producer admits only closed event counts, stores
 one aggregate row per UTC day, event, route and release, and retains at most
-14 UTC calendar dates including today. It accepts no session or event identifiers. The
+400 UTC calendar dates including today. It accepts no session or event identifiers. The
 reviewed deployment configuration admits `alibi` through `COLLECT_STAT_PROJECTS`, which since #102 is an exact comma list of
 registered public ids (any malformed entry disables it). It needs `COLLECT_ENABLED` and a valid session policy but not `COLLECT_PROJECTS` membership, so admitting counts never opens a host's session route;
 actual admission begins only when that configuration is deployed. The separate
 statistics reader keeps these counts out of the legacy opt-in readout. Repeated
 requests count repeatedly because aggregate-only payloads have no dedupe key.
+
+### Product events (schema 4, collector v4)
+
+`POST /v1/product/<id>` admits `pulseboard.product-batch/1` (`USAGE_PLAN.md` section 2): exactly
+`{ v: 1, session, release, context: { device }, events }` with 1 to 20 events of exactly
+`{ name, route, seq, ms }` and optional `props`. `session` is a lower-case UUID v4 for Journeys or
+`null` for Diagnostics-only batches. `props` is open JSON bounded to depth 4, 32 keys per object, keys
+`^[A-Za-z0-9_.-]{1,48}$`, strings of 256 characters, arrays of 32 items, finite numbers and 2,048
+serialized bytes; a batch outside those bounds is refused whole. Personal keys (the plan's list plus
+nickname, display name, player, user, handle and name-part keys; a bare `name` stays) are removed at
+every depth and counted in `redacted`, and e-mail-looking text becomes `[email]`: redaction never
+rejects. Admission needs `COLLECT_ENABLED`, a valid session policy and the id in
+`COLLECT_PRODUCT_PROJECTS` (the same exact-list parser as `COLLECT_STAT_PROJECTS`, not `COLLECT_PROJECTS`
+membership), the registered origin, `application/json` and 16 KiB. Its daily budget is its own row
+`<id>:product` in `budget`, limited by the registry's `productLimit` (20,000). Rows go to
+`product_events(project, received, day, session, seq, name, route, release, ms, props, redacted,
+country, region, browser, os, device)` in the same D1 batch as the reservation, gated on its receipt.
+Delivery is at most once; repeated requests store repeated rows.
+
+`GET /v1/product/<id>?days=` (authenticated, windows 1 to 90) returns `pulseboard.product/1`: totals
+by name, route, release and day; sessions (count, median events, median duration between the first
+and last received batch); the latest 100 journeys as ordered name lists (first 100 steps, no session
+id); exits (each session's last event inside the window); vitals as the nearest-rank p75 of raw
+`web.vital` values per metric and route, never an average of percentiles; and `js.error` groups by
+`kind` and `message`. `GET /v1/product/<id>/events?days=&name=&limit=` returns up to 5,000 raw rows
+newest first (default 500) as `pulseboard.product-events/1`. `GET /v1/consent/<id>` answers the SDK's
+region hint `{ v: 1, region: 'eea' | 'other' }` from the edge country (unknown reads `eea`) for the
+registered origin only, with `Cache-Control: private, max-age=3600`; it stores nothing and does not
+depend on admission. `/readyz` reports `product: { configured, admitted }` beside `statistics`.
 
 `/v1/summary` is preserved for compatibility, including its original seven-day
 session-level flow semantics. New consumers should use `/v1/portfolio`. Do not
