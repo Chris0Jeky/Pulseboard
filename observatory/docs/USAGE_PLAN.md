@@ -134,4 +134,4 @@ stays green in CI, but gets no new features. Its reusable part is the pluggable 
 Desk as bounded evidence adapters: the Cloudflare adapter in slice 6 is the first adapter written
 to that shape, and `http_json`/`system_metrics` feeds can run as a sidecar that produces a Desk
 bridge file. On 2026-09-26 the owner decided to move the frozen workbench under `legacy/` with its
-CI paths updated, and it now lives there (HUMAN_TODO q-21, recorded in #115); nothing was deleted.
+CI paths updated, and it now lives there (HUMAN_TODO q-16 froze it; q-21, recorded in #115, ordered the move); nothing was deleted.

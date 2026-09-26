@@ -34,7 +34,7 @@ docker-compose --version
 
 ```bash
 git clone https://github.com/yourusername/Pulseboard.git
-cd Pulseboard
+cd Pulseboard/legacy   # the workbench lives under legacy/ since 2026-09-26
 ```
 
 ### 2. Start Services
