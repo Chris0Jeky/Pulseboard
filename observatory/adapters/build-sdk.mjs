@@ -24,8 +24,10 @@ export function buildSdk(id, { release } = {}) {
   const config = { id, label: project.label, origin: project.origin, collector: SDK_COLLECTOR, release: chosen, route: 'home',
     project: { events: project.events, routes: project.routes, releases } };
   const json = JSON.stringify(config).replaceAll('<', '\\u003c');
-  const source = readFileSync(new URL('../sdk/pulseboard-sdk.mjs', import.meta.url), 'utf8').replaceAll('\r\n', '\n')
+  // The referrer allowlist is one module shared with the collector (stat-contract.mjs); it is inlined first.
+  const inline = name => readFileSync(new URL('../sdk/' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
     .replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+  const source = inline('referrers.mjs') + '\n' + inline('pulseboard-sdk.mjs');
   // The header version is read from the module itself, so it cannot drift from SDK_VERSION.
   const version = /^const SDK_VERSION = '([0-9]+\.[0-9]+\.[0-9]+)';$/m.exec(source)?.[1];
   if (!version) throw new Error('SDK_VERSION not found in sdk/pulseboard-sdk.mjs');
