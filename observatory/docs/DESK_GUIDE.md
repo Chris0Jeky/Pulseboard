@@ -63,6 +63,11 @@ it to the module list in `tests/desk-browser.py`, and keep the asset budget test
 Demo mode (`?demo=release` or **Try a scenario**) fills both views and the Alibi
 panel with seeded synthetic data that never leaves the tab.
 
+Hosts collect through the Pulseboard SDK: one script built per project with
+`npm run build:sdk`, a Beta bar with three consent categories, and a small API for
+routes, counts and product events. [SDK.md](SDK.md) is the host integration guide
+(script tag, CSP, API, categories, exactly what is sent and how to test).
+
 Prepare a field note or a task handoff. Read the exact file, acknowledge the
 sharing boundary, then download. No GitHub issue, Taskdeck card or agent action is
 created automatically. An agent receiving a handoff must review scope, validate
