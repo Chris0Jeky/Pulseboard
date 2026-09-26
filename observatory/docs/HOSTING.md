@@ -338,7 +338,7 @@ owner actions; no agent holds either.
   produces, so the scheduled handler runs without manual triggers. Probe history keeps 30 days, so the
   count stops rising once retention catches up. #43 is closed.
 
-### Alibi 0.14.1 registered and Alibi product events admitted in config, 2026-09-26 (not deployed)
+### Alibi 0.14.1 registered and Alibi product events admitted in config, 2026-09-26 (deployed, see below)
 
 - `src/alibi-releases.mjs` lists `0.14.1` after `0.14.0`, which was already registered. 0.14.1 is the
   first Alibi release on SDK 3.1 (`observatory/pulseboard.js`, Chris0Jeky/Alibi#391). Rebuilt from the
@@ -350,6 +350,36 @@ owner actions; no agent holds either.
   CommitAtlas and IdleHarbor are admitted because their SDK 3.1 installs merged and published
   (Chris0Jeky/CommitAtlas#247, deployed by its Deploy workflow; Chris0Jeky/IdleHarbor#88 on GitHub Pages).
   The preview environment still admits none.
-- Neither change is live until the Worker is deployed from a `main` that contains it. Deploy before
-  Alibi 0.14.1 is published. Until then, the deployed collector rejects every 0.14.1 batch as an
-  unregistered release, and it answers 503 to Alibi product events.
+- History: at the time of writing, neither change was live until the Worker was deployed. Both went live in Worker
+  `2b1f13f8` (receipt below), before Alibi 0.14.1 was published.
+
+### Usage plan v2 in production, 2026-09-26 to 27 (#115 to #135)
+
+Every Worker below was deployed from `main` on Kraspyon with `npx wrangler deploy` after `npm test` passed; each
+later version supersedes the previous one. Rollback limits: going back to the previous row is safe only within
+schema 4 (from `0c76dd15` on). Rolling back past `1b81b7fa` returns to schema 3 and needs the `schema_version`
+reset above. Never roll back below `2b1f13f8` once Alibi 0.14.1 is live: older Workers do not register 0.14.1 and
+return 400 `contract` for every 0.14.1 batch.
+
+| Worker | From | What went live |
+|---|---|---|
+| `1b81b7fa` | #117 | Schema 4 (`migrations/0004-product-events.sql` applied to production D1 first), collect-stat v3, `/v1/product`, `/v1/consent`, reads `statistics/4` and `product/1` |
+| `0c76dd15` | #125 | Exits and vitals caps with truncation flags (with the matching Desk) |
+| `6735ac3b` | #39 | Security Watch code, `WATCH_ENABLED` false; `watch/schema.sql` applied to production D1 so the cron cleanup finds its tables |
+| `33a26c29` | #129 | Referrer platform allowlist enforced on the server |
+| `4c49ed57` | #128 | Portfolio admitted to counts and product events |
+| `2b1f13f8` | #132 | Alibi 0.14.1 registered; Alibi, CommitAtlas, IdleHarbor admitted to product events; CommitAtlas, IdleHarbor to counts |
+| `ce5a2d00` | #133 | Campaign allowlist enforced on the server (no project registers campaigns yet, so every tag reads `other`) |
+| `10669420` | #135 | Developer Lens and WealthLens admitted |
+
+- `/readyz` after `10669420`: 200, schema 4, statistics and product both admitting `alibi, portfolio, commitatlas,
+  idleharbor, developer-lens, wealthlens`. `COLLECT_PROJECTS` (legacy session events) stays `alibi`.
+- Live Portfolio check (in-app browser, a real visit, no bar choice made): SDK 3.1.0 served, `/v1/consent/portfolio`
+  answered `other`, and production D1 then held `page.view/home` 1 and a QA `contact.requested/home` 1 (sent by
+  hand from the console), dimensions `country GB`, `region GB-ENG`, `browser chrome`, `os windows`,
+  `referrer none`, `campaign none`, and product events `page.view` 1 and `web.vital` 2. These are QA rows.
+- Host installs (all reviewed, artifacts reproduced byte for byte from Pulseboard `main`): CV_and_Portfolio #5, #6, #7;
+  CommitAtlas #247, #248 (deploys through its own workflow); IdleHarbor #88, #89; developer-lens #378, #379;
+  wealthlens-hq #633, #634; MDviewer #105, #107; Alibi #391 (0.14.1). All sites except Alibi run SDK 3.2.0.
+  Alibi 0.14.1 pins 3.1.0; its next release moves to 3.2 and needs a registered release.
+- MDviewer is admitted by #136, which adds this receipt; the collector refused its data until #136's deploy.
