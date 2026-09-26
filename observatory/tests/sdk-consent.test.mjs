@@ -306,7 +306,8 @@ test('a [data-pulseboard-bar] placeholder receives the bar and is released when 
   const h = start({ region: 'eea', barHolder: true });
   await settle();
   assert.equal(h.holder.children[0].className, 'pb-bar');
-  assert.equal(h.holder.style.height, '2.5rem');
+  assert.equal(h.holder.style.height, 'auto', 'a wrapped bar grows its placeholder instead of overflowing it');
+  assert.equal(h.holder.children[0].style.zIndex, undefined, 'the in-flow bar never stacks over host content');
   click(byClass(h.body, 'pb-ok')[0]);
   assert.equal(h.holder.children.length, 0);
   assert.equal(h.holder.style.height, '0');
