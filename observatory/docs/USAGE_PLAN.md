@@ -43,8 +43,11 @@ Every product loads one Pulseboard SDK (below) with three categories:
 
 ### The bar
 
-One line, no modal, no overlay, nothing that blocks input. It is inserted at the top of the page
-before first paint, so it does not shift layout later:
+One line, no modal, no overlay, nothing that blocks input. It sits at the top of the page. The SDK
+loads with `defer`, so to avoid a layout shift a host puts an empty `<div data-pulseboard-bar>` as
+the first element of `body` with a reserved height of 2.5rem; the SDK renders into it and releases
+the space once the bar collapses. Without the placeholder the bar is inserted as the first child of
+`body` and may shift the page once:
 
 > **Beta** — thanks for helping test <Product>. We collect usage and diagnostics to improve it; no
 > names, emails or IPs. [Choose] [OK]
@@ -128,10 +131,11 @@ This is the "plug in anything" channel: diagnostics and journeys both travel her
   any key equal to `email emailaddress password passwd pwd phone phonenumber mobile token accesstoken
   refreshtoken secret apikey ip ipaddress address streetaddress postcode zipcode ssn iban cardnumber
   cvv dob dateofbirth firstname lastname fullname username nickname displayname player playername user
-  handle realname surname givenname`. The SDK drops the same keys before sending. Host rule: props
+  handle realname surname givenname userid uid clientip ipaddr remoteaddr url href`. The SDK drops the same keys before sending. Host rule: props
   never carry user-entered free text or identity (names, handles, typed answers); the key list is a
   safety net, not the guarantee. Any string that looks like an e-mail
-  address becomes `[email]`. The stored event records how many keys it lost in `redacted`.
+  address becomes `[email]`, an IPv4 or IPv6 address `[ip]`, and a URL (`scheme://…`) is cut to
+  its host. The stored event records how many keys it lost in `redacted`.
 - 1–20 events per batch, 16 KiB per request, and a separate daily budget per project
   (`productLimit`, default 20,000 events).
 - The server stores `(project, received, day, session, seq, name, route, release, ms, props,
