@@ -82,7 +82,7 @@ export function makeRuntime({ region = 'eea', status = 202, nav = {}, local = st
       const call = { url, init, body: init.body ? JSON.parse(init.body) : null, aborted: false };
       calls.push(call);
       log.order.push('fetch');
-      init.signal?.addEventListener?.('abort', () => { call.aborted = true; });
+      init.signal?.addEventListener?.('abort', () => { call.aborted = true; call.reject?.(new DOMException('The operation was aborted.', 'AbortError')); });
       if (url.includes('/v1/consent/')) {
         if (region === 'fail') return Promise.reject(new TypeError('network'));
         if (region === 'pending') return new Promise(() => {});

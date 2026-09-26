@@ -240,7 +240,7 @@ export function createPulseboard(config, runtime = globalThis) {
   let currentRoute = cfg.route;
   let visitAnswer = null, sessionRecord = null, pageSeq = 0, errorsSent = 0, journeyViewPending = false;
   let requests = 0, keepaliveBytes = 0;
-  const stats = { sent: 0, dropped: 0 };
+  const stats = { sent: 0, dropped: 0, unknown: 0 };
   const lanes = { counts: lane('/v1/collect-stat/' + cfg.id, COUNT_BATCH), product: lane('/v1/product/' + cfg.id, PRODUCT_BATCH) };
   const context = (() => {
     let referral = { source: 'direct', referrer: 'none' }, campaign = 'none';
@@ -470,7 +470,7 @@ export function createPulseboard(config, runtime = globalThis) {
       timer: null, bytes: keepalive ? bytes : 0, settled: false, keepalive };
     l.flights.add(flight);
     keepaliveBytes += flight.bytes;
-    if (!hide && controller) flight.timer = timer(() => { try { controller.abort(); } catch { /* Settles below. */ } }, TIMEOUT_MS);
+    if (!hide && controller) flight.timer = timer(() => { flight.timedOut = true; try { controller.abort(); } catch { /* Settles below. */ } }, TIMEOUT_MS);
     const settle = ok => {
       if (flight.settled) return;
       flight.settled = true;
@@ -479,6 +479,8 @@ export function createPulseboard(config, runtime = globalThis) {
       keepaliveBytes -= flight.bytes;
       if (flight.cancelled) return;
       if (ok) { stats.sent += batch.items.length; return; }
+      // A timeout is an unknown outcome (the collector may have admitted the batch; ENGINEERING.md), not a failure.
+      if (flight.timedOut) { stats.unknown += batch.items.length; return; }
       stats.dropped += batch.items.length;
       l.failures += 1;
       if (l.failures >= CIRCUIT_FAILURES) { l.open = true; stats.dropped += l.queue.length; l.queue = []; clear(l.timer); l.timer = null; }
@@ -529,8 +531,9 @@ export function createPulseboard(config, runtime = globalThis) {
   function pageView() {
     let ok = false;
     if (cfg.events.includes('page.view')) ok = count('page.view');
-    journeyViewPending = !(current.journeys && product('journeys', 'page.view', {}));
-    return ok;
+    const journeyed = current.journeys && product('journeys', 'page.view', {});
+    journeyViewPending = !journeyed;
+    return ok || journeyed;
   }
 
   function count(event) {
@@ -927,7 +930,7 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   function status() {
-    return { active: mounted && !disposed, mounted, consent: get(), requests, keepaliveBytes, sent: stats.sent, dropped: stats.dropped,
+    return { active: mounted && !disposed, mounted, consent: get(), requests, keepaliveBytes, sent: stats.sent, dropped: stats.dropped, unknown: stats.unknown,
       queued: { counts: lanes.counts.queue.length, product: lanes.product.queue.length },
       open: { counts: lanes.counts.open, product: lanes.product.open } };
   }

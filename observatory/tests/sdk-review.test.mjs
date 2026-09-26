@@ -146,3 +146,26 @@ test('L7: the artifact header version is the source SDK_VERSION', () => {
   const builder = readFileSync(new URL('../adapters/build-sdk.mjs', import.meta.url), 'utf8');
   assert.equal(/const VERSION = '/.test(builder), false, 'no second hard-coded version');
 });
+
+test('Codex P2: a timed-out request is unknown, not failed, so three slow responses do not open the circuit', async () => {
+  const h = start({ local: storage({ [CONSENT]: record(true, false, false) }) });
+  h.runtime.hold = true;
+  for (let i = 0; i < 4; i++) {
+    h.sdk.count('app.ready');
+    h.fire();
+    await settle();
+    h.fire(10000); // the request timeout aborts the held fetch
+    await settle();
+  }
+  const aborted = h.counts().filter(c => c.aborted);
+  assert.ok(aborted.length >= 3);
+  assert.equal(h.sdk.status().open.counts, false);
+  assert.equal(h.sdk.count('app.ready'), true);
+});
+
+test('Codex P2: route() returns true when only the journeys page.view was queued', async () => {
+  const h = start({ local: storage({ [CONSENT]: record(false, false, true) }) });
+  assert.equal(h.sdk.route('puzzle'), true);
+  const none = start({ local: storage({ [CONSENT]: record(false, false, false) }) });
+  assert.equal(none.sdk.route('puzzle'), false);
+});

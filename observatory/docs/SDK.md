@@ -169,7 +169,7 @@ batches. Requests use `fetch` with `mode: 'cors'`, `credentials: 'omit'`, `refer
 `Content-Type: application/json`, an `AbortController` and a 10-second timeout. `keepalive` is used while the
 page's in-flight keepalive bytes stay within 64 KiB; when the page hides, only keepalive requests are made
 and the rest is dropped with the page. Per page: at most 100 queued items and 120 requests. An endpoint that
-fails three times stops sending for the rest of the page. Nothing is persisted offline. A bfcache restore
+fails three times (an error status or a network error; a timeout is an unknown outcome and does not count) stops sending for the rest of the page. Nothing is persisted offline. A bfcache restore
 keeps the instance; an ordinary exit disposes it but lets keepalive requests finish.
 
 ## How to test
