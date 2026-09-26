@@ -57,7 +57,7 @@ repo-side; merge with a merge commit.
 
 ## Desk boundaries
 
-Session events are admitted only for the ids in `COLLECT_PROJECTS`, and aggregate counts only for the ids in `COLLECT_STAT_PROJECTS` (`observatory/docs/USAGE_PLAN.md`): never add one, deploy a Worker, broaden probe targets or publish a
+Session events are admitted only for the ids in `COLLECT_PROJECTS`, aggregate counts only for the ids in `COLLECT_STAT_PROJECTS`, and product events only for the ids in `COLLECT_PRODUCT_PROJECTS` (`observatory/docs/USAGE_PLAN.md`): never add one, deploy a Worker, broaden probe targets or publish a
 private projection as incidental cleanup. Closed versioned contracts, bounded payloads, explicit
 missingness and source times; never average percentiles; demo fixtures never reach collector
 storage. Imported claims never become verified CI, user identity, public health or causality by
