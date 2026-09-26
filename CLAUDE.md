@@ -80,7 +80,7 @@ measurement or data boundary. Prefer a tested vertical slice to scaffolding.
 Codex setup: `scripts/agent/context.ps1` reads the current map and decisions;
 `scripts/agent/check.ps1` proves the Desk and harness (Windows: `powershell -NoProfile
 -ExecutionPolicy Bypass -File <script>`). The shared adapter is `.codex/hooks.json`; new-session
-`/hooks` trust remains a human check. Deployment commands and receipts: `observatory/docs/HOSTING.md`.
+`/hooks` trust is a human check (q-5, closed by the owner 2026-09-27). Deployment commands and receipts: `observatory/docs/HOSTING.md`.
 
 T2 daily driver, `push: free`, `merge: free` within the global gate; `.agent-harness/tier.json`
 binds; the owner ratified T2 on 2026-09-10 (q-1). Human-action file: `HUMAN_TODO.md`; read it before
