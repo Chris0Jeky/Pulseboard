@@ -37,7 +37,7 @@ test('Alibi artifact publishes only its bounded context handle and registered re
   assert.deepEqual(config.publicFlag, { global: 'ALIBI_CONFIG', key: 'standalone', expected: false });
   assert.equal(config.origin, 'https://alibi-after-hours-preview.commit-atlas.workers.dev');
   assert.equal(config.endpoint, 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi');
-  assert.deepEqual(config.project.releases, ['unattributed', '0.11.3', '0.11.4', '0.11.5', '0.11.6', '0.12.0']);
+  assert.deepEqual(config.project.releases, ['unattributed', '0.11.3', '0.11.4', '0.11.5', '0.11.6', '0.12.0', '0.13.0']);
   assert.equal(code.includes('ALIBI_CONFIG.version'), false);
   assert.ok(code.includes('createStatisticObserver') && code.includes('mountStatisticObserver'));
   assert.equal(/MAX_BYTES|MAX_BATCH/.test(code), false);

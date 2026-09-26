@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const VERSION = '0.12.1';
+const VERSION = '0.13.1';
 const ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect-stat/alibi';
 const LEGACY_ENDPOINT = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi';
 const sourceObservatory = fileURLToPath(new URL('../', import.meta.url));
