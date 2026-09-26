@@ -96,6 +96,7 @@ test('malformed nested API fields cannot replace a last-good snapshot', () => {
 test('all served desk assets exist and stay within a small static transfer budget', () => {
   const names = [...new Set([...assets.values()].map(([name]) => name))];
   const bytes = names.map(name => readFileSync(new URL(`../public/${name}`, import.meta.url)));
-  assert.ok(bytes.reduce((n, b) => n + b.length, 0) < 128 * 1024, 'Desk assets exceed 128 KiB raw');
-  assert.ok(bytes.reduce((n, b) => n + gzipSync(b).length, 0) < 40 * 1024, 'Desk assets exceed 40 KiB gzip');
+  // Raised from 128/40 KiB when the Usage view landed (2026-09-26); raise again only for a concrete interaction.
+  assert.ok(bytes.reduce((n, b) => n + b.length, 0) < 144 * 1024, 'Desk assets exceed 144 KiB raw');
+  assert.ok(bytes.reduce((n, b) => n + gzipSync(b).length, 0) < 48 * 1024, 'Desk assets exceed 48 KiB gzip');
 });
