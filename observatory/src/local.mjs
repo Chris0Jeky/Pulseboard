@@ -5,11 +5,12 @@ import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from './sqlite.mjs';
-import { handle } from './worker.mjs';
+import { handle } from './watch-worker.mjs';
 import { collectionAdmission } from './admission.mjs';
 import { assets } from './assets.mjs';
 import { createGithubEvidence } from './github.mjs';
 import { githubMap } from './github-map.mjs';
+import { maintain as maintainWatch } from '../watch/store.mjs';
 
 const SERVER_OPTIONS = { maxHeaderSize: 8192, requestTimeout: 10000, headersTimeout: 10000 };
 
@@ -23,6 +24,21 @@ export function resolveReadToken(env = process.env, random = randomBytes) {
   const supplied = typeof env.READ_TOKEN === 'string' && env.READ_TOKEN.length > 0;
   const token = supplied ? env.READ_TOKEN : Buffer.from(random(32)).toString('hex');
   return { token, supplied };
+}
+
+/** Security Watch reads use their own bearer; a generated one is printed like READ_TOKEN, a supplied one never is. */
+export function resolveWatchReadToken(env = process.env, random = randomBytes) {
+  const supplied = typeof env.WATCH_READ_TOKEN === 'string' && env.WATCH_READ_TOKEN.length > 0;
+  const token = supplied ? env.WATCH_READ_TOKEN : Buffer.from(random(32)).toString('hex');
+  return { token, supplied };
+}
+
+export function watchBanner({ token, supplied, enabled }) {
+  return [
+    supplied ? 'Watch read token: using WATCH_READ_TOKEN; it is not printed here.'
+      : 'Watch read token (generated for this run; not persisted): ' + token,
+    'Security receipt ingestion is ' + (enabled ? 'enabled.' : 'disabled.'),
+  ];
 }
 
 function admissionLines(admission) {
@@ -70,6 +86,9 @@ export async function startLocalRunner({
   COLLECT_PROJECTS = '',
   COLLECT_STAT_PROJECTS = '',
   COLLECT_PRODUCT_PROJECTS = '',
+  WATCH_READ_TOKEN,
+  WATCH_ENABLED = 'false',
+  WATCH_SOURCES_JSON = '[]',
   ASSETS = localAssets(),
   GITHUB_EVIDENCE = null,
   requestHandler = handle,
@@ -79,7 +98,8 @@ export async function startLocalRunner({
   if (typeof requestHandler !== 'function') throw new TypeError('requestHandler is required');
 
   // The per-channel switches are passed through verbatim; the handler applies the same exact-list rules as the Worker.
-  const env = { DB, READ_TOKEN, COLLECT_ENABLED, COLLECT_PROJECTS, COLLECT_STAT_PROJECTS, COLLECT_PRODUCT_PROJECTS, ASSETS, ...(GITHUB_EVIDENCE ? { GITHUB_EVIDENCE } : {}) };
+  const env = { DB, READ_TOKEN, COLLECT_ENABLED, COLLECT_PROJECTS, COLLECT_STAT_PROJECTS, COLLECT_PRODUCT_PROJECTS,
+    WATCH_READ_TOKEN, WATCH_ENABLED, WATCH_SOURCES_JSON, ASSETS, ...(GITHUB_EVIDENCE ? { GITHUB_EVIDENCE } : {}) };
   let origin = null;
   const server = createServer(SERVER_OPTIONS, async (req, res) => {
     try {
@@ -146,10 +166,20 @@ export function installShutdownHooks({ processLike = process, close }) {
 export async function main(envVars = process.env, logger = console) {
   mkdirSync(new URL('../.data/', import.meta.url), { recursive: true });
   const DB = openDatabase(fileURLToPath(new URL('../.data/observatory.sqlite', import.meta.url)));
+  let watchRetention = null;
   try {
     DB.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
+    DB.exec(readFileSync(new URL('../watch/schema.sql', import.meta.url), 'utf8'));
+    await maintainWatch(DB);
+    // Watch retention runs even with ingestion off, so disabling it never keeps old receipts forever.
+    watchRetention = setInterval(() => {
+      maintainWatch(DB).catch(() => logger.error('Watch retention unavailable. Check protected readiness.'));
+    }, 900000);
+    watchRetention.unref();
     const { token, supplied } = resolveReadToken(envVars);
     if (supplied && token.length < 32) logger.error('READ_TOKEN is shorter than 32 characters; every authenticated read will be refused with 401.');
+    const watch = resolveWatchReadToken(envVars);
+    const watchEnabled = envVars.WATCH_ENABLED === 'true';
     const port = parsePort(envVars.PORT || '8788');
     const collectEnabled = envVars.COLLECT_ENABLED === 'true';
     const collectProjects = envVars.COLLECT_PROJECTS || '';
@@ -165,13 +195,18 @@ export async function main(envVars = process.env, logger = console) {
       COLLECT_PROJECTS: collectProjects,
       COLLECT_STAT_PROJECTS: envVars.COLLECT_STAT_PROJECTS || '',
       COLLECT_PRODUCT_PROJECTS: envVars.COLLECT_PRODUCT_PROJECTS || '',
+      WATCH_READ_TOKEN: watch.token,
+      WATCH_ENABLED: watchEnabled ? 'true' : 'false',
+      WATCH_SOURCES_JSON: envVars.WATCH_SOURCES_JSON || '[]',
       GITHUB_EVIDENCE,
     });
     for (const line of runnerBanner({ origin: runner.origin, token, supplied, collectEnabled, collectProjects, githubEvidence: !!GITHUB_EVIDENCE })) logger.log(line);
-    const close = onceAsync(async () => { await runner.close(); DB.close(); });
+    for (const line of watchBanner({ ...watch, enabled: watchEnabled })) logger.log(line);
+    const close = onceAsync(async () => { clearInterval(watchRetention); await runner.close(); DB.close(); });
     installShutdownHooks({ processLike: process, close });
     return { ...runner, close };
   } catch (error) {
+    clearInterval(watchRetention);
     DB.close();
     throw error;
   }

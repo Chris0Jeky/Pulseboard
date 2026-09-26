@@ -13,7 +13,7 @@ The first operating slice now exists rather than being only a design:
 - the first consented Alibi events and a withdrawal check were recorded on 10 September 2026;
 - every other project adapter remains inert, and collection activation still requires an explicit project decision;
 - route/release context work remains bounded by closed registries and consent, including the current Alibi follow-up;
-- Security Watch, native Taskdeck/Lens producers, broad GitHub ingestion, paging, remediation, and portfolio-wide collection are not shipped.
+- Security Watch ingestion (its code ships with `WATCH_ENABLED=false`), native Taskdeck/Lens producers, broad GitHub ingestion, paging, remediation, and portfolio-wide collection are not shipped.
 
 This status does not erase the known limits in `HOSTING.md`: probe scheduling and public-edge behavior need their own receipts, cold paths can cross client timeout budgets, and two admitted events do not establish product efficacy or representative usage.
 
