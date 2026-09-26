@@ -41,8 +41,8 @@ For the schema-2 Alibi statistics producer, migrate the existing D1 database
 with `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0002-alibi-statistics.sql`
 before deploying a Worker that requires schema 2. The migration creates only an
 aggregate table and preserves historical session event rows. Confirm `/readyz`
-returns schema 2 after deployment. The new `/v1/collect-stat/alibi` route is
-disabled unless `COLLECT_STAT_PROJECTS` is exactly `alibi`. Production now
+returns schema 2 after deployment. The `/v1/collect-stat/<id>` route is
+disabled for every id not listed in `COLLECT_STAT_PROJECTS` (an exact comma list since #102; it was exactly `alibi` before). Production now
 admits that project following issue #89's browser, notice and opt-out checks;
 the deployment and first accepted payload are recorded below. Alibi's client
 deployment is a separate release step.
