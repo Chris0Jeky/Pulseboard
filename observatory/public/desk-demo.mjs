@@ -133,11 +133,11 @@ export function makeProductDemo(days = 7, now = Date.now(), project = 'alibi') {
     sessions: { n: sessions.length, medianEvents: rankQuantile(lengths, 0.5), medianDurationMs: rankQuantile(durations, 0.5) },
     journeys: sessions.sort((a, b) => b[0].received - a[0].received).slice(0, 100)
       .map(xs => ({ session: xs[0].session, startedAt: xs[0].received, durationMs: xs.at(-1).ms - xs[0].ms, steps: xs.slice(0, 60).map(x => x.name), stepsTruncated: xs.length > 60 })),
-    exits: counted(sessions.map(xs => xs.at(-1)), x => x.name, 'name'),
+    exits: counted(sessions.map(xs => xs.at(-1)), x => x.name, 'name'), exitsTruncated: false,
     vitals: [...byKey(pool.filter(x => x.name === 'web.vital'), x => `${x.props.metric}|${x.route}`)].map(([key, xs]) => {
       const [metric, route] = key.split('|'), values = xs.map(x => x.props.value).sort((a, b) => a - b);
       return { metric, route, p75: rankQuantile(values, 0.75), n: values.length };
-    }).sort((a, b) => a.metric.localeCompare(b.metric) || a.route.localeCompare(b.route)),
+    }).sort((a, b) => a.metric.localeCompare(b.metric) || a.route.localeCompare(b.route)), vitalsTruncated: false,
     errors: [...byKey(pool.filter(x => x.name === 'js.error'), x => `${x.props.kind}|${x.props.message}`).values()]
       .map(xs => ({ kind: xs[0].props.kind, message: xs[0].props.message, n: xs.length, lastSeen: Math.max(...xs.map(x => x.received)) })).sort((a, b) => b.n - a.n) };
 }
