@@ -2,6 +2,7 @@ import { DAY, sum, count, percent, fraction, monitorState, monitorDisplay, build
 import { makeDemo, makeGithubDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
 import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
+import { requestStatistics, assertStatistics, usageReading, usageQuestions, makeStatisticsDemo, STATISTICS_MAX_BYTES } from './desk-usage.mjs';
 import { assertGithubEvidence, deploymentLeads, pinInvestigation, makeReleaseNote, releaseNoteMarkdown } from './desk-release.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -9,12 +10,13 @@ const $ = selector => document.querySelector(selector);
 const REFRESH_MS = 30_000;
 const state = { snapshot: null, token: '', days: 7, scenario: 'release', phase: 1, query: '', sort: 'attention',
   view: 'overview', reviewed: false, reviews: {}, releaseProject: '', baseline: '', candidate: '',
-  stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null };
+  stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null, usage: null, usageError: '', usageRead: null };
 const views = {
   overview: ['The desk.', 'A clear place to see what needs you.'],
   signals: ['Signal inbox.', 'Observations you can inspect, park, or turn into a next step.'],
   releases: ['Release lab.', 'Compare what changed. Be careful about why.'],
   connections: ['Connections.', 'Small contracts between useful tools. No surprise data routes.'],
+  usage: ['Usage.', 'How your sites are used: aggregate counts, never people.'],
 };
 const labels = { up: 'Probe up', down: 'Probe down', stale: 'Stale probe', unknown: 'No probe evidence', local: 'Local boundary' };
 const e = (tag, attrs = {}, ...children) => {
@@ -320,6 +322,73 @@ function connections() {
       card('EXTENSION SEAM', 'OpenTelemetry / specialist backends', 'Keep traces and high-volume metrics in suitable backends. A future bounded adapter can bring evidence and links into this desk. No OTLP receiver is claimed.')),
     ...importedContext()];
 }
+/** Read only while the Usage view is open: the 30 s portfolio poll pays for this read on this view alone. */
+async function readUsage() {
+  // Keyed by read epoch, so a read cancelled by a window change or disconnect cannot leave the view stuck busy.
+  if (!state.token || state.usageRead === state.epoch) return;
+  const epoch = state.epoch, days = state.days; state.usageRead = epoch;
+  try {
+    const response = await requestStatistics(fetch, { token: state.token, days, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+    if (epoch !== state.epoch) return;
+    if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return; }
+    if (!response.ok) throw new Error('Usage statistics are unavailable.');
+    const data = assertStatistics(await readLimitedJson(response, STATISTICS_MAX_BYTES), days);
+    if (epoch !== state.epoch || days !== state.days) return;
+    state.usage = data; state.usageError = '';
+  } catch (error) { if (epoch === state.epoch) state.usageError = error.message || 'Could not read usage statistics.'; }
+  finally { if (state.usageRead === epoch) state.usageRead = null; if (epoch === state.epoch && state.view === 'usage') render(); }
+}
+const ratio = value => value === null ? '—' : value.toFixed(2);
+function usageChart(reading) {
+  const width = 680, left = 38, right = 8, plot = width - left - right, totals = reading.series.all, starts = reading.series.started, max = Math.max(1, ...totals);
+  const slot = plot / Math.max(1, totals.length);
+  const image = svg('svg', { viewBox: `0 0 ${width} 190`, class: 'chart', role: 'img', 'aria-label': `Aggregate Alibi counts by UTC day: ${totals.join(', ')}. Puzzle starts: ${starts.join(', ')}. Today is partial.` });
+  for (const r of [0, 0.5, 1]) { const y = 148 - r * 126; image.append(svg('line', { x1: left, x2: width - right, y1: y, y2: y, class: 'chart-grid' }), svg('text', { x: left - 7, y: y + 4, 'text-anchor': 'end', class: 'chart-text' }, count(Math.round(max * r)))); }
+  totals.forEach((n, i) => {
+    const x = left + i * slot + 5, w = Math.max(1, slot - 10), h = n / max * 126, hs = starts[i] / max * 126;
+    image.append(svg('rect', { x, y: 148 - h, width: w, height: h, rx: 2, class: 'chart-bar' }, svg('title', {}, `${reading.days[i]}: ${count(n)} counts, ${count(starts[i])} puzzle starts`)),
+      svg('rect', { x: x + w * 0.3, y: 148 - hs, width: w * 0.4, height: hs, rx: 1, class: 'chart-bar-accent' }));
+    if (totals.length <= 9 || i % 2 === 0) image.append(svg('text', { x: x + w / 2, y: 175, 'text-anchor': 'middle', class: 'chart-text' }, new Date(reading.days[i] + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })));
+  });
+  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', {}, 'All counts · inner bar: puzzle starts'), e('span', {}, 'UTC · today is partial')),
+    e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'All counts', 'Page views', 'Puzzle starts', 'Completions'],
+      reading.days.map((d, i) => [d, count(totals[i]), count(reading.series.views[i]), count(starts[i]), count(reading.series.completed[i])]))));
+}
+function share(rows, key, total) {
+  if (!rows.length) return e('p', { class: 'muted' }, 'No counts in this window.');
+  return e('div', { class: 'table-shell' }, table([key[0].toUpperCase() + key.slice(1), 'Counts', 'Share'], rows.map(r => [r[key], count(r.n),
+    e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, total), value: r.n, 'aria-label': `${r[key]}: ${r.n} of ${total}` })])));
+}
+function coverage() {
+  const describe = p => p.id === 'alibi' && state.usage?.collectionAdmitted ? 'Aggregate counts admitted (Alibi 0.12.0 sends them by default, with opt-out)'
+    : !p.collectionEligible ? 'Local-only by design; no browser collection'
+      : p.collectionAdmitted ? 'Opt-in session events only' : 'Not measured. Needs your go-ahead: notice review and host adapter';
+  return panel('Coverage across your sites', e('div', { class: 'table-shell' }, table(['Site', 'Usage measurement', 'Opt-in events (window)', 'Reachability'],
+    state.snapshot.projects.map(p => [p.label, describe(p), count(p.totals.events), chip(p)]))), e('span', { class: 'mini-label' }, 'WHAT IS MEASURED'));
+}
+function usageView() {
+  const u = state.usage;
+  if (!u) return [state.usageRead !== null || !state.usageError ? empty('Reading usage…', 'Fetching aggregate Alibi counts for this window.')
+    : empty('Usage unavailable.', state.usageError, button('Try again', () => { readUsage(); render(); }, 'primary')), coverage()];
+  const r = usageReading(u), qs = usageQuestions(u, r);
+  const synthetic = u.mode === 'demo' ? 'SYNTHETIC · ' : '';
+  return [e('p', { class: 'tiny muted' }, `${synthetic}Alibi · ${u.window.startDay} to ${u.window.endDay} UTC · ${u.population} · read ${date(u.generatedAt)}${state.usageError ? ' · last read failed, showing previous' : ''}`),
+    e('section', { class: 'stats-grid', 'aria-label': 'Alibi usage summary' },
+      stat('Page views', count(r.views), r.busiest ? `Busiest day ${r.busiest.day} (${count(r.busiest.n)} counts)` : 'No counts in this window', 'lime'),
+      stat('Puzzle starts', count(r.started), `${count(r.failed)} reported failures`),
+      stat('Completions per start', ratio(r.completedPerStart), `${count(r.completed)} completions. Two independent counts, not a per-player rate.`),
+      stat('Hints per start', ratio(r.hintsPerStart), `${count(r.hints)} hint requests · ${count(r.errors)} app errors`, r.errors ? 'orange' : '')),
+    e('div', { class: 'overview-grid' },
+      panel('Questions worth asking', qs.length ? e('ul', {}, qs.map(q => e('li', { class: q.kind === 'boundary' ? 'notice' : '' }, q.text))) : e('p', { class: 'muted' }, 'Nothing stands out in these counts. That is not proof the experience is good; watch a real session.'), e('span', { class: 'mini-label' }, 'LEADS, NOT VERDICTS')),
+      panel('Day by day', usageChart(r), e('span', { class: 'mini-label' }, 'AGGREGATE COUNTS'))),
+    e('div', { class: 'overview-grid' },
+      panel('Where activity happens', share(u.routes, 'route', u.total), e('span', { class: 'mini-label' }, 'ROUTE MIX')),
+      panel('What gets done', share(u.events, 'event', u.total), e('span', { class: 'mini-label' }, 'EVENT MIX'))),
+    e('div', { class: 'overview-grid' },
+      panel('Which build sent counts', share(u.releases, 'release', u.total), e('span', { class: 'mini-label' }, 'RELEASE MIX')),
+      panel('Reading limits', e('ul', { class: 'tiny muted' }, u.limitations.map(text => e('li', {}, text))))),
+    coverage()];
+}
 function render() {
   const focusId = document.activeElement?.id;
   const [title, subtitle] = views[state.view];
@@ -340,13 +409,13 @@ function render() {
   else if (!state.snapshot) view.replaceChildren(empty('Your projects have a story. Start with a reading.',
     'Connect the collector for real evidence, or explore a deterministic scenario. Nothing is collected by opening this page.',
     e('div', { class: 'onramp-actions' }, button('Explore the desk →', () => beginDemo(), 'primary'), button('Connect my data', () => showDialog('#connect-dialog')))));
-  else { const content = state.view === 'overview' ? overview() : state.view === 'signals' ? inbox() : releaseLab(); view.replaceChildren(...(Array.isArray(content) ? content : [content])); }
+  else { const content = state.view === 'overview' ? overview() : state.view === 'signals' ? inbox() : state.view === 'usage' ? usageView() : releaseLab(); view.replaceChildren(...(Array.isArray(content) ? content : [content])); }
   if (focusId && document.activeElement === document.body) document.getElementById(focusId)?.focus({ preventScroll: true });
 }
 function navigate(view) { if (!Object.hasOwn(views, view)) return; if (location.hash === '#' + view) { state.view = view; render(); } else location.hash = view; }
 function cancelRead() { state.epoch++; clearTimeout(state.timer); state.controller?.abort(); state.controller = null; state.busy = false; }
-function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.drawerSnapshot = null; state.drawerStale = false; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
-function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); }
+function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.usage = null; state.usageError = ''; state.usageRead = null; state.drawerSnapshot = null; state.drawerStale = false; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
+function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); state.usage = makeStatisticsDemo(state.days); render(); }
 async function refresh() {
   if (!state.token) { if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } return; }
   if (state.busy || document.hidden) return;
@@ -363,6 +432,7 @@ async function refresh() {
     assertPortfolio(data);
     if (data.window.days !== state.days) throw new Error('Unexpected portfolio window');
     state.snapshot = data; state.stale = false; state.error = '';
+    if (state.view === 'usage') readUsage();
   } catch { if (epoch === state.epoch) { state.stale = true; state.error = 'Could not read the collector. No demo data was substituted.'; notify(state.error); } }
   finally {
     clearTimeout(timeout);
@@ -381,7 +451,7 @@ $('#brief').addEventListener('click', fieldNote); $('#density').addEventListener
 $('#search').addEventListener('input', event => { state.query = event.target.value.toLowerCase().trim(); render(); });
 $('#scenario').addEventListener('change', event => { state.scenario = event.target.value; beginDemo(); });
 $('#replay').addEventListener('input', event => { state.phase = Number(event.target.value); if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } });
-$('#window').addEventListener('change', event => { state.days = Number(event.target.value); if (state.token) { cancelRead(); refresh(); } else if (state.snapshot?.mode === 'demo') beginDemo(); });
+$('#window').addEventListener('change', event => { state.days = Number(event.target.value); if (state.token) { state.usage = null; state.usageError = ''; } if (state.token) { cancelRead(); refresh(); } else if (state.snapshot?.mode === 'demo') beginDemo(); });
 $('#export-confirm').addEventListener('change', () => { $('#download-export').disabled = !$('#export-confirm').checked; });
 $('#accept-import').addEventListener('click', () => { if (!state.pendingImport) return; state.imported[state.pendingImport.kind] = state.pendingImport; state.pendingImport = null; $('#import-preview').textContent = ''; $('#import-dialog').close(); render(); notify('Reviewed context kept in this tab only.'); });
 $('#import-dialog').addEventListener('close', () => { state.pendingImport = null; $('#import-preview').textContent = ''; });
@@ -404,12 +474,12 @@ $('#download-export').addEventListener('click', () => {
 $('#command-list').replaceChildren(...Object.entries(views).map(([view, [title]]) => button(title, () => { $('#palette').close(); navigate(view); })),
   button('Explore a synthetic scenario', () => { $('#palette').close(); beginDemo(); }), button('Prepare a field note', () => { $('#palette').close(); fieldNote(); }), button('Toggle density', () => { $('#palette').close(); density(); }));
 $('#commands').addEventListener('click', () => showDialog('#palette'));
-window.addEventListener('hashchange', () => { state.view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; render(); $('#page-title').focus({ preventScroll: true }); });
+window.addEventListener('hashchange', () => { state.view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'overview'; if (state.view === 'usage') readUsage(); render(); $('#page-title').focus({ preventScroll: true }); });
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); showDialog('#palette'); return; }
   if (document.querySelector('dialog[open]') || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName)) return;
   if (event.key === '/') { event.preventDefault(); $('#search').focus(); }
-  if (!event.ctrlKey && !event.altKey && !event.metaKey && /^[1-4]$/.test(event.key)) navigate(Object.keys(views)[Number(event.key) - 1]);
+  if (!event.ctrlKey && !event.altKey && !event.metaKey && /^[1-5]$/.test(event.key)) navigate(Object.keys(views)[Number(event.key) - 1]);
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelRead(); render(); } else if (state.token) refresh(); });
 window.addEventListener('pagehide', disconnect);
