@@ -31,7 +31,7 @@ test('the Desk accepts what the aggregate reader produces', async t => {
   assert.equal(r.errorsPer100Views, 10);
   assert.deepEqual(r.busiest, { day: '2026-09-25', n: 32 });
   const text = usageQuestions(stats, r).map(q => q.text).join(' ');
-  assert.match(text, /4 completions against 12 starts/);
+  assert.match(text, /4 completions against 12 puzzle starts/);
   assert.match(text, /15 hint requests against 12 starts/);
   assert.match(text, /2 app errors/);
   assert.match(text, /2 release labels/);
@@ -70,18 +70,34 @@ test('empty and unadmitted readings say what a zero cannot mean', async t => {
 });
 
 test('synthetic usage passes the same contract and is marked', () => {
-  for (const days of [1, 7, 14]) {
-    const demo = makeStatisticsDemo(days, now);
+  for (const project of ['alibi', 'mdviewer']) for (const days of [1, 7, 14]) {
+    const demo = makeStatisticsDemo(days, now, project);
     assert.equal(demo.mode, 'demo');
-    assert.equal(assertStatistics(demo, days), demo);
+    assert.equal(assertStatistics(demo, days, project), demo);
     assert.match(demo.limitations[0], /SYNTHETIC/);
   }
+  assert.equal(usageReading(makeStatisticsDemo(7, now, 'alibi')).journey, 'puzzle');
+  assert.equal(usageReading(makeStatisticsDemo(7, now, 'mdviewer')).journey, 'action');
+});
+
+test('a read for one project is refused as another project', async t => {
+  const stats = await reader(t, [['2026-09-25', 'page.view', 'home', '0.12.0', 3]]);
+  assert.throws(() => assertStatistics(stats, 7, 'mdviewer'), TypeError);
+  const md = { ...structuredClone(stats), project: 'mdviewer' };
+  assert.equal(assertStatistics(md, 7, 'mdviewer'), md);
+  const r = usageReading({ ...md, events: [{ event: 'action.requested', n: 2 }, { event: 'page.view', n: 1 }] });
+  assert.equal(r.journey, 'action');
+  assert.equal(r.started, 2);
 });
 
 test('the statistics read is bounded and credential-safe', () => {
   let seen;
   requestStatistics((url, init) => { seen = { url, init }; }, { token: 't', days: 14, signal: null });
   assert.equal(seen.url, '/v1/statistics/alibi?days=14');
+  let other; requestStatistics((url) => { other = url; }, { project: 'commitatlas', token: 't', days: 1, signal: null });
+  assert.equal(other, '/v1/statistics/commitatlas?days=1');
+  for (const project of ['../x', 'Alibi', '', 'a?b']) assert.throws(() => requestStatistics(() => {}, { project, token: 't', days: 7 }), TypeError);
+  assert.throws(() => requestStatistics(() => {}, { project: 'alibi', token: 't', days: 3 }), TypeError);
   assert.deepEqual(seen.init.headers, { authorization: 'Bearer t' });
   assert.equal(seen.init.credentials, 'omit');
   assert.equal(seen.init.redirect, 'error');

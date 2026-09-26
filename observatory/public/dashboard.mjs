@@ -10,7 +10,7 @@ const $ = selector => document.querySelector(selector);
 const REFRESH_MS = 30_000;
 const state = { snapshot: null, token: '', days: 7, scenario: 'release', phase: 1, query: '', sort: 'attention',
   view: 'overview', reviewed: false, reviews: {}, releaseProject: '', baseline: '', candidate: '',
-  stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null, usage: null, usageError: '', usageRead: null };
+  stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null, usage: null, usageError: '', usageRead: null, usageProject: 'alibi' };
 const views = {
   overview: ['The desk.', 'A clear place to see what needs you.'],
   signals: ['Signal inbox.', 'Observations you can inspect, park, or turn into a next step.'],
@@ -326,14 +326,14 @@ function connections() {
 async function readUsage() {
   // Keyed by read epoch, so a read cancelled by a window change or disconnect cannot leave the view stuck busy.
   if (!state.token || state.usageRead === state.epoch) return;
-  const epoch = state.epoch, days = state.days; state.usageRead = epoch;
+  const epoch = state.epoch, days = state.days, project = state.usageProject; state.usageRead = epoch;
   try {
-    const response = await requestStatistics(fetch, { token: state.token, days, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+    const response = await requestStatistics(fetch, { project, token: state.token, days, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
     if (epoch !== state.epoch) return;
     if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return; }
     if (!response.ok) throw new Error('Usage statistics are unavailable.');
-    const data = assertStatistics(await readLimitedJson(response, STATISTICS_MAX_BYTES), days);
-    if (epoch !== state.epoch || days !== state.days) return;
+    const data = assertStatistics(await readLimitedJson(response, STATISTICS_MAX_BYTES), days, project);
+    if (epoch !== state.epoch || days !== state.days || project !== state.usageProject) return;
     state.usage = data; state.usageError = '';
   } catch (error) { if (epoch === state.epoch) state.usageError = error.message || 'Could not read usage statistics.'; }
   finally { if (state.usageRead === epoch) state.usageRead = null; if (epoch === state.epoch && state.view === 'usage') render(); }
@@ -342,16 +342,16 @@ const ratio = value => value === null ? '—' : value.toFixed(2);
 function usageChart(reading) {
   const width = 680, left = 38, right = 8, plot = width - left - right, totals = reading.series.all, starts = reading.series.started, max = Math.max(1, ...totals);
   const slot = plot / Math.max(1, totals.length);
-  const image = svg('svg', { viewBox: `0 0 ${width} 190`, class: 'chart', role: 'img', 'aria-label': `Aggregate Alibi counts by UTC day: ${totals.join(', ')}. Puzzle starts: ${starts.join(', ')}. Today is partial.` });
+  const image = svg('svg', { viewBox: `0 0 ${width} 190`, class: 'chart', role: 'img', 'aria-label': `Aggregate counts by UTC day: ${totals.join(', ')}. ${reading.journey} starts: ${starts.join(', ')}. Today is partial.` });
   for (const r of [0, 0.5, 1]) { const y = 148 - r * 126; image.append(svg('line', { x1: left, x2: width - right, y1: y, y2: y, class: 'chart-grid' }), svg('text', { x: left - 7, y: y + 4, 'text-anchor': 'end', class: 'chart-text' }, count(Math.round(max * r)))); }
   totals.forEach((n, i) => {
     const x = left + i * slot + 5, w = Math.max(1, slot - 10), h = n / max * 126, hs = starts[i] / max * 126;
-    image.append(svg('rect', { x, y: 148 - h, width: w, height: h, rx: 2, class: 'chart-bar' }, svg('title', {}, `${reading.days[i]}: ${count(n)} counts, ${count(starts[i])} puzzle starts`)),
+    image.append(svg('rect', { x, y: 148 - h, width: w, height: h, rx: 2, class: 'chart-bar' }, svg('title', {}, `${reading.days[i]}: ${count(n)} counts, ${count(starts[i])} ${reading.journey} starts`)),
       svg('rect', { x: x + w * 0.3, y: 148 - hs, width: w * 0.4, height: hs, rx: 1, class: 'chart-bar-accent' }));
     if (totals.length <= 9 || i % 2 === 0) image.append(svg('text', { x: x + w / 2, y: 175, 'text-anchor': 'middle', class: 'chart-text' }, new Date(reading.days[i] + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })));
   });
-  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', {}, 'All counts · inner bar: puzzle starts'), e('span', {}, 'UTC · today is partial')),
-    e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'All counts', 'Page views', 'Puzzle starts', 'Completions'],
+  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', {}, `All counts · inner bar: ${reading.journey} starts`), e('span', {}, 'UTC · today is partial')),
+    e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'All counts', 'Page views', 'Starts', 'Completions'],
       reading.days.map((d, i) => [d, count(totals[i]), count(reading.series.views[i]), count(starts[i]), count(reading.series.completed[i])]))));
 }
 function share(rows, key, total) {
@@ -360,24 +360,35 @@ function share(rows, key, total) {
     e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, total), value: r.n, 'aria-label': `${r[key]}: ${r.n} of ${total}` })])));
 }
 function coverage() {
-  const describe = p => p.id === 'alibi' && state.usage?.collectionAdmitted ? 'Aggregate counts admitted (Alibi 0.12.0 sends them by default, with opt-out)'
+  const describe = p => p.id === state.usage?.project && state.usage.collectionAdmitted ? 'Aggregate counts admitted (shown above)'
     : !p.collectionEligible ? 'Local-only by design; no browser collection'
-      : p.collectionAdmitted ? 'Opt-in session events only' : 'Not measured. Needs your go-ahead: notice review and host adapter';
+      : p.collectionAdmitted ? 'Collection admitted. Pick it above to read its aggregate counts' : 'Not measured yet. Needs its host adapter and admission';
   return panel('Coverage across your sites', e('div', { class: 'table-shell' }, table(['Site', 'Usage measurement', 'Opt-in events (window)', 'Reachability'],
     state.snapshot.projects.map(p => [p.label, describe(p), count(p.totals.events), chip(p)]))), e('span', { class: 'mini-label' }, 'WHAT IS MEASURED'));
 }
+function chooseUsageProject(id) {
+  state.usageProject = id; state.usageError = '';
+  state.usage = state.snapshot?.mode === 'demo' ? makeStatisticsDemo(state.days, Date.now(), id) : null;
+  readUsage(); render();
+}
+function usagePicker() {
+  const eligible = state.snapshot.projects.filter(p => p.collectionEligible);
+  return e('div', { class: 'filter-row' }, selectControl('Site', 'usage-project', eligible.map(p => [p.id, p.label]), state.usageProject, id => chooseUsageProject(id)),
+    e('p', { class: 'muted' }, 'Aggregate counts for one site at a time. Counts are events, never people.'));
+}
 function usageView() {
-  const u = state.usage;
-  if (!u) return [state.usageRead !== null || !state.usageError ? empty('Reading usage…', 'Fetching aggregate Alibi counts for this window.')
+  const u = state.usage, label = state.snapshot.projects.find(p => p.id === state.usageProject)?.label ?? state.usageProject;
+  if (!u) return [usagePicker(), state.usageRead !== null || !state.usageError ? empty('Reading usage…', `Fetching aggregate ${label} counts for this window.`)
     : empty('Usage unavailable.', state.usageError, button('Try again', () => { readUsage(); render(); }, 'primary')), coverage()];
   const r = usageReading(u), qs = usageQuestions(u, r);
   const synthetic = u.mode === 'demo' ? 'SYNTHETIC · ' : '';
-  return [e('p', { class: 'tiny muted' }, `${synthetic}Alibi · ${u.window.startDay} to ${u.window.endDay} UTC · ${u.population} · read ${date(u.generatedAt)}${state.usageError ? ' · last read failed, showing previous' : ''}`),
-    e('section', { class: 'stats-grid', 'aria-label': 'Alibi usage summary' },
+  return [usagePicker(), e('p', { class: 'tiny muted' }, `${synthetic}${label} · ${u.window.startDay} to ${u.window.endDay} UTC · ${u.population} · read ${date(u.generatedAt)}${state.usageError ? ' · last read failed, showing previous' : ''}`),
+    e('section', { class: 'stats-grid', 'aria-label': `${label} usage summary` },
       stat('Page views', count(r.views), r.busiest ? `Busiest day ${r.busiest.day} (${count(r.busiest.n)} counts)` : 'No counts in this window', 'lime'),
-      stat('Puzzle starts', count(r.started), `${count(r.failed)} reported failures`),
+      stat(r.journey === 'puzzle' ? 'Puzzle starts' : 'Action starts', count(r.started), `${count(r.failed)} reported failures`),
       stat('Completions per start', ratio(r.completedPerStart), `${count(r.completed)} completions. Two independent counts, not a per-player rate.`),
-      stat('Hints per start', ratio(r.hintsPerStart), `${count(r.hints)} hint requests · ${count(r.errors)} app errors`, r.errors ? 'orange' : '')),
+      r.journey === 'puzzle' ? stat('Hints per start', ratio(r.hintsPerStart), `${count(r.hints)} hint requests · ${count(r.errors)} app errors`, r.errors ? 'orange' : '')
+        : stat('Errors per 100 views', r.errorsPer100Views === null ? '—' : r.errorsPer100Views.toFixed(1), `${count(r.errors)} app errors · two independent counts`, r.errors ? 'orange' : '')),
     e('div', { class: 'overview-grid' },
       panel('Questions worth asking', qs.length ? e('ul', {}, qs.map(q => e('li', { class: q.kind === 'boundary' ? 'notice' : '' }, q.text))) : e('p', { class: 'muted' }, 'Nothing stands out in these counts. That is not proof the experience is good; watch a real session.'), e('span', { class: 'mini-label' }, 'LEADS, NOT VERDICTS')),
       panel('Day by day', usageChart(r), e('span', { class: 'mini-label' }, 'AGGREGATE COUNTS'))),
@@ -415,7 +426,7 @@ function render() {
 function navigate(view) { if (!Object.hasOwn(views, view)) return; if (location.hash === '#' + view) { state.view = view; render(); } else location.hash = view; }
 function cancelRead() { state.epoch++; clearTimeout(state.timer); state.controller?.abort(); state.controller = null; state.busy = false; }
 function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.usage = null; state.usageError = ''; state.usageRead = null; state.drawerSnapshot = null; state.drawerStale = false; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
-function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); state.usage = makeStatisticsDemo(state.days); render(); }
+function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); state.usage = makeStatisticsDemo(state.days, Date.now(), state.usageProject); render(); }
 async function refresh() {
   if (!state.token) { if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } return; }
   if (state.busy || document.hidden) return;
