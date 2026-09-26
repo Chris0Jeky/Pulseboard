@@ -73,7 +73,8 @@ depending on the vendor.
 - **Pulseboard (system of record).** This is the first-party collector and D1 tables under the
   versioned contract. All product events live only here.
 - **Cloudflare Web Analytics (parallel source).** It is cookieless and free, and covers the same
-  sites through its beacon. The beacon is loaded by the same embed and obeys the same switch: it
+  sites through its beacon, configured in manual snippet mode only (never automatic edge
+  injection). The beacon is loaded by the same embed and obeys the same switch: it
   never loads after "Turn off", or when GPC or DNT is set. The non-goal above binds Pulseboard's
   collector. The beacon is a separate service provider and sends Cloudflare its own page and
   referrer data, so before slice 6 ships, read Cloudflare's current Web Analytics documentation and
@@ -97,10 +98,10 @@ depending on the vendor.
    notice, the dimension helpers and the visit markers. Ship it to Alibi first, after q-19.
 4. **Host rollout (#105).** One PR per host repository, in this order: CommitAtlas, Portfolio,
    MDviewer, then Developer Lens showcase, IdleHarbor and WealthLens. Each id is added to
-   `COLLECT_STAT_PROJECTS` (and to `COLLECT_PROJECTS` only because statistics admission requires
-   it) in a Pulseboard PR after its host PR is ready. The host artifact sends aggregate counts
-   only; session-event collection for a new host is a separate owner decision (slice 5 covers
-   Alibi testers). MDviewer must never send Markdown, filenames or export contents. Developer Lens
+   `COLLECT_STAT_PROJECTS` only, in a Pulseboard PR after its host PR is ready. Statistics
+   admission does not depend on `COLLECT_PROJECTS` (#110), so a host's identifier-bearing
+   `/v1/collect/<id>` stays closed. Session-event collection for a new host is a separate owner
+   decision (slice 5 covers Alibi testers). MDviewer must never send Markdown, filenames or export contents. Developer Lens
    must prove its private build never loads the embed.
 5. **Tester tier (#106).** An enrolment switch and invite link in Alibi first, reusing the existing
    opt-in session path and portfolio flows, plus a Desk "Testers" panel with journeys, stalls and
