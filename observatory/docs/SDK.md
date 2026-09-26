@@ -68,7 +68,8 @@ records one view for the right route, not `home` and then the real one:
 ```
 
 The attribute is read once at mount and used only when it names a registered route; an explicit
-`Pulseboard.route()` before mount wins.
+`Pulseboard.route()` before mount wins; before mount it only picks the landing route, so the page still
+records exactly one first view.
 
 ### What `track` accepts
 

@@ -113,7 +113,7 @@ test('start route: <html data-pulseboard-route> names the first page.view when i
   sdk.mount();
   early.fire();
   await settle();
-  assert.equal(early.counts()[0].body.counts.at(-1).route, 'other');
+  assert.deepEqual(early.counts()[0].body.counts.map(c => c.route), ['other'], 'one landing view, not one from route() and one from mount');
 });
 
 test('pre-region: track and errors are buffered while the hint is pending, then sent outside the EEA', async () => {

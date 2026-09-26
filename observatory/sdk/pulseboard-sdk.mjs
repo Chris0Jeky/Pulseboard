@@ -585,6 +585,8 @@ export function createPulseboard(config, runtime = globalThis) {
     try {
       currentRoute = typeof name === 'string' && cfg.routes.includes(name) ? name : cfg.routes.includes('other') ? 'other' : 'home';
       routeChosen = true;
+      // Before mount this only picks the landing route: mount() records the page's single first view.
+      if (!mounted) return !disposed;
       return pageView();
     } catch { return false; }
   }
