@@ -79,6 +79,11 @@ async def run(args):
         demo_mark = len(requests)
         await page.locator('#demo').click()
         await expect(page.locator('#mode')).to_have_text('SYNTHETIC DEMO')
+        await expect(page.locator('#view .guide')).to_have_count(1)
+        await page.get_by_role('button', name='Hide all guides').click()
+        await expect(page.locator('#view .guide')).to_have_count(0)
+        await page.locator('#guides').click()
+        await expect(page.locator('#view .guide')).to_have_count(1)
         await page.locator('#search').fill('Alibi')
         assert await page.locator('.project-name').count() == 1
         await page.locator('#search').fill('')

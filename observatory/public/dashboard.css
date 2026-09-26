@@ -364,5 +364,4 @@ body{background:white;color:black}.muted,.subtitle,.stat-note,.chart-caption{col
 .share-meter::-moz-meter-bar{background:var(--data);border-radius:4px}
 .share-pct{min-width:40px;text-align:right;font-weight:600;color:var(--muted)}
 .nowrap{white-space:nowrap}
-#page-title:focus{outline:none}
 .chart-text{font-size:14px}

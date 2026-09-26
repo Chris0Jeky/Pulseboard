@@ -13,7 +13,7 @@ const REFRESH_MS = 30_000;
 const state = { snapshot: null, token: '', days: 7, scenario: 'release', phase: 1, query: '', sort: 'attention',
   view: 'overview', reviewed: false, reviews: {}, releaseProject: '', baseline: '', candidate: '',
   stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null, usage: null, product: null, errors: { usage: '', product: '' }, reads: { usage: null, product: null }, usageProject: 'alibi', usageDays: 7,
-  explorer: null, explorerName: '', plugin: null };
+  explorer: null, explorerName: '', plugin: null, guideClosed: {} };
 const views = {
   overview: ['Overview', 'Every site at a glance: which are up, how busy they are, and what needs you.'],
   signals: ['Alerts', 'Things the rules noticed. Open one to see why, then mark it reviewed or snooze it.'],
@@ -24,9 +24,10 @@ const views = {
 };
 /** One short "how to read this page" per view. Plain words; every claim here matches what the view computes. */
 const guides = {
-  overview: ['The four cards sum up every site over the window chosen at the top right.',
+  overview: ['The four cards sum up every site over the time window picked above.',
     'What needs you lists the most important alerts. The Alerts page has all of them.',
-    'Your sites: Status is whether the 15-minute check reached the site. Events and sessions come from visitors\u2019 browsers. Click a site name for its details.',
+    'Status is the 15-minute site check: it passes when the page loads with its expected content, and flips only after 2 passes or 3 failures in a row.',
+    'Events, sessions and success rate on this page come from detailed session events, which only the Alibi pilot sends. Usage and Product cover every site.',
     'Every number counts events or browser tabs. None identifies a person.'],
   signals: ['Each alert comes from a fixed rule, such as a failed site check. Nothing is guessed.',
     'See evidence shows the exact numbers behind an alert.',
@@ -42,12 +43,12 @@ const guides = {
     'The top cards show page views and the site\u2019s main action. Day by day shows the trend; Questions worth asking points at things worth a look.',
     'Who and where splits the counts by country, device, browser, where visitors came from and more. With few visitors, one row can be one person.',
     'Counts come only from browsers that allow the Counts category. Visitors can switch it off in the site\u2019s bar.'],
-  product: ['Product events are the named steps a site reports, such as puzzle.started. They and the journeys need the Journeys category; speed and errors need Diagnostics.',
+  product: ['Product events are what a site reports: named steps such as puzzle.started and journeys need the Journeys category; speed, errors and time on page need Diagnostics. The totals include both.',
     'A session is one browser tab. Journeys lists the steps each tab took, newest first. Last step before leaving shows where tabs stopped.',
     'Speed and errors: page speed (web vitals, rated Good, Needs work or Poor by web.dev thresholds) and errors grouped by message.',
     'Explorer reads the raw events for one name so you can see every property. Some sites add their own panel, like Alibi\u2019s puzzle view.'],
 };
-const labels = { up: 'Online', down: 'Offline', stale: 'Check overdue', unknown: 'Not checked', local: 'Local only' };
+const labels = { up: 'Check passing', down: 'Check failing', stale: 'Check overdue', unknown: 'Not checked', local: 'Local only' };
 const e = (tag, attrs = {}, ...children) => {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
@@ -80,9 +81,10 @@ function showDialog(id) { const dialog = $(id); if (!dialog.open) dialog.showMod
 function empty(title, detail, action = null) { return e('section', { class: 'empty' }, e('div', { class: 'empty-mark', 'aria-hidden': true }, '⌁'), e('h2', {}, title), e('p', {}, detail), action); }
 function guide(view) {
   if (state.guidesHidden || !guides[view]) return null;
-  return e('details', { class: 'guide', open: true }, e('summary', {}, 'How to read this page'),
+  // Collapsing one guide is remembered for the tab, so a refresh re-render does not reopen it.
+  return e('details', { class: 'guide', open: !state.guideClosed[view], onToggle: event => { state.guideClosed[view] = !event.target.open; } }, e('summary', {}, 'How to read this page'),
     e('div', { class: 'guide-body' }, e('ul', {}, guides[view].map(text => e('li', {}, text))),
-      e('p', { class: 'guide-foot' }, button('Hide all guides', toggleGuides), e('span', { class: 'tiny' }, 'Bring them back from the menu on the left.'))));
+      e('p', { class: 'guide-foot' }, button('Hide all guides', toggleGuides), e('span', { class: 'tiny' }, 'Bring them back from the menu on the left, or with Ctrl K.'))));
 }
 function stat(title, value, note, accent = '') { return e('article', { class: 'stat' }, e('div', { class: 'stat-title' }, title), e('strong', { class: `stat-value ${accent}` }, value), e('div', { class: 'stat-note' }, note)); }
 /** A failed refresh makes the reading unknown; it never erases a last-known failure or invents a probe claim. */
@@ -156,7 +158,7 @@ function chart(projects, mini = false) {
     image.append(svg('rect', { x, y: 148 - height, width: Math.max(1, plot / days.length - 10), height, rx: 2, class: 'chart-bar' }, svg('title', {}, `${new Date(days[i] * DAY).toISOString().slice(0, 10)}: ${count(n)} admitted events`)));
     if (days.length <= 9 || i % 2 === 0) image.append(svg('text', { x: x + (plot / days.length - 10) / 2, y: 175, 'text-anchor': 'middle', class: 'chart-text' }, new Date(days[i] * DAY).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })));
   });
-  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', { class: 'chart-legend' }, 'Events received, all sites'), e('span', {}, 'UTC days; the first and last can be partial')),
+  return e('div', {}, image, e('div', { class: 'chart-caption' }, e('span', { class: 'chart-legend' }, 'Session events, all sites'), e('span', {}, 'UTC days; the first and last can be partial')),
     e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'Admitted events'], days.map((day, i) => [new Date(day * DAY).toISOString().slice(0, 10), count(totals[i])]))));
 }
 function projectTable() {
@@ -173,7 +175,7 @@ function projectTable() {
     e('th', { scope: 'col', class: 'right' }, 'Sessions'), e('th', { scope: 'col', class: 'right' }, 'Success rate'), e('th', { scope: 'col', class: 'right' }, 'Daily budget used'))),
     e('tbody', {}, projects.map(p => e('tr', {},
       e('td', {}, e('div', { class: 'project-name' }, e('span', { class: 'project-glyph', 'aria-hidden': true }, p.label.slice(0, 2).toUpperCase()), e('div', {}, button(p.label, () => projectDetail(p)), e('small', {}, p.probeExpected ? `Last event ${relative(p.totals.last).toLowerCase()}` : 'Not checked from outside, by design')))),
-      e('td', {}, chip(p), e('div', { class: 'tiny muted' }, p.collectionEligible ? (p.collectionAdmitted ? 'Collecting' : 'Not collecting') : 'Nothing collected, by design')), e('td', { class: 'right mono' }, count(p.totals.events), chart([p], true)),
+      e('td', {}, chip(p), e('div', { class: 'tiny muted' }, p.collectionEligible ? (p.collectionAdmitted ? 'Session events on' : 'Session events off (see Usage)') : 'Nothing collected, by design')), e('td', { class: 'right mono' }, count(p.totals.events), chart([p], true)),
       e('td', { class: 'right mono' }, count(p.totals.sessions)),
       e('td', { class: 'right' }, e('span', { class: 'mono' }, percent(fraction(p.totals.completed, p.totals.completed + p.totals.failed).value)), e('div', { class: 'tiny muted' }, `of ${count(p.totals.completed + p.totals.failed)} actions`)),
       e('td', { class: 'right' }, e('span', { class: 'mono' }, `${count(p.budget.used)} / ${count(p.budget.limit)}`), e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, p.budget.limit), value: p.budget.used, 'aria-label': `${p.label}: ${p.budget.used} of ${p.budget.limit} daily admission units used` }))))));
@@ -184,13 +186,13 @@ function overview() {
   const s = state.snapshot, ps = s.projects, ss = signals(), open = ss.filter(signal => reviewState(signal, state.reviews) === 'open');
   const completed = sum(ps, p => p.totals.completed), outcomes = completed + sum(ps, p => p.totals.failed);
   return [e('section', { class: 'stats-grid', 'aria-label': 'Whole portfolio summary' },
-    stat('Sites sending data', `${ps.filter(p => p.totals.events > 0).length} / ${ps.length}`, 'Sites with at least one event in this window', 'lime'),
+    stat('Sites with session events', `${ps.filter(p => p.totals.events > 0).length} / ${ps.length}`, 'Detailed session events, sent by the Alibi pilot. Usage and Product cover every site.', 'lime'),
     stat('Needs a look', count(signalSet().filter(x => x.severity !== 'note').length), 'Warnings and critical alerts', 'orange'),
     stat('Sessions', count(sum(ps, p => p.totals.sessions)), 'Browser tabs, added up across sites. Not unique people.'),
     stat('Actions that succeeded', percent(fraction(completed, outcomes).value), `Of ${count(outcomes)} reported actions that finished or failed`)),
     e('div', { class: 'overview-grid' }, panel('What needs you', open.length ? e('div', {}, open.slice(0, 2).map(x => signalCard(x, true)))
       : e('p', { class: 'muted' }, 'Nothing open right now. Parts of a site that send no events can still break unnoticed.'), button('All alerts →', () => navigate('signals'))),
-      panel('Events per day', chart(ps), e('span', { class: 'mini-label' }, 'ALL SITES'))), projectTable()];
+      panel('Session events per day', chart(ps), e('span', { class: 'mini-label' }, 'ALL SITES'))), projectTable()];
 }
 function projectDetail(p) {
   // The drawer, its deployment leads and any pin all read the snapshot it opened with, not a later poll.
@@ -452,10 +454,10 @@ function share(rows, key, total, heading = key[0].toUpperCase() + key.slice(1), 
     ...(shown.other ? [[`All others (${count(shown.other.values)} values)`, count(shown.other.n), meter('All others', shown.other.n)]] : [])]));
 }
 function coverage() {
-  const describe = p => p.id === state.usage?.project && state.usage.collectionAdmitted ? 'Measured (shown above)'
-    : !p.collectionEligible ? 'Not measured: runs only on your computer'
-      : p.collectionAdmitted ? 'Measured. Pick it in Site to see its numbers' : 'Not measured yet: the site needs the Pulseboard script and approval';
-  return panel('Which sites are measured', e('div', { class: 'table-shell' }, table(['Site', 'Usage', 'Events in this window', 'Status'],
+  const describe = p => !p.collectionEligible ? 'Not measured: runs only on your computer'
+    : p.id !== state.usage?.project ? 'Pick it in Site to see its counts'
+      : state.usage.collectionAdmitted ? 'Measured (shown above)' : 'Not measured: the collector does not admit its counts';
+  return panel('Which sites are measured', e('div', { class: 'table-shell' }, table(['Site', 'Usage counts', 'Session events (Alibi pilot)', 'Site check'],
     state.snapshot.projects.map(p => [p.label, describe(p), count(p.totals.events), chip(p)]))), e('span', { class: 'mini-label' }, 'ALL SITES'));
 }
 /** Site and window are shared by Usage and Product; changing either drops every read and on-demand result for the old pair. */
