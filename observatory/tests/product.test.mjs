@@ -6,7 +6,8 @@ import { projects } from '../src/projects.mjs';
 import { handle, maintain } from '../src/worker.mjs';
 import { productAdmission, exactProjectList } from '../src/admission.mjs';
 import { validateProductBatch, validateProps, redactProps, scrubText, consentRegion, EEA, PRODUCT_DEFAULT_LIMIT, PRODUCT_GLOBAL_LIMIT, PRODUCT_GLOBAL_KEY } from '../src/product-contract.mjs';
-import { readProduct, readProductEvents, JOURNEY_STEPS, TOTALS_CAPS, cutText, cleanText } from '../src/product.mjs';
+import { readProduct, readProductEvents, JOURNEY_STEPS, TOTALS_CAPS, EXITS_CAP, VITALS_CAP, cutText, cleanText } from '../src/product.mjs';
+import { assertProduct } from '../public/desk-product.mjs';
 import { startLocalRunner } from '../src/local.mjs';
 
 const ORIGIN = projects.alibi.origin, TOKEN = 't'.repeat(32);
@@ -317,7 +318,8 @@ test('the product read aggregates totals, sessions, journeys, exits, p75 vitals 
   assert.equal(r.window.startDay, '2026-09-19'); assert.equal(r.window.days, 7);
   // The exact shape the Desk (#119) validates.
   assert.deepEqual(Object.keys(r), ['schema', 'project', 'generatedAt', 'window', 'collectionAdmitted', 'population', 'limitations', 'total',
-    'totals', 'sessions', 'journeys', 'exits', 'vitals', 'errors']);
+    'totals', 'sessions', 'journeys', 'exits', 'exitsTruncated', 'vitals', 'vitalsTruncated', 'errors']);
+  assert.equal(r.exitsTruncated, false); assert.equal(r.vitalsTruncated, false);
   assert.ok(r.population.length <= 120 && r.limitations.length <= 16 && r.limitations.every(line => line.length <= 500));
   assert.equal(r.total, 22);
   assert.deepEqual(r.totals.names.slice(0, 3), [{ name: 'web.vital', n: 13 }, { name: 'js.error', n: 3 }, { name: 'puzzle.started', n: 3 }]);
@@ -332,7 +334,7 @@ test('the product read aggregates totals, sessions, journeys, exits, p75 vitals 
   assert.deepEqual(r.journeys[1], { session: A, startedAt: NOW - 60000, durationMs: 50000, steps: ['puzzle.started', 'hint.requested', 'puzzle.completed'], stepsTruncated: false });
   assert.deepEqual(r.exits, [{ name: 'puzzle.completed', n: 1 }, { name: 'puzzle.failed', n: 1 }, { name: 'puzzle.started', n: 1 }]);
   // Nearest rank: LCP n=8 -> rank 6 -> 600; CLS n=3 -> rank 3 of [0.01, 0.05, 0.2] -> 0.2. Never an average.
-  assert.deepEqual(r.vitals, [{ metric: 'CLS', route: 'home', p75: 0.2, n: 3 }, { metric: 'LCP', route: 'puzzle', p75: 600, n: 8 }]);
+  assert.deepEqual(r.vitals, [{ metric: 'LCP', route: 'puzzle', p75: 600, n: 8 }, { metric: 'CLS', route: 'home', p75: 0.2, n: 3 }], 'top by n');
   assert.deepEqual(r.errors, [{ kind: 'TypeError', message: 'x is undefined', n: 2, lastSeen: NOW - 1000 }, { kind: 'RangeError', message: 'bad', n: 1, lastSeen: NOW - 3000 }]);
   assert.ok(r.limitations.some(line => /never an average of percentiles/.test(line)));
   const one = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
@@ -377,6 +379,28 @@ test('journeys keep the latest 100 sessions and their first 60 steps', async t =
   assert.ok(100 * JOURNEY_STEPS * (64 + 3) < 1024 * 1024 / 2);
 });
 
+test('exits and vitals are capped by count with ties by name, metric and route, and report truncation (#123)', async t => {
+  const DB = database(t);
+  const list = [];
+  const sid = i => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+  // 520 sessions ending on distinct names, plus two ending on 'zz.common'.
+  for (let i = 0; i < 520; i++) list.push({ session: sid(i), seq: 1, name: 'e' + String(i).padStart(3, '0') });
+  list.push({ session: sid(600), seq: 1, name: 'zz.common' }, { session: sid(601), seq: 1, name: 'zz.common' });
+  // 1,290 distinct metric and route pairs with one sample, and one pair with two.
+  for (let i = 0; i < 1290; i++) list.push({ name: 'web.vital', route: 'r' + String(i).padStart(4, '0'), props: { metric: 'LCP', value: i } });
+  list.push({ name: 'web.vital', route: 'top', props: { metric: 'TTFB', value: 1 } }, { name: 'web.vital', route: 'top', props: { metric: 'TTFB', value: 2 } });
+  await seed(DB, list);
+  const r = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
+  assert.equal(r.exits.length, EXITS_CAP); assert.equal(r.exitsTruncated, true);
+  assert.deepEqual(r.exits.slice(0, 3), [{ name: 'zz.common', n: 2 }, { name: 'e000', n: 1 }, { name: 'e001', n: 1 }]);
+  assert.ok(r.exits.reduce((s, row) => s + row.n, 0) < r.sessions.n);
+  assert.equal(r.vitals.length, VITALS_CAP); assert.equal(r.vitalsTruncated, true);
+  assert.deepEqual(r.vitals[0], { metric: 'TTFB', route: 'top', p75: 2, n: 2 });
+  assert.deepEqual(r.vitals.slice(1, 3).map(v => v.route), ['r0000', 'r0001'], 'ties by metric then route');
+  // The capped read is one the Desk accepts.
+  assert.equal(assertProduct(r, 1, 'alibi'), r);
+});
+
 test('totals lists are capped by count, ties by value, and report truncation; days never are', async t => {
   const DB = database(t);
   const list = [];
@@ -389,6 +413,17 @@ test('totals lists are capped by count, ties by value, and report truncation; da
   assert.deepEqual(r.totals.names.slice(0, 3), [{ name: 'n999', n: 2 }, { name: 'n000', n: 1 }, { name: 'n001', n: 1 }], 'top by n, then by value');
   assert.ok(r.totals.names.reduce((s, row) => s + row.n, 0) < r.total);
   assert.deepEqual(r.totals.days, [{ day: '2026-09-25', n: r.total }]);
+});
+
+test('a prop string cut to 256 never ends in a lone surrogate', () => {
+  const { props } = redactProps({ s: 'a'.repeat(254) + '\u{1F600}' });
+  assert.equal(props.s, 'a'.repeat(254) + '\u{1F600}', 'within the bound it is untouched');
+  // Redaction grows the text past 256 at a point where the cut would fall inside a surrogate pair.
+  const grown = redactProps({ s: 'a@b.cd ' + 'b'.repeat(247) + '\u{1F600}' }).props.s;
+  assert.ok(grown.length <= 256);
+  assert.ok(!/[\ud800-\udbff]$/.test(grown), 'no high surrogate is left at the end');
+  assert.equal(grown, '[email] ' + 'b'.repeat(247));
+  assert.equal(new TextDecoder('utf-8', { fatal: true }).decode(new TextEncoder().encode(JSON.stringify({ s: grown }))).length > 0, true);
 });
 
 test('error text is cut by UTF-16 length without splitting a surrogate pair', () => {

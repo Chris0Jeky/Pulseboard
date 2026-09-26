@@ -12,8 +12,8 @@
  *              truncated: { names, routes, releases } },  // booleans; a list sums to total unless its flag is true (then ≤ total); days never truncate
  *    sessions: { n: <int>, medianEvents: <number|null>, medianDurationMs: <number|null> },  // null when n is 0
  *    journeys: [{ session: <uuid v4>, startedAt: <ms>, durationMs: <int>, steps: [name] 1..200, stepsTruncated: <bool> }] ≤100,  // newest first
- *    exits: [{ name, n }],                                                   // last step of each session; sums to sessions.n
- *    vitals: [{ metric: LCP|INP|CLS|FCP|TTFB, route, p75: <number ≥0>, n: <int ≥1> }],  // p75 from raw values; CLS unitless, others ms
+ *    exits: [{ name, n }] ≤512, exitsTruncated: <bool>,                    // last step of each session; sums to sessions.n unless truncated (then ≤)
+ *    vitals: [{ metric: LCP|INP|CLS|FCP|TTFB, route, p75: <number ≥0>, n: <int ≥1> }] ≤1280, vitalsTruncated: <bool>,  // p75 from raw values; CLS unitless, others ms
  *    errors: [{ kind: <text ≤64>, message: <text ≤160>, n: <int ≥1>, lastSeen: <ms> }] ≤100 }  // lengths in JS string units
  *
  *  GET /v1/product/<id>/events?days=…&name=…&limit=1..5000  →
@@ -74,7 +74,8 @@ function productHeader(input, schema, days, project, keys) {
 
 export function assertProduct(input, days, project) {
   productHeader(input, PRODUCT_SCHEMA, days, project, ['schema', 'project', 'generatedAt', 'window', 'collectionAdmitted', 'population', 'limitations',
-    'total', 'totals', 'sessions', 'journeys', 'exits', 'vitals', 'errors']);
+    'total', 'totals', 'sessions', 'journeys', 'exits', 'exitsTruncated', 'vitals', 'vitalsTruncated', 'errors']);
+  requireValue(typeof input.exitsTruncated === 'boolean' && typeof input.vitalsTruncated === 'boolean', 'Invalid truncation flag');
   requireValue(typeof input.collectionAdmitted === 'boolean', 'Invalid admission flag');
   boundedString(input.population, 120);
   list(input.limitations, 16).forEach(text => boundedString(text, 500));
@@ -104,7 +105,8 @@ export function assertProduct(input, days, project) {
   unique(input.journeys.map(j => j.session));
   requireValue(input.journeys.length <= s.n, 'More journeys than sessions');
   rows(input.exits, LIMITS.exits, 'name', v => matching(v, EVENT_NAME));
-  requireValue(tally(input.exits) === s.n, 'Exits disagree with sessions');
+  // Capped exits may fall short of the session count, never exceed it.
+  requireValue(input.exitsTruncated ? tally(input.exits) <= s.n : tally(input.exits) === s.n, 'Exits disagree with sessions');
   list(input.vitals, LIMITS.vitals).forEach(v => {
     exactKeys(v, ['metric', 'route', 'p75', 'n']);
     requireValue(VITAL_METRICS.includes(v.metric) && Number.isFinite(v.p75) && v.p75 >= 0, 'Invalid vital'); matching(v.route, ROUTE); whole(v.n, 1);

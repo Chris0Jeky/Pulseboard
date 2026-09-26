@@ -551,13 +551,13 @@ function productView() {
         e('div', {}, j.steps.slice(0, 30).map(step => e('span', { class: 'step-chip' }, step)), j.steps.length > 30 ? e('span', { class: 'tiny muted' }, ` +${j.steps.length - 30} more`) : null,
           j.stepsTruncated ? e('span', { class: 'tiny muted' }, ' · later steps capped by the collector') : null))))
         : e('p', { class: 'muted' }, 'No sessions in this window. Journeys need the Journeys category allowed.'), tag(`LATEST ${p.journeys.length}`)),
-      panel('Last step before leaving', share(p.exits, 'name', s.n, 'Last event'), tag('EXITS · PER SESSION'))),
+      panel('Last step before leaving', e('div', {}, share(p.exits, 'name', s.n, 'Last event'), p.exitsTruncated ? e('p', { class: 'tiny muted' }, 'The collector capped this list; rarer last steps are not shown.') : null), tag(p.exitsTruncated ? 'CAPPED LIST' : 'EXITS · PER SESSION'))),
     e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Diagnostics'), e('p', {}, 'p75 from raw values per metric and route; web.dev thresholds. INP is approximate in this SDK.')),
       e('div', { class: 'overview-grid' },
         panel('Web vitals', p.vitals.length ? e('div', { class: 'table-shell' }, table(['Metric', 'Route', 'p75', 'Samples', 'Rating'], p.vitals.map(v => {
           const rating = vitalRating(v.metric, v.p75);
           return [v.metric === 'INP' ? 'INP (approximate)' : v.metric, v.route, vitalValue(v.metric, v.p75), count(v.n), e('span', { class: `state-chip ${vitalClass[rating]}` }, rating)];
-        }))) : e('p', { class: 'muted' }, 'No web vitals in this window.'), tag('P75 · NEVER AVERAGED')),
+        })), p.vitalsTruncated ? e('p', { class: 'tiny muted' }, 'The collector capped this list; metric and route pairs with fewer samples are not shown.') : null) : e('p', { class: 'muted' }, 'No web vitals in this window.'), tag(p.vitalsTruncated ? 'P75 · CAPPED LIST' : 'P75 · NEVER AVERAGED')),
         panel('Errors', p.errors.length ? e('div', { class: 'table-shell' }, table(['Kind', 'Message', 'Count', 'Last seen'], p.errors.map(x => [x.kind, x.message, count(x.n), date(x.lastSeen)])))
           : e('p', { class: 'muted' }, 'No errors reported in this window.'), tag('GROUPED BY KIND AND MESSAGE')))),
     plugin ? pluginSection(plugin) : null, explorer(),

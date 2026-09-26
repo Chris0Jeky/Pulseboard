@@ -20,8 +20,8 @@ const summary = () => ({
     truncated: { names: false, routes: false, releases: false } },
   sessions: { n: 2, medianEvents: 1, medianDurationMs: 0 },
   journeys: [{ session: session(1), startedAt: now - 1000, durationMs: 0, steps: ['puzzle.started'], stepsTruncated: false }],
-  exits: [{ name: 'puzzle.started', n: 2 }],
-  vitals: [{ metric: 'INP', route: 'puzzle', p75: 240, n: 2 }],
+  exits: [{ name: 'puzzle.started', n: 2 }], exitsTruncated: false,
+  vitals: [{ metric: 'INP', route: 'puzzle', p75: 240, n: 2 }], vitalsTruncated: false,
   errors: [{ kind: 'TypeError', message: 'x is undefined', n: 1, lastSeen: now - 5000 }],
 });
 const raw = (name, props, overrides = {}) => ({ received: now - 1000, day: '2026-09-25', session: session(1), seq: 1, name, route: 'puzzle', release: '0.13.0',
@@ -39,6 +39,10 @@ test('the product summary contract accepts its documented shape', () => {
   assert.equal(assertProduct(long, 7, 'alibi'), long);
   const piped = summary(); piped.errors.push({ kind: 'Type|Error', message: 'x', n: 1, lastSeen: now }, { kind: 'Type', message: 'Error|x', n: 1, lastSeen: now });
   assert.equal(assertProduct(piped, 7, 'alibi'), piped, "'|' inside a kind or message cannot collide");
+  const fewerExits = summary(); fewerExits.exitsTruncated = true; fewerExits.exits[0].n = 1;
+  assert.equal(assertProduct(fewerExits, 7, 'alibi'), fewerExits, 'capped exits may fall short of the session count');
+  const cappedVitals = summary(); cappedVitals.vitalsTruncated = true;
+  assert.equal(assertProduct(cappedVitals, 7, 'alibi'), cappedVitals);
   const wide = summary(); wide.errors[0].kind = 'k'.repeat(64); wide.errors[0].message = '\u{1F600}'.repeat(80);
   assert.equal(assertProduct(wide, 7, 'alibi'), wide, 'lengths are JS string units');
 });
@@ -58,6 +62,13 @@ test('the product summary contract refuses each malformed shape', () => {
     s => { s.totals.releases.push({ release: '0.13.0', n: 0 }); },
     s => { s.totals.days[0].day = '2026-09-01'; },
     s => { s.totals.extra = []; },
+    s => { delete s.exitsTruncated; },
+    s => { delete s.vitalsTruncated; },
+    s => { s.exitsTruncated = 'no'; },
+    s => { s.vitalsTruncated = 0; },
+    s => { s.exits[0].n = 1; },
+    s => { s.exitsTruncated = true; s.exits[0].n = 3; },
+    s => { s.exits = Array.from({ length: 513 }, (_, i) => ({ name: 'e' + i, n: 1 })); s.exitsTruncated = true; },
     s => { delete s.totals.truncated; },
     s => { s.totals.truncated.days = false; },
     s => { s.totals.truncated.names = 'yes'; },

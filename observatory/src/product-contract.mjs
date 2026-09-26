@@ -63,6 +63,12 @@ export function validateProps(props) {
   return new TextEncoder().encode(JSON.stringify(props)).byteLength <= PROPS_BOUNDS.bytes;
 }
 export const personalKey = key => PERSONAL_KEYS.has(key.toLowerCase().replace(/[_.-]/g, ''));
+/** Cut by UTF-16 length, as JSON and the Desk measure it, without leaving half of a surrogate pair at the end. */
+export function cutText(text, max) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max), last = cut.charCodeAt(max - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
 /** Returns { props, redacted }: personal keys and address-shaped keys removed at every depth (counted); in strings, e-mail-looking text becomes
  *  `[email]`, IPv4 and IPv6 addresses `[ip]`, and `scheme://` URLs their host.
  *  Object.fromEntries defines own properties, so a `__proto__` key stays data and never reaches a prototype. */
@@ -70,7 +76,7 @@ export function redactProps(props) {
   let redacted = 0;
   // Replacement text can be longer than what it replaces ('[email]' for a@b.co), so strings are cut back to the bound.
   const walk = value => {
-    if (typeof value === 'string') return scrubText(value).slice(0, PROPS_BOUNDS.string);
+    if (typeof value === 'string') return cutText(scrubText(value), PROPS_BOUNDS.string);
     if (Array.isArray(value)) return value.map(walk);
     if (plain(value)) return Object.fromEntries(Object.entries(value).filter(([key]) => {
       // A key that is itself an address (e-mail or IP) is dropped like a personal key.
