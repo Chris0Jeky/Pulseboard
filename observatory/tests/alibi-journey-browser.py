@@ -223,7 +223,7 @@ globalThis.ALIBI_OBSERVATORY_CONTEXT = () => ({ ...globalThis.__ALIBI_TEST_CONTE
         assert observed[0] == {"event": "page.view", "route": "puzzle", "release": "0.11.4", "n": 1}
         assert not any("session" in json.dumps(post).lower() or "puzzleid" in json.dumps(post).lower() for post in posts)
         statistics = http_json(f"{local_origin}/v1/statistics/alibi?days=7", token=READ_TOKEN)
-        assert statistics["schema"] == "pulseboard.statistics/3"
+        assert statistics["schema"] == "pulseboard.statistics/4"
         assert all(sum(row["n"] for row in rows) == 8 for rows in statistics["dimensions"].values())
         assert statistics["total"] == 8
         assert sum(row["n"] for row in statistics["routes"]) == 8

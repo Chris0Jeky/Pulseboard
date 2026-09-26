@@ -108,7 +108,7 @@ test('funnel counts ordered sessions, not ratios of independent event totals', w
 }));
 test('retention removes old rows and keeps current records', withDB(async DB => {
   await handle(request([event()]), env(DB)); const now = Date.now();
-  await DB.prepare('UPDATE events SET received=?').bind(now - 15 * 86400000).run();
+  await DB.prepare('UPDATE events SET received=?').bind(now - 91 * 86400000).run();
   await handle(request([event()]), env(DB)); await maintain(env(DB), now);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
 }));
@@ -217,9 +217,9 @@ test('readiness fails on an unmigrated database', async () => {
 });
 test('readiness reports the schema version and fails on a partially migrated database', withDB(async DB => {
   const response = await handle(new Request('https://x.test/readyz'), env(DB));
-  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ready: true, schema: 3,
+  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ready: true, schema: 4,
     collection: { enabled: true, configured: ['mdviewer'], admitted: ['mdviewer'], invalid: [] },
-    statistics: { configured: false, admitted: [] } });
+    statistics: { configured: false, admitted: [] }, product: { configured: false, admitted: [] } });
   DB.exec('DROP TABLE probe_history');
   assert.equal((await handle(new Request('https://x.test/readyz'), env(DB))).status, 503);
 }));
