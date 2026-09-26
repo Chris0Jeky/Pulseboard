@@ -26,8 +26,16 @@ table in schema version 2; its migration is `migrations/0002-alibi-statistics.sq
 `src/portfolio.mjs` still consumes only the existing opt-in session event rows.
 The separate `GET /v1/statistics/<project>?days=7` read (any registered public project since #102; 1, 7 or 14 UTC calendar
 days) authenticates with the Desk read token, reads only daily aggregate rows,
-and returns `pulseboard.statistics/2`: event, daily, route and release totals plus
-per-day event totals, every breakdown summing to the same total. Schema 1 carried
+and returns `pulseboard.statistics/3`: event, daily, route and release totals, per-day event
+totals, and separate country, device, source and visit totals (schema 3, #103), every breakdown
+summing to the same total. Dimension totals live in `statistics_dimensions`, keyed by day,
+dimension and value only, with no timestamp finer than the day, and stored `WITHOUT ROWID` so
+storage order is key order rather than arrival order. That makes re-joining a request's rows to its
+event counts harder, not impossible: an operator who polls the one-day read repeatedly while
+traffic is sparse can still difference single requests, and `statistics.received` keeps the last
+write time. With a handful of testers this is not anonymity (`USAGE_PLAN.md`). Counts from before schema 3 read `unknown`. The browser sends
+device, source and visit in a v2 batch's closed `context`; the country is Cloudflare's edge
+country code, and the collector never reads the IP. Schema 1 carried
 only event and daily totals; route and release totals were added for the Desk's
 Usage view, matching the route receipts and release cohorts the operator already
 reads for opt-in data. It returns no session estimate, visitor count or flow. Its `collectionAdmitted` and `observationStatus`
@@ -61,7 +69,7 @@ The separate Alibi statistics producer admits only closed event counts, stores
 one aggregate row per UTC day, event, route and release, and retains at most
 14 UTC calendar dates including today. It accepts no session or event identifiers. The
 reviewed deployment configuration admits `alibi` through `COLLECT_STAT_PROJECTS`, which since #102 is an exact comma list of
-registered public ids (any malformed entry disables it; each id must also be in `COLLECT_PROJECTS`);
+registered public ids (any malformed entry disables it). It needs `COLLECT_ENABLED` and a valid session policy but not `COLLECT_PROJECTS` membership, so admitting counts never opens a host's session route;
 actual admission begins only when that configuration is deployed. The separate
 statistics reader keeps these counts out of the legacy opt-in readout. Repeated
 requests count repeatedly because aggregate-only payloads have no dedupe key.

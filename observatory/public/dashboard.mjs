@@ -354,9 +354,9 @@ function usageChart(reading) {
     e('details', { class: 'chart-data' }, e('summary', {}, 'Inspect daily counts'), table(['UTC date', 'All counts', 'Page views', 'Starts', 'Completions'],
       reading.days.map((d, i) => [d, count(totals[i]), count(reading.series.views[i]), count(starts[i]), count(reading.series.completed[i])]))));
 }
-function share(rows, key, total) {
+function share(rows, key, total, heading = key[0].toUpperCase() + key.slice(1)) {
   if (!rows.length) return e('p', { class: 'muted' }, 'No counts in this window.');
-  return e('div', { class: 'table-shell' }, table([key[0].toUpperCase() + key.slice(1), 'Counts', 'Share'], rows.map(r => [r[key], count(r.n),
+  return e('div', { class: 'table-shell' }, table([heading, 'Counts', 'Share'], rows.map(r => [r[key], count(r.n),
     e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, total), value: r.n, 'aria-label': `${r[key]}: ${r.n} of ${total}` })])));
 }
 function coverage() {
@@ -395,6 +395,14 @@ function usageView() {
     e('div', { class: 'overview-grid' },
       panel('Where activity happens', share(u.routes, 'route', u.total), e('span', { class: 'mini-label' }, 'ROUTE MIX')),
       panel('What gets done', share(u.events, 'event', u.total), e('span', { class: 'mini-label' }, 'EVENT MIX'))),
+    e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Who and where'),
+      e('p', {}, 'Share of counts, not of visitors: a busy visit weighs more than a quick one. Separate totals, never crossed. With a handful of testers, a row can still describe one person.')),
+      e('div', { class: 'overview-grid' },
+        panel('Country', share(u.dimensions.country, 'value', u.total, 'Country'), e('span', { class: 'mini-label' }, 'FROM THE EDGE · NO IP KEPT')),
+        panel('Device', share(u.dimensions.device, 'value', u.total, 'Device'), e('span', { class: 'mini-label' }, 'VIEWPORT CLASS'))),
+      e('div', { class: 'overview-grid' },
+        panel('Came from', share(u.dimensions.source, 'value', u.total, 'Source'), e('span', { class: 'mini-label' }, 'CATEGORY · NO URLS')),
+        panel('New or returning', share(u.dimensions.visit, 'value', u.total, 'Visit'), e('span', { class: 'mini-label' }, 'THIS MONTH · NO ID')))),
     e('div', { class: 'overview-grid' },
       panel('Which build sent counts', share(u.releases, 'release', u.total), e('span', { class: 'mini-label' }, 'RELEASE MIX')),
       panel('Reading limits', e('ul', { class: 'tiny muted' }, u.limitations.map(text => e('li', {}, text))))),

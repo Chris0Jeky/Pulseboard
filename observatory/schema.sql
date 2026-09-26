@@ -33,9 +33,16 @@ CREATE TABLE IF NOT EXISTS statistics (
   received INTEGER NOT NULL, PRIMARY KEY (project, day, event, route, release)
 );
 
+-- Per-dimension daily totals (schema 3, USAGE_PLAN.md). Never keyed by event, route, release or another
+-- dimension, no timestamp finer than the day, and WITHOUT ROWID so storage order is key order, not arrival order.
+CREATE TABLE IF NOT EXISTS statistics_dimensions (
+  project TEXT NOT NULL, day TEXT NOT NULL, dimension TEXT NOT NULL, value TEXT NOT NULL,
+  n INTEGER NOT NULL, PRIMARY KEY (project, day, dimension, value)
+) WITHOUT ROWID;
+
 -- Readiness asserts this row, so a database that predates a migration reports 503 instead of ready.
 CREATE TABLE IF NOT EXISTS schema_version (
   id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
 );
-INSERT INTO schema_version(id, version) VALUES (1, 2)
+INSERT INTO schema_version(id, version) VALUES (1, 3)
   ON CONFLICT(id) DO UPDATE SET version = MAX(schema_version.version, excluded.version);

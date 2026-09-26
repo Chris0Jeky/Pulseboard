@@ -39,9 +39,12 @@ belongs in an operator-controlled secret store; the browser only keeps it in mem
 
 For the schema-2 Alibi statistics producer, migrate the existing D1 database
 with `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0002-alibi-statistics.sql`
-before deploying a Worker that requires schema 2. The migration creates only an
+before deploying a Worker that requires schema 2. For schema 3 (per-dimension totals, #103), run
+`npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0003-statistics-dimensions.sql`
+before deploying; it only adds `statistics_dimensions`. Rolling back to a schema-2 Worker needs
+`UPDATE schema_version SET version=2 WHERE id=1 AND version=3` after the deploy, and the table stays. The migration creates only an
 aggregate table and preserves historical session event rows. Confirm `/readyz`
-returns schema 2 after deployment. The `/v1/collect-stat/<id>` route is
+returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103). The `/v1/collect-stat/<id>` route is
 disabled for every id not listed in `COLLECT_STAT_PROJECTS` (an exact comma list since #102; it was exactly `alibi` before). Production now
 admits that project following issue #89's browser, notice and opt-out checks;
 the deployment and first accepted payload are recorded below. Alibi's client
@@ -49,7 +52,7 @@ deployment is a separate release step.
 If the Worker must be rolled back to a schema-1 build, first remove
 `COLLECT_STAT_PROJECTS`, stop the statistics consumer, and deploy the prior
 Worker. Its old readiness check expects version 1, so run
-`UPDATE schema_version SET version=1 WHERE id=1 AND version=2` against this D1
+`UPDATE schema_version SET version=1 WHERE id=1 AND version IN (2,3)` against this D1
 database as the final rollback step and confirm `/readyz` returns 200. Leave
 the additive `statistics` table in place for forward recovery; do not drop it
 or delete historical event rows. The rollback was exercised on scratch D1 and
@@ -289,3 +292,11 @@ owner actions; no agent holds either.
 - Production Worker version `5bb0321e-a80a-47ab-bba1-06cd57318fa2` deployed from `2bd2bcd` on Kraspyon. Bindings and schema are unchanged (`COLLECT_ENABLED` `"true"`, `COLLECT_PROJECTS` and `COLLECT_STAT_PROJECTS` `"alibi"`, D1 schema 2). `/healthz` and `/readyz` return 200, `/desk-usage.mjs` 200, and `/v1/statistics/alibi` 401 unauthenticated. Rollback goes to `51871cc3…`.
 - Not verified: an authenticated hosted read. This machine's DPAPI token copy predates the 2026-09-23 rotation (HUMAN_TODO q-18).
 - #110 merged as `934f29f` (per-project statistics routes; statistics admission separated from `COLLECT_PROJECTS`) and deployed as Worker version `bffba8a7-d066-46a8-887a-bf1c916f2648`. Bindings are unchanged. `/readyz` returns 200 with `"statistics":{"configured":true,"admitted":["alibi"]}`, and `/v1/statistics/alibi` and `/v1/statistics/mdviewer` both return 401 unauthenticated. Rollback goes to `5bb0321e…`.
+
+### Schema 3 dimension gate on preview, 2026-09-26 (#103)
+
+- Scratch D1 `pulseboard-observatory-scratch` went from schema 2 to 3 with `migrations/0002-alibi-statistics.sql` (no-op) and then `0003-statistics-dimensions.sql`.
+- Preview Worker `a50d8201-df7a-4b2e-a2f7-456988df34b1` from `feat/usage-dimensions`. `/readyz` returned 200, schema 3.
+- Alibi-origin requests: a v2 batch with context `desktop/direct/new` and two counts returned 202; a v1 batch with one count (the live embed's shape) returned 202; a v2 batch with `device: phone` returned 400.
+- Scratch rows afterwards: `country GB 3`, taken from Cloudflare's edge country with no IP read; `device desktop 2 / unknown 1`, `source direct 2 / unknown 1`, `visit new 2 / unknown 1`. Every dimension sums to the three admitted counts.
+- The preview Worker was deleted afterwards (`/healthz` 404). Production D1 is not migrated yet; that happens at deploy time, after merge.

@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { openDatabase } from '../src/sqlite.mjs';
 import { projects } from '../src/projects.mjs';
 import { handle, maintain } from '../src/worker.mjs';
-import { validateStatBatch, statAdmission } from '../src/stat-contract.mjs';
+import { validateStatBatch, statAdmission, statCountry, DIMENSIONS } from '../src/stat-contract.mjs';
+import { DIMENSION_VALUES } from '../public/desk-usage.mjs';
 
 const ALIBI_ORIGIN = projects.alibi.origin;
 const day = () => new Date(Date.now()).toISOString().slice(0, 10);
@@ -194,16 +195,22 @@ test('the first stat batch of a day is refused when it alone exceeds the daily l
   }
 });
 
-test('migration is idempotent and readiness tracks version 2', async t => {
+test('migrations are idempotent and readiness tracks version 3', async t => {
   const DB = database(t);
   const ready = await handle(new Request('https://collector.example/readyz'), statEnv(DB));
   assert.equal(ready.status, 200);
-  assert.equal((await ready.json()).schema, 2);
-  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 2);
+  assert.equal((await ready.json()).schema, 3);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3);
+  const dimensionColumns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics_dimensions') ORDER BY cid").all()).results.map(r => r.name);
+  assert.deepEqual(dimensionColumns, ['project', 'day', 'dimension', 'value', 'n'], 'no timestamp finer than the day');
+  const withoutRowid = (await DB.prepare("SELECT sql FROM sqlite_master WHERE name='statistics_dimensions'").first()).sql;
+  assert.match(withoutRowid, /WITHOUT ROWID/, 'storage order is key order, not arrival order');
+  assert.throws(() => DB.exec('SELECT rowid FROM statistics_dimensions'));
   const columns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics') ORDER BY cid").all()).results.map(r => r.name);
   assert.deepEqual(columns, ['project', 'day', 'event', 'route', 'release', 'n', 'received']);
 
-  // An unmigrated v1 database (no statistics table, version 1) is not ready.
+  // An unmigrated v1 database (no statistics tables, version 1) is not ready.
+  DB.exec('DROP TABLE statistics_dimensions');
   DB.exec('DROP TABLE statistics');
   DB.exec('UPDATE schema_version SET version=1');
   assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 503);
@@ -215,9 +222,13 @@ test('migration is idempotent and readiness tracks version 2', async t => {
   DB.exec(migration);
   DB.exec(migration);
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 2);
+  assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 503, 'schema 2 is not ready for a schema 3 Worker');
+  const migration3 = readFileSync(new URL('../migrations/0003-statistics-dimensions.sql', import.meta.url), 'utf8');
+  DB.exec(migration3);
+  DB.exec(migration3);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
   assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 200);
-  DB.exec('UPDATE schema_version SET version=3');
   DB.exec(migration);
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3,
     'an old migration cannot downgrade a newer schema marker');
@@ -301,4 +312,61 @@ test('several admitted projects count separately and stay inside their own origi
   assert.equal(caStats.total, 0);
   assert.equal(caStats.collectionAdmitted, false, 'collection admitted without the statistics switch is not statistics admission');
   for (const id of ['taskdeck', 'other']) assert.equal((await read(id)).status, 404, id);
+});
+
+const withCountry = (request, country) => { Object.defineProperty(request, 'cf', { value: country === undefined ? undefined : { country } }); return request; };
+const dimensionTotals = async DB => Object.fromEntries((await DB.prepare('SELECT dimension,value,n FROM statistics_dimensions ORDER BY dimension,value').all())
+  .results.map(r => [`${r.dimension}:${r.value}`, r.n]));
+
+test('a v2 batch records per-dimension totals, never crossed with events', async t => {
+  const DB = database(t);
+  const context = { device: 'mobile', source: 'github', visit: 'new' };
+  assert.equal((await handle(withCountry(statRequest({ v: 2, context, counts: [count(), count('puzzle.completed')] }), 'MD'), statEnv(DB))).status, 202);
+  assert.equal((await handle(withCountry(statRequest({ v: 1, counts: [count()] }), 'T1'), statEnv(DB))).status, 202);
+  assert.deepEqual(await dimensionTotals(DB), {
+    'country:MD': 2, 'country:unknown': 1, 'device:mobile': 2, 'device:unknown': 1,
+    'source:github': 2, 'source:unknown': 1, 'visit:new': 2, 'visit:unknown': 1,
+  });
+  // The statistics rows carry no dimension, and the dimension rows carry no event.
+  const statColumns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics')").all()).results.map(r => r.name);
+  assert.ok(!statColumns.some(name => ['country', 'device', 'source', 'visit', 'dimension'].includes(name)));
+  const reading = await (await handle(new Request('https://desk.test/v1/statistics/alibi?days=1', { headers: { authorization: 'Bearer ' + 'r'.repeat(32) } }),
+    { ...statEnv(DB), READ_TOKEN: 'r'.repeat(32) })).json();
+  assert.deepEqual(reading.dimensions.country, [{ value: 'MD', n: 2 }, { value: 'unknown', n: 1 }]);
+  assert.deepEqual(reading.dimensions.visit, [{ value: 'new', n: 2 }, { value: 'unknown', n: 1 }]);
+});
+
+test('a malformed context refuses the whole batch and writes nothing', async t => {
+  const DB = database(t);
+  const good = { device: 'desktop', source: 'direct', visit: 'returning' };
+  for (const body of [
+    { v: 2, counts: [count()] },
+    { v: 2, context: { ...good, device: 'phone' }, counts: [count()] },
+    { v: 2, context: { ...good, country: 'GB' }, counts: [count()] },
+    { v: 2, context: { device: 'desktop', source: 'direct' }, counts: [count()] },
+    { v: 2, context: { ...good, source: 'https://news.example/' }, counts: [count()] },
+    { v: 1, context: good, counts: [count()] },
+    { v: 3, context: good, counts: [count()] },
+  ]) assert.equal((await handle(statRequest(body), statEnv(DB))).status, 400, JSON.stringify(body));
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM statistics_dimensions').first()).n, 0);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM statistics').first()).n, 0);
+});
+
+test('a refused budget writes no dimension rows, and retention removes old ones', async t => {
+  const DB = database(t);
+  await DB.prepare('INSERT INTO budget VALUES(?,?,?,?)').bind('alibi', day(), 1000, 'full').run();
+  const context = { device: 'tablet', source: 'search', visit: 'returning' };
+  assert.equal((await handle(withCountry(statRequest({ v: 2, context, counts: [count()] }), 'GB'), statEnv(DB))).status, 429);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM statistics_dimensions').first()).n, 0);
+  const now = Date.UTC(2026, 8, 25, 12);
+  for (const d of ['2026-09-11', '2026-09-12']) await DB.prepare('INSERT INTO statistics_dimensions VALUES(?,?,?,?,?)').bind('alibi', d, 'country', 'GB', 1).run();
+  await maintain({ DB }, now);
+  assert.deepEqual((await DB.prepare('SELECT day FROM statistics_dimensions').all()).results.map(r => r.day), ['2026-09-12']);
+});
+
+test('edge country codes are normalised and the Desk mirrors the closed vocabularies', () => {
+  assert.equal(statCountry({ cf: { country: 'GB' } }), 'GB');
+  for (const request of [{}, { cf: {} }, { cf: { country: 'T1' } }, { cf: { country: 'XX' } }, { cf: { country: 'gb' } }, { cf: { country: 'GBR' } }, null])
+    assert.equal(statCountry(request), 'unknown', JSON.stringify(request));
+  assert.deepEqual(JSON.parse(JSON.stringify(DIMENSIONS)), DIMENSION_VALUES);
 });

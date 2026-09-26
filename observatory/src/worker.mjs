@@ -1,7 +1,7 @@
 import { projects } from './projects.mjs';
 import { collectionAdmission } from './admission.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
-import { validateStatBatch, statAdmission } from './stat-contract.mjs';
+import { validateStatBatch, statAdmission, statCountry } from './stat-contract.mjs';
 import { readStatistics } from './statistics.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { assets } from './assets.mjs';
@@ -10,12 +10,13 @@ import { githubMap } from './github-map.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 // Naming every column means a database missing a later-added column fails readiness instead of failing a request.
 const READINESS = [
   'SELECT project,day,used,receipt FROM budget LIMIT 0',
   'SELECT project,id,received,session,seq,event,route,release,value FROM events LIMIT 0',
   'SELECT project,day,event,route,release,n,received FROM statistics LIMIT 0',
+  'SELECT project,day,dimension,value,n FROM statistics_dimensions LIMIT 0',
   'SELECT project,state,failures,successes,opened,checked,status,duration FROM probes LIMIT 0',
   'SELECT project,checked,ok,duration FROM probe_history LIMIT 0',
 ];
@@ -165,7 +166,15 @@ export async function handle(request, env) {
         SELECT ?,?,?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
         ON CONFLICT(project,day,event,route,release) DO UPDATE SET n=n+excluded.n,received=excluded.received`)
         .bind(statId, statDay, c.event, c.route, c.release, 1, statNow, statId, statDay, statReceipt));
-      const statResult = await env.DB.batch([statReserve, ...aggregates]);
+      // One per-dimension total per admitted count, written in the same transaction and gated on the same receipt.
+      // A v1 batch carries no context, so its device, source and visit read 'unknown'.
+      const context = statBody.v === 2 ? statBody.context : { device: 'unknown', source: 'unknown', visit: 'unknown' };
+      const dimensionRows = [['country', statCountry(request)], ['device', context.device], ['source', context.source], ['visit', context.visit]]
+        .map(([dimension, value]) => env.DB.prepare(`INSERT INTO statistics_dimensions(project,day,dimension,value,n)
+          SELECT ?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
+          ON CONFLICT(project,day,dimension,value) DO UPDATE SET n=n+excluded.n`)
+          .bind(statId, statDay, dimension, value, statBody.counts.length, statId, statDay, statReceipt));
+      const statResult = await env.DB.batch([statReserve, ...aggregates, ...dimensionRows]);
       if (!statResult[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
       return json({ accepted: true, meaning: 'stat batch admitted; repeated requests count repeatedly' }, 202, cors);
     }
@@ -239,6 +248,7 @@ export async function maintain(env, now = Date.now()) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 14 * 86400000),
     env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
+    env.DB.prepare('DELETE FROM statistics_dimensions WHERE day<=?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
     env.DB.prepare('DELETE FROM budget WHERE day<?').bind(new Date(now - 14 * 86400000).toISOString().slice(0, 10)),
     env.DB.prepare('DELETE FROM probe_history WHERE checked<?').bind(now - 30 * 86400000),
   ]);
