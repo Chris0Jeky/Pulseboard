@@ -1,0 +1,151 @@
+name: Sync sites
+# Keeps every site's installed Pulseboard SDK copy in step with main (owner decision 2026-09-27, HUMAN_TODO q-29).
+# For each site it rebuilds the installs listed in the site's observatory.lock.json, runs the site's own
+# observatory/check.mjs, and opens or updates one pull request from the pulseboard/sdk-sync branch. That pull
+# request merges itself only when its diff stays inside the synced files, the site check passes and every
+# GitHub Actions run on its head succeeds; otherwise it stays open, marked for a person.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'observatory/sdk/**'
+      - 'observatory/src/projects.mjs'
+      - 'observatory/src/alibi-releases.mjs'
+      - 'observatory/adapters/build-sdk.mjs'
+      - 'observatory/adapters/build-embed.mjs'
+      - 'observatory/adapters/check-installed.mjs'
+      - 'observatory/adapters/sync-hosts.mjs'
+      - '.github/workflows/sync-sites.yml'
+  schedule:
+    - cron: '41 6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sync-sites
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        repo:
+          - Chris0Jeky/CV_and_Portfolio
+          - Chris0Jeky/CommitAtlas
+          - Chris0Jeky/IdleHarbor
+          - Chris0Jeky/developer-lens
+          - Chris0Jeky/wealthlens-hq
+          - Chris0Jeky/MDviewer
+          - Chris0Jeky/Alibi
+    env:
+      REPO: ${{ matrix.repo }}
+      BRANCH: pulseboard/sdk-sync
+    steps:
+      - name: Check the token
+        id: token
+        env:
+          SITES_TOKEN: ${{ secrets.SITES_TOKEN }}
+        run: |
+          if [ -n "$SITES_TOKEN" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo '::notice title=Site sync skipped::Add the SITES_TOKEN repository secret to sync the sites (HUMAN_TODO q-29).'
+          fi
+      - uses: actions/checkout@v6
+        if: steps.token.outputs.ready == 'true'
+        with:
+          path: pulseboard
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        if: steps.token.outputs.ready == 'true'
+        with:
+          repository: ${{ matrix.repo }}
+          token: ${{ secrets.SITES_TOKEN }}
+          path: site
+      - uses: actions/setup-node@v6
+        if: steps.token.outputs.ready == 'true'
+        with:
+          node-version: '22'
+      - name: Sync the installed SDK
+        id: sync
+        if: steps.token.outputs.ready == 'true'
+        shell: bash
+        run: |
+          node pulseboard/observatory/adapters/sync-hosts.mjs site > report.json
+          node -e "
+            const r = JSON.parse(require('fs').readFileSync('report.json', 'utf8'));
+            const out = [
+              'changed=' + (r.changed.length > 0),
+              'sdk=' + r.sdk,
+              'check_ok=' + r.hostCheck.ok,
+            ];
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, out.join('\n') + '\n');
+            require('fs').writeFileSync('check-detail.txt', r.hostCheck.detail || '');
+            require('fs').writeFileSync('allowed.txt', r.allowed.join('\n') + '\n');"
+          echo "### ${REPO}" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`json" >> "$GITHUB_STEP_SUMMARY"; cat report.json >> "$GITHUB_STEP_SUMMARY"; echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Confine the diff to the synced files
+        id: confine
+        if: steps.sync.outputs.changed == 'true'
+        shell: bash
+        run: |
+          outside="$(git -C site status --porcelain --untracked-files=all | cut -c4- | grep -vxF -f allowed.txt || true)"
+          if [ -n "$outside" ]; then echo "::error title=Unexpected change::The sync touched files outside its lock: $outside"; exit 1; fi
+      - name: Open or update the pull request
+        id: pr
+        if: steps.sync.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.SITES_TOKEN }}
+          SDK: ${{ steps.sync.outputs.sdk }}
+          CHECK_OK: ${{ steps.sync.outputs.check_ok }}
+        run: |
+          source_sha="$(git -C pulseboard rev-parse --short HEAD)"
+          base="$(gh repo view "$REPO" --json defaultBranchRef -q .defaultBranchRef.name)"
+          cd site
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -C "$BRANCH"
+          git add -A
+          git commit -q -m "Sync Pulseboard SDK ${SDK} from Pulseboard ${source_sha}"
+          git push -q --force origin "$BRANCH"
+          head="$(git rev-parse HEAD)"
+          if [ "$CHECK_OK" = "true" ]; then
+            title="Sync Pulseboard SDK ${SDK}"
+            note="The site's own \`node observatory/check.mjs\` passes on this change. This pull request merges itself once every GitHub Actions run on it succeeds (Pulseboard HUMAN_TODO q-29)."
+          else
+            title="[needs a person] Sync Pulseboard SDK ${SDK}"
+            note="**Not merged automatically:** the site's own \`node observatory/check.mjs\` fails on this change: $(cat ../check-detail.txt). Update the site's policy (for example a pinned SDK version in observatory/check.local.mjs) or close this pull request."
+          fi
+          body="$(printf 'Generated by Pulseboard'"'"'s [Sync sites](https://github.com/%s/actions/runs/%s) workflow from Pulseboard `%s`. It rebuilds the SDK copies listed in `observatory.lock.json` and updates their hashes; nothing else changes.\n\n%s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$source_sha" "$note")"
+          number="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')"
+          if [ -z "$number" ]; then
+            gh pr create --repo "$REPO" --base "$base" --head "$BRANCH" --title "$title" --body "$body"
+            number="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')"
+          else
+            gh pr edit "$number" --repo "$REPO" --title "$title" --body "$body"
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+          echo "- ${REPO}: [#${number}](https://github.com/${REPO}/pull/${number}) ${title}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Merge when every check succeeds
+        if: steps.sync.outputs.changed == 'true' && steps.sync.outputs.check_ok == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.SITES_TOKEN }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD: ${{ steps.pr.outputs.head }}
+        run: |
+          # Every pushed head ages at least three minutes before merge; it also lets the site's CI start.
+          sleep 180
+          runs="$(gh run list --repo "$REPO" --commit "$HEAD" --json databaseId -q '.[].databaseId')"
+          for id in $runs; do
+            gh run watch "$id" --repo "$REPO" --exit-status > /dev/null || { echo "::error title=Site CI failed::Run $id on ${REPO} failed; the pull request stays open."; exit 1; }
+          done
+          [ -n "$runs" ] || echo "::notice title=No site CI::${REPO} ran no Actions for this head; the site's own check passed in this job."
+          current="$(gh pr view "$NUMBER" --repo "$REPO" --json headRefOid -q .headRefOid)"
+          if [ "$current" != "$HEAD" ]; then echo "::error title=Head moved::The pull request changed while waiting; not merging."; exit 1; fi
+          gh pr merge "$NUMBER" --repo "$REPO" --merge --match-head-commit "$HEAD" --delete-branch
+          echo "- ${REPO}: merged #${NUMBER}" >> "$GITHUB_STEP_SUMMARY"

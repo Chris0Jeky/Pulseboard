@@ -3,6 +3,16 @@
 Agents surface this file in every summary and tick an item only when its completion is directly
 verified. Items that need the owner's judgement stay open until the owner answers here or in chat.
 
+- [ ] q-29 — **Let Pulseboard update the sites (about 3 minutes, once).** Owner decision 2026-09-27: one
+  workflow keeps every site's Pulseboard SDK copy in step and merges routine updates itself
+  (`.github/workflows/sync-sites.yml`). It skips with a notice until this token exists. Only you can create it:
+  1. Open https://github.com/settings/personal-access-tokens/new (a **fine-grained** token).
+  2. Name it `pulseboard-sites-sync` and pick the longest expiration offered.
+  3. **Repository access:** Only select repositories: CV_and_Portfolio, CommitAtlas, IdleHarbor, developer-lens,
+     wealthlens-hq, MDviewer and Alibi.
+  4. **Repository permissions:** Contents **Read and write**, Pull requests **Read and write**, Actions **Read-only**.
+  5. Generate it, copy it, and in a terminal in this repository run `gh secret set SITES_TOKEN` and paste it.
+  Tell an agent it is done; it runs the workflow and closes this item once a site pull request goes through.
 - [x] q-27 — **Turn on automatic deploys. DONE 2026-09-27:** owner set `CLOUDFLARE_API_TOKEN`; the first automatic run (Actions run 36282730847, #146 merge) checked schema 4, deployed Worker `6900768e` and saw `/readyz` ready. Original steps: Every merge that touches `observatory/` then
   deploys itself (`.github/workflows/deploy-observatory.yml`); until then it skips with a notice. The account id
   secret is already set. Only you can create the API token:

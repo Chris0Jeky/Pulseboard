@@ -128,6 +128,23 @@ origins' HTTP and offline/save acceptance. Alibi's physical-device checks
 remain open; the statistical-purpose exception and international applicability
 remain subject to the product-specific review described in `ENGINEERING.md`.
 
+## Site sync
+
+`.github/workflows/sync-sites.yml` keeps each site's installed SDK copy in step with `main` (owner decision
+2026-09-27, HUMAN_TODO q-29). It runs after a `main` push that changes the SDK, `src/projects.mjs`, the
+builders or the host checker, daily at 06:41 UTC, and on demand. For each site in its matrix it runs
+`observatory/adapters/sync-hosts.mjs`, which rebuilds every install listed in the site's `observatory.lock.json`,
+updates the lock's hashes and SDK version, refreshes a *generated* `observatory/check.mjs` only when the new one
+passes there (hand-written checkers are never touched), and runs the site's own check.
+
+- Changes go to one `pulseboard/sdk-sync` pull request per site. It merges itself (merge commit) after the
+  three-minute floor when the diff stays inside the lock's files, the site check passes and every GitHub Actions
+  run on its head succeeds. Otherwise it is titled `[needs a person]` and stays open with the reason.
+- Alibi's own policy pins its SDK version, so an SDK version bump reaches Alibi as a `[needs a person]` pull
+  request until its `check.local.mjs` pin moves.
+- It needs the `SITES_TOKEN` secret (a fine-grained token over the seven site repositories); without it every job
+  skips with a notice. Adding a site means adding its repository to the workflow matrix and to the token.
+
 ## Automatic deploys
 
 `.github/workflows/deploy-observatory.yml` deploys the production Worker after every push to `main` that touches
