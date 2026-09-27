@@ -32,7 +32,7 @@ const ROUTE_RE = /^[a-z0-9._-]{1,48}$/;
 const RELEASE_RE = /^[0-9A-Za-z.+-]{1,32}$/;
 // Same source as RELEASE_PATTERN in src/release-label.mjs (a test pins them equal). With `project.releasePattern`
 // any well-formed version counts as a release even when the baked list predates it (owner decision q-28, SDK 3.3).
-const RELEASE_PATTERN_RE = /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9A-Za-z][0-9A-Za-z.-]{0,15})?$/;
+const RELEASE_PATTERN_RE = /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9a-z][0-9a-z.-]{0,15})?$/;
 const KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const CAMPAIGN_RE = /^[a-z0-9_-]{1,40}$/;
