@@ -207,7 +207,7 @@ function projectDetail(p) {
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Started and finished'), e('p', {}, `${p.flow.numerator} of ${p.flow.denominator} groups that started something also finished it (${percent(p.flow.value)}). A group is one session on one page and version.`),
       e('p', { class: 'muted' }, 'A finish only counts when a later event matches the same session, page and version. This is not retention or a conversion funnel.')),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Events by page'), e('div', { class: 'table-shell' }, table(['Page (route)', 'Events'], p.routes.map(r => [r.route, count(r.n)])))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Actions', 'Failed', 'Time (95% took less)'], p.releases.map(r => [r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Actions', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
       button('Compare versions →', () => { state.releaseProject = p.id; state.baseline = ''; state.candidate = ''; $('#detail-dialog').close(); navigate('releases'); })),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Builds, deploys and releases (GitHub)'), e('div', { id: 'github-evidence', 'data-project': p.id }, githubView(p.id))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Limits of these numbers'), e('ul', {}, state.snapshot.limitations.map(text => e('li', {}, text)))));
@@ -346,7 +346,7 @@ function importedContext() {
 }
 function connections() {
   const card = (badge, title, detail, action = null) => e('section', { class: 'panel connection-card' }, e('span', { class: 'badge' }, badge), e('h2', {}, title), e('p', {}, detail), action);
-  return [e('div', { class: 'flow-map', 'aria-label': 'Observatory provides aggregates to Pulseboard; Pulseboard provides reviewed handoffs' },
+  return [e('div', { class: 'flow-map', 'aria-label': 'Your sites send data to the collector; you read it on this desk; you decide the next step' },
     e('div', { class: 'flow-node' }, 'YOUR SITES SEND', e('strong', {}, 'Collector')), e('span', { class: 'flow-arrow', 'aria-hidden': true }, '→'),
     e('div', { class: 'flow-node' }, 'YOU READ', e('strong', {}, 'This desk')), e('span', { class: 'flow-arrow', 'aria-hidden': true }, '→'),
     e('div', { class: 'flow-node' }, 'YOU DECIDE', e('strong', {}, 'Your next step'))),
