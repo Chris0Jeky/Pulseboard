@@ -271,7 +271,7 @@ jobs:
           # A site that requires up-to-date branches refuses the merge once its base moved during CI (Alibi merges
           # often and its CI takes about 20 minutes). The same bytes are then replayed on the new base as a new bot
           # commit, never merged in with `gh pr update-branch`, whose merge commit would carry the token owner's name
-          # and read as a person's work to the guard above. Only when the base left every synced file, the lock and
+          # and read as a person's work to the guard above. Only when the base left every installed copy, the lock and
           # the site's checker untouched, so the rebuild is byte-identical; bounded to three merge attempts.
           cd site
           for attempt in 1 2 3; do
@@ -285,7 +285,7 @@ jobs:
             old_base="$(git rev-parse "${HEAD}~1")"
             git fetch -q --depth=1 origin "refs/heads/${BASE}"
             new_base="$(git rev-parse FETCH_HEAD)"
-            for path in $(sort -u ../changed.txt <(printf '%s\n' observatory.lock.json observatory/check.mjs observatory/check.local.mjs)); do
+            for path in $(sort -u ../changed.txt <(jq -r '.installs | keys[]' observatory.lock.json) <(printf '%s\n' observatory.lock.json observatory/check.mjs observatory/check.local.mjs)); do
               if [ "$(git rev-parse -q --verify "${old_base}:${path}" || true)" != "$(git rev-parse -q --verify "${new_base}:${path}" || true)" ]; then
                 echo "::error title=Base changed a synced file::${REPO} ${BASE} changed ${path} since this sync was built; the next sync run rebuilds on it."; exit 1
               fi
