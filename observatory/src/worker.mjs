@@ -5,6 +5,7 @@ import { validateStatBatch, statAdmission, batchDimensions, serverDimensions, CA
 import { validateProductBatch, redactProps, consentRegion, PRODUCT_DEFAULT_LIMIT, PRODUCT_GLOBAL_LIMIT, PRODUCT_GLOBAL_KEY, PRODUCT_NAME } from './product-contract.mjs';
 import { readStatistics, READ_WINDOWS, AGGREGATE_RETENTION_DAYS } from './statistics.mjs';
 import { readProduct, readProductEvents, EVENTS_DEFAULT_LIMIT } from './product.mjs';
+import { readVoices } from './voices.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
 import { parseFeedback, parseSurvey, respondentHash, VOICE_DEFAULT_LIMIT, VOICE_GLOBAL_LIMIT, VOICE_GLOBAL_KEY,
   FEEDBACK_RETENTION_DAYS, SURVEY_RETENTION_DAYS } from './voice-contract.mjs';
@@ -194,6 +195,18 @@ export async function handle(request, env) {
       const admitted = admission.enabled && productAdmission(env).includes(readId);
       return json(raw ? await readProductEvents(env.DB, { project: readId, days, name, limit })
         : await readProduct(env.DB, { project: readId, days, admitted }));
+    }
+    // Voices read (docs/VOICES.md section 3): the same token, window and bounds as the product read.
+    const voicesRead = /^\/v1\/voices\/([a-z0-9-]{1,64})$/.exec(url.pathname);
+    if (voicesRead && request.method === 'GET') {
+      if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const readId = voicesRead[1];
+      if (!publicProject(readId)) return json({ error: 'project' }, 404);
+      const days = readWindow(url);
+      if (days === null) return json({ error: 'window', allowedDays: READ_WINDOWS }, 400);
+      const admission = collectionAdmission(env);
+      if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
+      return json(await readVoices(env.DB, { project: readId, days, admitted: admission.enabled && voiceAdmission(env).includes(readId) }));
     }
     // Region hint for the SDK's consent defaults (USAGE_PLAN.md section 3): origin-checked, unauthenticated, stores nothing.
     const consentMatch = /^\/v1\/consent\/([a-z0-9-]+)$/.exec(url.pathname);

@@ -20,7 +20,7 @@ TOKEN = os.environ.get('READ_TOKEN', 'desk-browser-test-only-' + '0' * 40)
 def offline_html():
     html = (PUBLIC / 'index.html').read_text()
     source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-product.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-network.mjs', 'desk-release.mjs', 'desk-usage.mjs',
-                                                      'products/alibi.mjs', 'products/index.mjs', 'dashboard.mjs'])
+                                                      'desk-voices.mjs', 'products/alibi.mjs', 'products/index.mjs', 'dashboard.mjs'])
     source = re.sub(r'^import .*?;\n', '', source, flags=re.M)
     source = re.sub(r'\bexport (?=(?:async )?(?:const|function|class))', '', source)
     html = html.replace('<link rel="stylesheet" href="/dashboard.css">', '<style>' + (PUBLIC / 'dashboard.css').read_text() + '</style>')
@@ -81,9 +81,16 @@ async def run(args):
             assert any('/v1/github-evidence?project=alibi' in url for url in requests)
             assert not any('api.github.com' in url for url in requests)
             await page.keyboard.press('Escape')
+            # The Voices view reads the real route and passes the Desk's closed contract; this runner admits no voices.
+            await page.locator('[data-view=voices]').click()
+            await expect(page.locator('#page-title')).to_have_text('Voices')
+            await expect(page.locator('#view')).to_contain_text('No feedback in this window.')
+            await expect(page.locator('#view')).to_contain_text('not admitted for Voices')
+            assert any('/v1/voices/alibi?days=7' in url for url in requests), 'The Voices view must read its own route'
+            await page.locator('[data-view=overview]').click()
             await page.locator('#disconnect').click()
             assert await page.evaluate("localStorage.getItem('pulseboard.desk.token')") is None
-            results.append('real HTTP assets, protected API and SQLite connection; remembered token reconnects and Disconnect forgets it')
+            results.append('real HTTP assets, protected API and SQLite connection; remembered token reconnects and Disconnect forgets it; the Voices read')
         demo_mark = len(requests)
         await page.locator('#demo').click()
         await expect(page.locator('#mode')).to_have_text('SYNTHETIC DEMO')
@@ -153,9 +160,39 @@ async def run(args):
         await expect(page.locator('#view')).not_to_contain_text('Where people give up')
         await page.locator('#usage-project').select_option('alibi')
         await page.locator('#usage-window').select_option('7')
+        await page.locator('#page-title').focus()
+        await page.keyboard.press('7')
+        await expect(page.locator('#page-title')).to_have_text('Voices')
+        await expect(page.locator('#view')).to_contain_text('SYNTHETIC')
+        feedback = page.locator('.voice-list').first
+        # Player text is a text node: the sandbox's markup payload shows literally and creates no element.
+        await expect(feedback).to_contain_text('<img src=x onerror=alert(1)>')
+        assert await page.locator('#view img').count() == 0
+        assert await feedback.locator('.voice-text').first.evaluate("n => getComputedStyle(n).whiteSpace") == 'pre-wrap'
+        everything = await feedback.locator('.voice-item').count()
+        await page.locator('#voice-kind').select_option('bug')
+        bugs = await page.locator('.voice-list').first.locator('.voice-item').count()
+        assert 0 < bugs < everything, (bugs, everything)
+        await page.locator('#voice-kind').select_option('all')
+        assert await page.locator('.voice-list').first.locator('.voice-item').count() == everything
+        await expect(page.locator('#view')).to_contain_text('Survey · alibi-taste-1')
+        assert await page.locator('.voice-survey meter.share-meter').count() >= 40, 'every survey option has a bar'
+        await expect(page.locator('#view')).to_contain_text('By family')
+        await expect(page.locator('#view')).to_contain_text('More like this')
+        # Keyboard: the scrolling regions take focus so their content is reachable without a pointer.
+        await page.locator('.voice-list').first.focus()
+        await expect(page.locator('.voice-list').first).to_be_focused()
+        await page.set_viewport_size({'width': 390, 'height': 900})
+        assert await page.evaluate('document.documentElement.scrollWidth') <= 390, 'The Voices view must not scroll the page sideways'
+        await page.set_viewport_size({'width': 1440, 'height': 1100})
+        await page.locator('#usage-project').select_option('mdviewer')
+        await expect(page.locator('#view')).to_contain_text('No feedback in this window.')
+        await expect(page.locator('#view')).not_to_contain_text('By family')
+        await page.locator('#usage-project').select_option('alibi')
         await page.locator('[data-view=overview]').click()
         assert not any('/v1/' in url for url in requests[demo_mark:]), 'Replay and demo interaction must not read or write the collector'
         results.append('synthetic usage dimensions, product view, Alibi panel and explorer write nothing to the collector')
+        results.append('synthetic Voices: kind filter, markup as text, survey bars, ratings tables, keyboard focus and a 390 px layout')
         await page.locator('[data-view=signals]').click()
         await expect(page.locator('#page-title')).to_have_text('Alerts')
         before = await page.locator('.signal').count()
