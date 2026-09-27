@@ -367,3 +367,10 @@ body{background:white;color:black}.muted,.subtitle,.stat-note,.chart-caption{col
 .chart-text{font-size:14px}
 .onramp{display:flex;flex-direction:column;align-items:center;width:100%}
 #page-title:focus-visible{outline:none;text-decoration:underline 3px var(--accent);text-underline-offset:8px}
+.voice-list{max-height:520px;overflow:auto}
+.voice-item{padding:10px 0;border-bottom:1px solid var(--line)}
+.voice-item:last-child{border-bottom:0}
+.voice-text{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.voice-survey{margin:24px 0}
+.voice-question{min-width:0;align-self:start}
+.voice-scroll{max-height:480px}

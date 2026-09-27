@@ -81,7 +81,9 @@ function productPool(project, days, now) {
   const hex = k => Array.from({ length: k }, () => Math.floor(rand() * 16).toString(16)).join('');
   const alibi = project === 'alibi', endDay = new Date(now).toISOString().slice(0, 10), start = Date.parse(endDay) - (days - 1) * DAY;
   const places = [['GB', 'GB-ENG'], ['GB', 'GB-SCT'], ['RO', 'RO-B'], ['MD', 'MD-CU'], ['US', 'US-CA'], ['unknown', 'unknown']];
-  const puzzles = [['castle-1', 0.9], ['castle-2', 0.75], ['castle-3', 0.45], ['quiet-wing-1', 0.8], ['quiet-wing-2', 0.35], ['library-4', 0.6]];
+  // Family and tier travel with each puzzle event as Alibi sends them (docs/VOICES.md section 4).
+  const puzzles = [['castle-1', 0.9, 'bridges', 'gentle'], ['castle-2', 0.75, 'scene', 'steady'], ['castle-3', 0.45, 'binary', 'tricky'],
+    ['quiet-wing-1', 0.8, 'sudoku', 'gentle'], ['quiet-wing-2', 0.35, 'nonogram', 'expert'], ['library-4', 0.6, 'binary', 'steady']];
   const actions = ['action.requested', 'settings.opened', 'export.created', 'search.used'];
   const out = [], sessionCount = Math.min(360, 8 + days * 12);
   for (let s = 0; s < sessionCount; s++) {
@@ -98,12 +100,12 @@ function productPool(project, days, now) {
     };
     push('app.opened', 'home', { entry: pick(['direct', 'link', 'bookmark']), returning: rand() < 0.6 });
     if (alibi) for (let k = 0, games = 1 + Math.floor(rand() * 2); k < games; k++) {
-      const [puzzle, ease] = pick(puzzles), hints = Math.floor(rand() * (3 - ease * 2) + 0.2);
-      push('puzzle.started', 'puzzle', { puzzle });
-      for (let h = 0; h < hints; h++) push('hint.requested', 'puzzle', { puzzle });
+      const [puzzle, ease, family, tier] = pick(puzzles), hints = Math.floor(rand() * (3 - ease * 2) + 0.2);
+      push('puzzle.started', 'puzzle', { puzzle, family, tier });
+      for (let h = 0; h < hints; h++) push('hint.requested', 'puzzle', { puzzle, family, tier });
       const roll = rand(), attempts = 1 + Math.floor(rand() * 3);
-      if (roll < ease) push('puzzle.completed', 'puzzle', { puzzle, seconds: Math.round(60 + (1 - ease) * 400 + rand() * 240), hints, attempts });
-      else if (roll < ease + 0.12) push('puzzle.failed', 'puzzle', { puzzle, attempts });
+      if (roll < ease) push('puzzle.completed', 'puzzle', { puzzle, family, tier, seconds: Math.round(60 + (1 - ease) * 400 + rand() * 240), hints, attempts });
+      else if (roll < ease + 0.12) push('puzzle.failed', 'puzzle', { puzzle, family, tier, attempts });
     }
     else for (let k = 0, steps = 1 + Math.floor(rand() * 4); k < steps; k++) push(pick(actions), 'workspace', { panel: pick(['editor', 'preview', 'files']), items: Math.floor(rand() * 40), meta: { theme: pick(['dark', 'light']) } });
     if (rand() < 0.5) push('page.engaged', alibi ? 'puzzle' : 'workspace', { seconds: Math.round(20 + rand() * 900), scroll: Math.round(rand() * 100) });

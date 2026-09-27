@@ -86,6 +86,7 @@ export async function startLocalRunner({
   COLLECT_PROJECTS = '',
   COLLECT_STAT_PROJECTS = '',
   COLLECT_PRODUCT_PROJECTS = '',
+  COLLECT_VOICE_PROJECTS = '',
   WATCH_READ_TOKEN,
   WATCH_ENABLED = 'false',
   WATCH_SOURCES_JSON = '[]',
@@ -98,7 +99,7 @@ export async function startLocalRunner({
   if (typeof requestHandler !== 'function') throw new TypeError('requestHandler is required');
 
   // The per-channel switches are passed through verbatim; the handler applies the same exact-list rules as the Worker.
-  const env = { DB, READ_TOKEN, COLLECT_ENABLED, COLLECT_PROJECTS, COLLECT_STAT_PROJECTS, COLLECT_PRODUCT_PROJECTS,
+  const env = { DB, READ_TOKEN, COLLECT_ENABLED, COLLECT_PROJECTS, COLLECT_STAT_PROJECTS, COLLECT_PRODUCT_PROJECTS, COLLECT_VOICE_PROJECTS,
     WATCH_READ_TOKEN, WATCH_ENABLED, WATCH_SOURCES_JSON, ASSETS, ...(GITHUB_EVIDENCE ? { GITHUB_EVIDENCE } : {}) };
   let origin = null;
   const server = createServer(SERVER_OPTIONS, async (req, res) => {
@@ -195,6 +196,7 @@ export async function main(envVars = process.env, logger = console) {
       COLLECT_PROJECTS: collectProjects,
       COLLECT_STAT_PROJECTS: envVars.COLLECT_STAT_PROJECTS || '',
       COLLECT_PRODUCT_PROJECTS: envVars.COLLECT_PRODUCT_PROJECTS || '',
+      COLLECT_VOICE_PROJECTS: envVars.COLLECT_VOICE_PROJECTS || '',
       WATCH_READ_TOKEN: watch.token,
       WATCH_ENABLED: watchEnabled ? 'true' : 'false',
       WATCH_SOURCES_JSON: envVars.WATCH_SOURCES_JSON || '[]',

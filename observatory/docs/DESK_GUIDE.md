@@ -63,6 +63,15 @@ it to the module list in `tests/desk-browser.py`, and keep the asset budget test
 Demo mode (`?demo=release` or **Try a scenario**) fills both views and the Alibi
 panel with seeded synthetic data that never leaves the tab.
 
+The **Voices** view (`7`) reads `pulseboard.voices/1` ([VOICES.md](VOICES.md)) for the chosen site and window:
+only what players chose to send. Feedback lists the newest 500 messages with a kind filter; each shows its day,
+kind, screen, puzzle, release, device, country, browser and OS, and how many links, addresses or phone-number-like
+runs the collector removed. Text is rendered as text, newlines kept. Each survey shows its respondents (installations,
+not people), a bar per answer with `n`, and its newest comments without any author. Puzzle ratings are tabled by
+family, by tier (every rating) and by puzzle (the 500 most rated). **Content** reads the puzzle events on demand and
+sets, per family and tier, starts, completions, completions per start, median solve time and hints per completion
+beside the ratings. Demo mode fills the view with invented Voices, including a markup payload shown as plain text.
+
 Hosts collect through the Pulseboard SDK: one script built per project with
 `npm run build:sdk`, a Beta bar with three consent categories, and a small API for
 routes, counts and product events. [SDK.md](SDK.md) is the host integration guide
@@ -75,7 +84,7 @@ its evidence against current state and propose work before applying anything.
 
 ## Keyboard and connection behaviour
 
-`Ctrl/Cmd+K` opens the command palette. `1` through `6` switch views outside text
+`Ctrl/Cmd+K` opens the command palette. `1` through `7` switch views outside text
 inputs and dialogs. `/` focuses search. Escape closes the active native dialog.
 The density button switches between comfortable and compact spacing.
 

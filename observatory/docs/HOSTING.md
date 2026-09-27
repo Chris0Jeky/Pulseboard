@@ -6,7 +6,8 @@ The hosted Desk serves its UI and authenticated aggregate API from one Worker wi
 `COLLECT_ENABLED` is the global gate: nothing is admitted unless it is `"true"` and `COLLECT_PROJECTS` parses.
 Then one list per channel admits collection: `COLLECT_PROJECTS` (legacy session events, Alibi only since 2026-09-10),
 `COLLECT_STAT_PROJECTS` (aggregate counts) and `COLLECT_PRODUCT_PROJECTS` (product events); the last two list every
-public host since usage plan v2 (receipt below). Publishing never activates a host integration by itself. Since 2026-09-10 a
+public host since usage plan v2 (receipt below). `COLLECT_VOICE_PROJECTS` admits the player-initiated Voices channel
+(`VOICES.md`; `alibi` by owner decision q-27, live only once schema 5 is deployed). Publishing never activates a host integration by itself. Since 2026-09-10 a
 `*/15 * * * *` cron is registered to probe the seven registered public origins (status, timing and a
 content marker; never page content) and run retention; the handler is proven on the edge, but see the
 receipts below for whether Cloudflare has actually invoked it. Synthetic demo data stays in the
@@ -50,12 +51,18 @@ aggregate table and preserves historical session event rows. For schema 4 (produ
 before deploying; it only adds `product_events` and its three indexes. Rolling back to a schema-3
 Worker needs `UPDATE schema_version SET version=3 WHERE id=1 AND version=4` after the deploy; the
 table stays, and nothing writes to it while `COLLECT_PRODUCT_PROJECTS` is empty (it was empty at schema 4's first deploy;
-`wrangler.jsonc` holds the current list).
+`wrangler.jsonc` holds the current list). For schema 5 (Voices, `VOICES.md`), run
+`npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0005-voices.sql`
+before deploying; it only adds `voice_feedback`, `voice_survey` and their two `day` indexes. Then deploy, confirm
+`/readyz` reports schema 5 and `voices: { configured: true, admitted: ["alibi"] }`, and only then release the Alibi
+client that sends Voices. Rolling back to a schema-4 Worker needs
+`UPDATE schema_version SET version=4 WHERE id=1 AND version=5` after the deploy; the tables stay and nothing writes to
+them. To stop intake without a schema change, empty `COLLECT_VOICE_PROJECTS` and redeploy.
 Aggregate retention stays 14 days (`AGGREGATE_RETENTION_DAYS` in `src/statistics.mjs`) until no deployed
 host shows the old 14-day statistics notice; raising it to 400 is its own reviewed change. Deploy the schema-4 Worker only together with a Desk that accepts
 `pulseboard.statistics/4`: the Desk and the Worker ship from the same build, and a Desk that still
 validates `/3` refuses the Usage read. Confirm `/readyz`
-returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103, 4 since collector v4). The `/v1/collect-stat/<id>` route is
+returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103, 4 since collector v4, 5 since Voices). The `/v1/collect-stat/<id>` route is
 disabled for every id not listed in `COLLECT_STAT_PROJECTS` (an exact comma list since #102; it was exactly `alibi` before). Production now
 admits that project following issue #89's browser, notice and opt-out checks;
 the deployment and first accepted payload are recorded below. Alibi's client

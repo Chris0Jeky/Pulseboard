@@ -142,6 +142,26 @@ region hint `{ v: 1, region: 'eea' | 'other' }` from the edge country (unknown r
 registered origin only, with `Cache-Control: private, max-age=3600`; it stores nothing and does not
 depend on admission. `/readyz` reports `product: { configured, admitted }` beside `statistics`.
 
+### Voices (schema 5)
+
+`VOICES.md` is the contract. `POST /v1/feedback/<id>` (`pulseboard.feedback/1`) and `PUT /v1/survey/<id>`
+(`pulseboard.survey/1`) admit what a player explicitly sends: written feedback, survey answers and puzzle ratings,
+validated against the closed registry in `src/surveys.mjs`. Admission needs `COLLECT_ENABLED`, a valid session policy
+and the id in `COLLECT_VOICE_PROJECTS` (the same exact-list parser, over projects with a voice registry entry). Each
+write draws one unit from `<id>:voice` (`voiceLimit`, default 300) and the global `*:voice` (100 a day) through the
+product events' receipt-gated two-budget batch. Feedback is idempotent on `(project, id)`: the duplicate check, the
+reservation and the insert share one transaction, so a resend answers `202 { duplicate: true }` and is not charged.
+A survey or rating upserts one row per `(project, survey, subject, respondent)`, where `respondent` is
+`SHA-256(project + ':' + survey key)`, never the raw key, and increments `submissions`. Text is cleaned and redacted on
+the server (links, e-mail and IP addresses, phone-number-like runs; counted in `redacted`). Country, browser and OS are
+derived as for product events. Retention is 365 days for feedback and 400 for survey rows, by last update, through the
+`day` indexes. `GET /v1/voices/<id>?days=` (authenticated) returns `pulseboard.voices/1` in one D1 batch: the newest 500
+messages, per-option answer counts in registry order with respondents and the newest 100 comments per survey, and
+ratings per puzzle (top 500) with family and tier roll-ups over every rating. The Desk's Voices view renders it with
+text nodes only, and its Content section joins those roll-ups with puzzle product events grouped by family and tier in
+the tab. `/readyz` reports `voices: { configured, admitted }`. Storage: 100 feedback rows a day at the 2,000-character
+bound is about 91 MB a year, next to product events' 310 MB.
+
 `/v1/summary` is preserved for compatibility, including its original seven-day
 session-level flow semantics. New consumers should use `/v1/portfolio`. Do not
 combine the two flow measures as if they shared a denominator.

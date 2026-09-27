@@ -5,7 +5,9 @@ and q-19 to q-21). This file is the architecture for turning the Desk into the p
 "how are my products used, by whom, and where do people struggle". It supersedes the Alibi-only scope
 in `ROLLOUT.md`. It amends `ENGINEERING.md` (see "Amendments" below). Version 1 of this plan
 (visitor counts plus enrolled testers only) shipped slices 1 and 2 (#110, #111). Version 2 widens
-what is collected and replaces the tester tier with consent categories.
+what is collected and replaces the tester tier with consent categories. **Amended 27 September 2026**
+(owner decision in chat, HUMAN_TODO q-27): a separate, player-initiated Voices channel for written
+feedback, survey answers and puzzle ratings (data model section 5, `VOICES.md`).
 
 This is not legal advice. It records the most defensible reading the owner chose; see "Legal basis".
 
@@ -19,6 +21,13 @@ fingerprint, name, e-mail, cross-site identifier or cross-visit identifier, and 
 data carries a random id that lives for one tab session only. With one or two testers, almost any
 breakdown still describes a person the owner knows: the protection is that nothing stored names
 them and the Desk is private to the operator, not that rows cannot be linked to someone.
+
+The Voices channel (section 5) is the one exception to "no free text and no cross-visit identifier",
+and only for what a player explicitly sends: written feedback they pressed Send on (no identifier,
+links, e-mail and IP addresses and phone-number-like runs removed on the server), and a random
+installation **survey key** that lets the same installation replace its own survey answers and puzzle
+ratings. The collector stores the key only as `SHA-256(project + ':' + key)`, never returns it, and the
+key is never sent with counts, diagnostics or journeys; the player can reset it.
 
 ## Consent categories
 
@@ -37,6 +46,9 @@ Every product loads one Pulseboard SDK (below) with three categories:
   every local key (visit marker, session id) and drops anything queued. Turning one category off
   does the same for that category.
 - If the region hint cannot be fetched, the SDK treats the visitor as EEA.
+- The categories do not gate Voices (section 5): each voice is an explicit submission by the player,
+  not measurement, so neither the switches nor GPC/DNT block a Send. Voices keep feedback 365 days and
+  survey answers and ratings 400 days.
 - In the EEA the visit marker is not written until the visitor clicks OK or turns a category on;
   until then counts carry `visit: new` and nothing is stored on the device.
 - Session replay is out of scope (owner decision): it records screen content.
@@ -173,6 +185,20 @@ Origin-checked, no authentication, no storage. Returns `{ "v": 1, "region": "eea
   message.
 - `/v1/product/<id>/events?days=…&name=…&limit=…` returns up to 5,000 raw events, newest first, for
   the generic explorer and the per-product panels.
+- `/v1/voices/<id>?days=…` returns `pulseboard.voices/1`: the newest 500 feedback messages, survey
+  answer counts per option with respondents and comments, and puzzle ratings per puzzle, family and
+  tier (`VOICES.md` section 3). No survey key or its hash is returned.
+
+### 5. Voices: `/v1/feedback/<id>` and `/v1/survey/<id>` (`VOICES.md`)
+
+Player-initiated feedback (`POST`, `pulseboard.feedback/1`) and survey answers or puzzle ratings (`PUT`,
+`pulseboard.survey/1`), validated against a closed per-project registry (`src/surveys.mjs`). Admission:
+`COLLECT_ENABLED`, a valid session policy and the id in `COLLECT_VOICE_PROJECTS` (exact comma list,
+same rules as the other channel switches; Alibi only). Budget `<id>:voice` (default 300 writes a day,
+`voiceLimit`) plus the global `*:voice` (100 a day), with the product events' receipt-gated
+two-budget batch. A resent feedback id is accepted as a duplicate and charged nothing; a survey or
+rating replaces the installation's earlier answer, so each installation counts once per survey and
+puzzle. Schema 5 adds `voice_feedback` and `voice_survey`.
 
 ## The SDK (`observatory/sdk/`)
 
@@ -190,6 +216,9 @@ every failure is silent and drops data, and nothing is queued offline across pag
 - **Product panels**: a plugin per product, `public/products/<id>.mjs`, registered by id. Alibi's is
   first: per puzzle, starts, completions, failures, hint use, solve-time distribution and where
   people give up.
+- **Voices** (view 7): feedback with a kind filter, survey answer bars, ratings by family, tier and
+  puzzle, and a Content section that groups puzzle events by `props.family` and `props.tier`
+  (started, completed, completions per start, median seconds, hints per completion) beside the ratings.
 
 ## Delivery slices, in order
 
@@ -204,6 +233,9 @@ every failure is silent and drops data, and nothing is queued offline across pag
    Pulseboard PR after the host PRs are ready. MDviewer must never send document text, file names or
    export contents; Developer Lens must prove its private build never loads the SDK.
 7. Cloudflare Web Analytics adapter (#107): dropped for now (q-17).
+8. **Voices (q-27):** schema 5, feedback and survey intake, the Voices read and view, content demand
+   (`VOICES.md`). Rollout: migration 0005 on D1, then the collector deploy, then the Alibi client
+   release.
 
 The legacy `/v1/collect/<id>` session route stays for the Alibi builds already deployed and is
 retired once no host loads the old embed.

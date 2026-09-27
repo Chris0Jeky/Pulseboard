@@ -53,9 +53,29 @@ CREATE INDEX IF NOT EXISTS product_events_name ON product_events(project, day, n
 CREATE INDEX IF NOT EXISTS product_events_session ON product_events(project, session, seq);
 CREATE INDEX IF NOT EXISTS product_events_day ON product_events(day);
 
+-- Voices (schema 5, docs/VOICES.md): player-initiated feedback, survey answers and puzzle ratings. Feedback carries no
+-- identifier; its id is the device's idempotency key. A survey row's respondent is SHA-256(project + ':' + survey key),
+-- never the raw key, and a resubmission replaces the row and increments submissions. Text is cleaned and redacted on
+-- the server. No IP, User-Agent string or page URL is stored. Retention: feedback 365 days, surveys 400 days.
+CREATE TABLE IF NOT EXISTS voice_feedback (
+  project TEXT NOT NULL, id TEXT NOT NULL, received INTEGER NOT NULL, day TEXT NOT NULL, written TEXT NOT NULL,
+  release TEXT NOT NULL, kind TEXT NOT NULL, route TEXT NOT NULL, subject TEXT NOT NULL, text TEXT NOT NULL,
+  redacted INTEGER NOT NULL, device TEXT NOT NULL, country TEXT NOT NULL, browser TEXT NOT NULL, os TEXT NOT NULL,
+  PRIMARY KEY (project, id)
+);
+CREATE INDEX IF NOT EXISTS voice_feedback_day ON voice_feedback(day);
+CREATE TABLE IF NOT EXISTS voice_survey (
+  project TEXT NOT NULL, survey TEXT NOT NULL, subject TEXT NOT NULL, respondent TEXT NOT NULL,
+  first_received INTEGER NOT NULL, received INTEGER NOT NULL, day TEXT NOT NULL, release TEXT NOT NULL,
+  answers TEXT NOT NULL, meta TEXT NOT NULL, comment TEXT NOT NULL, redacted INTEGER NOT NULL,
+  device TEXT NOT NULL, country TEXT NOT NULL, submissions INTEGER NOT NULL,
+  PRIMARY KEY (project, survey, subject, respondent)
+);
+CREATE INDEX IF NOT EXISTS voice_survey_day ON voice_survey(day);
+
 -- Readiness asserts this row, so a database that predates a migration reports 503 instead of ready.
 CREATE TABLE IF NOT EXISTS schema_version (
   id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
 );
-INSERT INTO schema_version(id, version) VALUES (1, 4)
+INSERT INTO schema_version(id, version) VALUES (1, 5)
   ON CONFLICT(id) DO UPDATE SET version = MAX(schema_version.version, excluded.version);

@@ -1,18 +1,21 @@
 import { projects } from './projects.mjs';
-import { collectionAdmission, productAdmission } from './admission.mjs';
+import { collectionAdmission, productAdmission, voiceAdmission } from './admission.mjs';
 import { validateBatch, readBounded, monitorTransition, monitorState, interval } from './contracts.mjs';
 import { validateStatBatch, statAdmission, batchDimensions, serverDimensions, CAPPED_DIMENSIONS, DIMENSION_CAP, SENTINELS } from './stat-contract.mjs';
 import { validateProductBatch, redactProps, consentRegion, PRODUCT_DEFAULT_LIMIT, PRODUCT_GLOBAL_LIMIT, PRODUCT_GLOBAL_KEY, PRODUCT_NAME } from './product-contract.mjs';
 import { readStatistics, READ_WINDOWS, AGGREGATE_RETENTION_DAYS } from './statistics.mjs';
 import { readProduct, readProductEvents, EVENTS_DEFAULT_LIMIT } from './product.mjs';
+import { readVoices } from './voices.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
+import { parseFeedback, parseSurvey, respondentHash, VOICE_DEFAULT_LIMIT, VOICE_GLOBAL_LIMIT, VOICE_GLOBAL_KEY,
+  FEEDBACK_RETENTION_DAYS, SURVEY_RETENTION_DAYS } from './voice-contract.mjs';
 import { assets } from './assets.mjs';
 import { createGithubEvidence } from './github.mjs';
 import { githubMap } from './github-map.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 // Naming every column means a database missing a later-added column fails readiness instead of failing a request.
 const READINESS = [
   'SELECT project,day,used,receipt FROM budget LIMIT 0',
@@ -20,6 +23,8 @@ const READINESS = [
   'SELECT project,day,event,route,release,n,received FROM statistics LIMIT 0',
   'SELECT project,day,dimension,value,n FROM statistics_dimensions LIMIT 0',
   'SELECT project,received,day,session,seq,name,route,release,ms,props,redacted,country,region,browser,os,device FROM product_events LIMIT 0',
+  'SELECT project,id,received,day,written,release,kind,route,subject,text,redacted,device,country,browser,os FROM voice_feedback LIMIT 0',
+  'SELECT project,survey,subject,respondent,first_received,received,day,release,answers,meta,comment,redacted,device,country,submissions FROM voice_survey LIMIT 0',
   'SELECT project,state,failures,successes,opened,checked,status,duration FROM probes LIMIT 0',
   'SELECT project,checked,ok,duration FROM probe_history LIMIT 0',
 ];
@@ -50,6 +55,27 @@ function readWindow(url, allowed = ['days']) {
 const publicProject = id => Object.hasOwn(projects, id) && projects[id].origin ? projects[id] : null;
 const preflight = cors => new Response(null, { status: 204, headers: { ...headers, ...cors,
   'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
+/** Voices share one preflight answer for both of their write methods (docs/VOICES.md "Admission"). */
+const voicePreflight = cors => new Response(null, { status: 204, headers: { ...headers, ...cors,
+  'Access-Control-Allow-Methods': 'POST, PUT', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' } });
+/** The product events' receipt-gated two-budget reservation for one voice write: the project row `<id>:voice` is reserved
+ *  only if the global row `*:voice` also has room, and the global row is charged only against that receipt, so either
+ *  budget full refuses the write and charges neither. `unless` is an SQL condition plus its binds that, when true, skips
+ *  the project reservation; feedback uses it so a resend of a stored id reserves nothing. */
+function voiceReservation(db, { key, day, receipt, limit, unless = null }) {
+  const globalRoom = `(SELECT COALESCE(MAX(used),0) FROM budget WHERE project='${VOICE_GLOBAL_KEY}' AND day=?)+?<=?`;
+  const extra = unless ? ` AND NOT ${unless[0]}` : '', extraBinds = unless ? unless.slice(1) : [];
+  return [
+    db.prepare(`INSERT INTO budget(project,day,used,receipt) SELECT ?,?,?,? WHERE ?<=? AND ${globalRoom}${extra}
+      ON CONFLICT(project,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt
+      WHERE used+excluded.used<=? AND ${globalRoom} RETURNING used`)
+      .bind(key, day, 1, receipt, 1, limit, day, 1, VOICE_GLOBAL_LIMIT, ...extraBinds, limit, day, 1, VOICE_GLOBAL_LIMIT),
+    db.prepare(`INSERT INTO budget(project,day,used,receipt)
+      SELECT ?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
+      ON CONFLICT(project,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt`)
+      .bind(VOICE_GLOBAL_KEY, day, 1, receipt, key, day, receipt),
+  ];
+}
 const sentinelList = SENTINELS.map(value => `'${value}'`).join(',');
 /** Distinct-value cap for open-shaped dimensions, evaluated inside the gated insert so it reads the same transaction.
  *  Binds: value, capped flag, then project, day, dimension, value, then project, day, dimension, then value. */
@@ -119,7 +145,9 @@ export async function handle(request, env) {
         admitted: admission.enabled && admission.valid ? statAdmission(env) : [] };
       const product = { configured: typeof env.COLLECT_PRODUCT_PROJECTS === 'string' && env.COLLECT_PRODUCT_PROJECTS !== '',
         admitted: admission.enabled && admission.valid ? productAdmission(env) : [] };
-      return json({ ready: admission.valid, schema, collection, statistics, product }, admission.valid ? 200 : 503);
+      const voices = { configured: typeof env.COLLECT_VOICE_PROJECTS === 'string' && env.COLLECT_VOICE_PROJECTS !== '',
+        admitted: admission.enabled && admission.valid ? voiceAdmission(env) : [] };
+      return json({ ready: admission.valid, schema, collection, statistics, product, voices }, admission.valid ? 200 : 503);
     }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
@@ -167,6 +195,18 @@ export async function handle(request, env) {
       const admitted = admission.enabled && productAdmission(env).includes(readId);
       return json(raw ? await readProductEvents(env.DB, { project: readId, days, name, limit })
         : await readProduct(env.DB, { project: readId, days, admitted }));
+    }
+    // Voices read (docs/VOICES.md section 3): the same token, window and bounds as the product read.
+    const voicesRead = /^\/v1\/voices\/([a-z0-9-]{1,64})$/.exec(url.pathname);
+    if (voicesRead && request.method === 'GET') {
+      if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const readId = voicesRead[1];
+      if (!publicProject(readId)) return json({ error: 'project' }, 404);
+      const days = readWindow(url);
+      if (days === null) return json({ error: 'window', allowedDays: READ_WINDOWS }, 400);
+      const admission = collectionAdmission(env);
+      if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
+      return json(await readVoices(env.DB, { project: readId, days, admitted: admission.enabled && voiceAdmission(env).includes(readId) }));
     }
     // Region hint for the SDK's consent defaults (USAGE_PLAN.md section 3): origin-checked, unauthenticated, stores nothing.
     const consentMatch = /^\/v1\/consent\/([a-z0-9-]+)$/.exec(url.pathname);
@@ -225,6 +265,59 @@ export async function handle(request, env) {
       const productResult = await env.DB.batch([productReserve, globalReserve, ...rows]);
       if (!productResult[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
       return json({ accepted: true, meaning: 'product batch admitted; repeated requests store repeated rows' }, 202, cors);
+    }
+    // Voices (docs/VOICES.md): player-initiated feedback (POST) and survey answers or ratings (PUT). Their own switch,
+    // budget key and tables; the consent categories do not gate them because each one is an explicit submission.
+    const feedbackMatch = /^\/v1\/feedback\/([a-z0-9-]+)$/.exec(url.pathname), surveyMatch = /^\/v1\/survey\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (feedbackMatch || surveyMatch) {
+      const voiceId = (feedbackMatch ?? surveyMatch)[1], voiceProject = publicProject(voiceId), voiceMethod = feedbackMatch ? 'POST' : 'PUT';
+      if (url.search || !voiceProject) return json({ error: 'not_found' }, 404);
+      if (request.headers.get('origin') !== voiceProject.origin) return json({ error: 'origin' }, 403);
+      cors = { 'Access-Control-Allow-Origin': voiceProject.origin, 'Vary': 'Origin' };
+      if (request.method === 'OPTIONS') return voicePreflight(cors);
+      if (request.method !== voiceMethod) return json({ error: 'method' }, 405, { ...cors, Allow: voiceMethod });
+      const voiceCheck = collectionAdmission(env);
+      if (!voiceCheck.valid || !voiceCheck.enabled || !voiceAdmission(env).includes(voiceId)) return json({ error: 'disabled' }, 503, cors);
+      if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers.get('content-type') || '')) return json({ error: 'media_type' }, 415, cors);
+      // An unreadable, oversized or non-JSON body fails the contract like a malformed one: the client drops it either way.
+      let voiceBody;
+      try { voiceBody = await readBounded(request); } catch { return json({ error: 'contract' }, 400, cors); }
+      const voiceNow = Date.now(), voiceDay = new Date(voiceNow).toISOString().slice(0, 10), voiceReceipt = crypto.randomUUID();
+      const voiceKey = voiceId + ':voice', voiceLimit = voiceProject.voiceLimit ?? VOICE_DEFAULT_LIMIT;
+      // Country, browser and OS as for product events: the User-Agent is classified and dropped, the IP is never read.
+      const derived = serverDimensions(request, voiceNow);
+      if (feedbackMatch) {
+        const record = parseFeedback(voiceBody, voiceId, voiceNow);
+        if (!record) return json({ error: 'contract' }, 400, cors);
+        // One transaction: the duplicate check, the reservation that skips a stored id, and the receipt-gated insert.
+        const stored = 'EXISTS(SELECT 1 FROM voice_feedback WHERE project=? AND id=?)';
+        const duplicate = env.DB.prepare(`SELECT ${stored} AS duplicate`).bind(voiceId, record.id);
+        const insert = env.DB.prepare(`INSERT INTO voice_feedback(project,id,received,day,written,release,kind,route,subject,text,redacted,
+          device,country,browser,os) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
+          ON CONFLICT(project,id) DO NOTHING`)
+          .bind(voiceId, record.id, voiceNow, voiceDay, record.written, record.release, record.kind, record.route, record.subject, record.text,
+            record.redacted, record.device, derived.country, derived.browser, derived.os, voiceKey, voiceDay, voiceReceipt);
+        const result = await env.DB.batch([duplicate, ...voiceReservation(env.DB, { key: voiceKey, day: voiceDay, receipt: voiceReceipt,
+          limit: voiceLimit, unless: [stored, voiceId, record.id] }), insert]);
+        // A resend of a stored id is accepted and charges nothing, even when today's budget is full.
+        if (Number(result[0].results?.[0]?.duplicate) === 1) return json({ accepted: true, duplicate: true }, 202, cors);
+        if (!result[1].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
+        return json({ accepted: true, duplicate: false }, 202, cors);
+      }
+      const record = parseSurvey(voiceBody, voiceId);
+      if (!record) return json({ error: 'contract' }, 400, cors);
+      // Only the hash is stored; the raw survey key goes no further than this line.
+      const respondent = await respondentHash(voiceId, record.respondent);
+      const upsert = env.DB.prepare(`INSERT INTO voice_survey(project,survey,subject,respondent,first_received,received,day,release,answers,meta,
+        comment,redacted,device,country,submissions) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,1 FROM budget WHERE project=? AND day=? AND receipt=?
+        ON CONFLICT(project,survey,subject,respondent) DO UPDATE SET received=excluded.received,day=excluded.day,release=excluded.release,
+          answers=excluded.answers,meta=excluded.meta,comment=excluded.comment,redacted=excluded.redacted,device=excluded.device,
+          country=excluded.country,submissions=voice_survey.submissions+1 RETURNING submissions`)
+        .bind(voiceId, record.survey, record.subject, respondent, voiceNow, voiceNow, voiceDay, record.release, record.answers, record.meta,
+          record.comment, record.redacted, record.device, derived.country, voiceKey, voiceDay, voiceReceipt);
+      const result = await env.DB.batch([...voiceReservation(env.DB, { key: voiceKey, day: voiceDay, receipt: voiceReceipt, limit: voiceLimit }), upsert]);
+      if (!result[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
+      return json({ accepted: true, updated: Number(result[2].results?.[0]?.submissions) > 1 }, 202, cors);
     }
     // Read only on explicit desk action, never by the portfolio poll; its own contract keeps /v1/portfolio closed.
     if (url.pathname === '/v1/github-evidence' && request.method === 'GET') {
@@ -349,11 +442,14 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
 export async function maintain(env, now = Date.now()) {
   // Product events are kept 90 days (USAGE_PLAN.md "Consent categories"). Legacy session events keep 14 days: the deployed
   // opt-in embed tells people "Raw events expire after 14 days" (adapters/embed.mjs). Aggregates follow
-  // AGGREGATE_RETENTION_DAYS, 14 while the deployed stats notice promises 14-day aggregates.
+  // AGGREGATE_RETENTION_DAYS, 14 while the deployed stats notice promises 14-day aggregates. Voices keep 365 days of
+  // feedback and 400 of survey answers and ratings, counted from the last update (docs/VOICES.md).
   const dayBefore = days => new Date(now - days * 86400000).toISOString().slice(0, 10);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 14 * 86400000),
     env.DB.prepare('DELETE FROM product_events WHERE day<=?').bind(dayBefore(90)),
+    env.DB.prepare('DELETE FROM voice_feedback WHERE day<=?').bind(dayBefore(FEEDBACK_RETENTION_DAYS)),
+    env.DB.prepare('DELETE FROM voice_survey WHERE day<=?').bind(dayBefore(SURVEY_RETENTION_DAYS)),
     env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(dayBefore(AGGREGATE_RETENTION_DAYS)),
     env.DB.prepare('DELETE FROM statistics_dimensions WHERE day<=?').bind(dayBefore(AGGREGATE_RETENTION_DAYS)),
     env.DB.prepare('DELETE FROM budget WHERE day<?').bind(dayBefore(14)),
