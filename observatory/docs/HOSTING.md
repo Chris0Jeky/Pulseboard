@@ -128,6 +128,25 @@ origins' HTTP and offline/save acceptance. Alibi's physical-device checks
 remain open; the statistical-purpose exception and international applicability
 remain subject to the product-specific review described in `ENGINEERING.md`.
 
+## Automatic deploys
+
+`.github/workflows/deploy-observatory.yml` deploys the production Worker after every push to `main` that touches
+`observatory/` (merges included), and on demand from the Actions tab. It runs `npm ci` and `npm test`, checks the
+production schema, runs `npx wrangler deploy --env=""`, then waits for `/readyz` to report ready; the run summary
+names the new version.
+
+- It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. The account id was set on
+  2026-09-27; the token is HUMAN_TODO q-27. Without both, the job skips with a notice.
+- It deploys only what the head of `main` holds in `observatory/`: a manual run from another branch, or a run whose
+  commit `main` has since changed inside `observatory/`, skips (the newer commit has its own run). A run that `main`
+  moved past with unrelated commits still deploys, because its observatory files are the same.
+- Before deploying it reads `schema_version` from production D1 and stops unless it equals `SCHEMA_VERSION` in
+  `src/worker.mjs`. After a schema change, apply the migration by hand first, then re-run the workflow. Security
+  Watch tables (`watch/schema.sql`) are not versioned this way; apply them by hand before turning Watch on.
+- If `/readyz` does not report ready, the job fails; roll back with `npx wrangler rollback` (see the rollback limits
+  in the usage plan v2 receipt below).
+- Admission lists in `wrangler.jsonc` still change only by owner decision; the workflow deploys whatever `main` holds.
+
 ## Read token: rotate, copy, recover
 
 The read token is the password to the hosted Desk's private data. The owner lets agents rotate it
