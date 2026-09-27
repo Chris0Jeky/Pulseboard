@@ -219,7 +219,7 @@ test('readiness reports the schema version and fails on a partially migrated dat
   const response = await handle(new Request('https://x.test/readyz'), env(DB));
   assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ready: true, schema: 5,
     collection: { enabled: true, configured: ['mdviewer'], admitted: ['mdviewer'], invalid: [] },
-    statistics: { configured: false, admitted: [] }, product: { configured: false, admitted: [] } });
+    statistics: { configured: false, admitted: [] }, product: { configured: false, admitted: [] }, voices: { configured: false, admitted: [] } });
   DB.exec('DROP TABLE probe_history');
   assert.equal((await handle(new Request('https://x.test/readyz'), env(DB))).status, 503);
 }));
