@@ -1,12 +1,13 @@
 name: Sync sites
 # Keeps every site's installed Pulseboard SDK copy in step with main (owner decision 2026-09-27, HUMAN_TODO q-29).
-# Two jobs per site, so the site's own code never runs where the token is:
-#   prepare - no secrets. Rebuilds the installs listed in the site's observatory.lock.json with sync-hosts.mjs,
-#             runs the site's own observatory/check.mjs, and uploads only the report and the synced files.
-#   publish - holds SITES_TOKEN and runs no site code. Copies the synced files into a fresh clone, confines the
-#             commit to them, and opens or updates one pulseboard/sdk-sync pull request. That pull request merges
-#             itself only when the site check passed, its diff stays inside the synced files and every check on its
-#             head succeeds; otherwise it stays open, titled [needs a person].
+# Two jobs per site, so the site's own code never runs where the token is, and nothing it produced is trusted there:
+#   prepare - no secrets. Runs sync-hosts.mjs with the site's own observatory/check.mjs and uploads only a report,
+#             of which publish reads two booleans: did the site check pass, and did a refreshed generated checker pass.
+#   publish - holds SITES_TOKEN and runs no site code. Rebuilds every byte itself with sync-hosts.mjs --no-run on a
+#             fresh clone (the site's lock is read as data; dot-folders and symlinked paths are refused), confines the
+#             commit to those files, and opens or updates one pulseboard/sdk-sync pull request. A forged boolean can
+#             at most auto-merge Pulseboard-generated files, and only if every check on the site still passes.
+#             Otherwise the pull request stays open, titled [needs a person].
 on:
   push:
     branches: [main]
@@ -63,17 +64,8 @@ jobs:
       - name: Sync and run the site check (no secrets in this job)
         shell: bash
         run: |
-          mkdir -p out/files
+          mkdir -p out
           node pulseboard/observatory/adapters/sync-hosts.mjs site > out/report.json
-          # Hand on only files the report lists as changed and allowed; nothing else leaves this job.
-          node -e "
-            const fs = require('fs'), path = require('path');
-            const r = JSON.parse(fs.readFileSync('out/report.json', 'utf8'));
-            for (const rel of r.changed) {
-              if (!r.allowed.includes(rel) || path.isAbsolute(rel) || rel.split(/[\\\\/]/).includes('..')) throw new Error('Refusing ' + rel);
-              fs.mkdirSync(path.dirname(path.join('out/files', rel)), { recursive: true });
-              fs.copyFileSync(path.join('site', rel), path.join('out/files', rel));
-            }"
           echo "### ${{ matrix.repo }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"; cat out/report.json >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
@@ -83,6 +75,8 @@ jobs:
           retention-days: 3
   publish:
     needs: prepare
+    # One site's failed prepare must not stop the others; its own publish then fails loudly on the missing report.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -115,19 +109,41 @@ jobs:
         with:
           name: sync-${{ matrix.name }}
           path: out
-      - name: Read the report
+      - uses: actions/checkout@v6
+        if: steps.token.outputs.ready == 'true'
+        with:
+          path: pulseboard
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        if: steps.token.outputs.ready == 'true'
+        with:
+          repository: ${{ matrix.repo }}
+          path: site
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        if: steps.token.outputs.ready == 'true'
+        with:
+          node-version: '22'
+      - name: Rebuild from data only (no site code runs here)
         id: report
         if: steps.token.outputs.ready == 'true'
         shell: bash
         run: |
+          # Only two booleans cross from the prepare job; anything else in its report is ignored.
+          jq -e '(.hostCheck.ok | type) == "boolean" and (.checkerRefreshed | type) == "boolean"' out/report.json > /dev/null \
+            || { echo "::error::The prepare report is malformed"; exit 1; }
+          check_ok="$(jq -r '.hostCheck.ok' out/report.json)"
+          jq -r 'if .hostCheck.ok then "" else (.hostCheck.detail // "" | tostring | .[0:300]) end' out/report.json > check-detail.txt
+          flags=(--no-run)
+          if [ "$(jq -r '.checkerRefreshed' out/report.json)" = "true" ]; then flags+=(--refresh-checker); fi
+          node pulseboard/observatory/adapters/sync-hosts.mjs site "${flags[@]}" > own.json
+          jq -e '.sdk | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")' own.json > /dev/null || { echo "::error::Unexpected SDK version"; exit 1; }
+          jq -r '.changed[]' own.json > changed.txt
           {
-            echo "changed=$(jq -r '(.changed | length) > 0' out/report.json)"
-            echo "sdk=$(jq -r '.sdk' out/report.json)"
-            echo "check_ok=$(jq -r '.hostCheck.ok' out/report.json)"
+            echo "changed=$(jq -r '(.changed | length) > 0' own.json)"
+            echo "sdk=$(jq -r '.sdk' own.json)"
+            echo "check_ok=${check_ok}"
           } >> "$GITHUB_OUTPUT"
-          jq -r '.hostCheck.detail // ""' out/report.json > check-detail.txt
-          jq -r '.changed[]' out/report.json > changed.txt
-          grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$(jq -r '.sdk' out/report.json)" || { echo "::error::Unexpected SDK version in the report"; exit 1; }
       - name: Look for a person's commits on the sync branch
         id: guard
         if: steps.token.outputs.ready == 'true'
@@ -138,9 +154,10 @@ jobs:
           base="$(gh repo view "$REPO" --json defaultBranchRef -q .defaultBranchRef.name)"
           echo "base=$base" >> "$GITHUB_OUTPUT"
           # ls-remote tells "no such branch" (exit 2) apart from a network or auth failure (anything else).
-          set +e; git ls-remote --exit-code "https://github.com/${REPO}.git" "refs/heads/${BRANCH}" > /dev/null; code=$?; set -e
-          if [ "$code" = 2 ]; then echo "human=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          set +e; remote="$(git ls-remote --exit-code "https://github.com/${REPO}.git" "refs/heads/${BRANCH}")"; code=$?; set -e
+          if [ "$code" = 2 ]; then echo "human=false" >> "$GITHUB_OUTPUT"; echo "lease=" >> "$GITHUB_OUTPUT"; exit 0; fi
           if [ "$code" != 0 ]; then echo "::error::Could not read ${REPO} ${BRANCH} (git exit ${code})."; exit 1; fi
+          echo "lease=$(cut -f1 <<< "$remote")" >> "$GITHUB_OUTPUT"
           # The compare API lists every commit ahead of the base, however deep; authors and committers both count.
           emails="$(gh api "repos/${REPO}/compare/${base}...${BRANCH}" -q '.commits[] | .commit.author.email, .commit.committer.email')"
           if grep -vxF "$BOT_EMAIL" <<< "$emails" | grep -q .; then echo "human=true" >> "$GITHUB_OUTPUT"; else echo "human=false" >> "$GITHUB_OUTPUT"; fi
@@ -158,12 +175,6 @@ jobs:
       - name: Leave a person's work alone
         if: steps.report.outputs.changed == 'true' && steps.guard.outputs.human == 'true'
         run: echo "::warning title=Sync branch has a person's commits::${REPO} ${BRANCH} carries commits by a person; not replacing it. Merge or close that pull request, then the next run refreshes it."
-      - uses: actions/checkout@v6
-        if: steps.report.outputs.changed == 'true' && steps.guard.outputs.human == 'false'
-        with:
-          repository: ${{ matrix.repo }}
-          path: site
-          persist-credentials: false
       - name: Open or update the pull request
         id: pr
         if: steps.report.outputs.changed == 'true' && steps.guard.outputs.human == 'false'
@@ -173,22 +184,22 @@ jobs:
           SDK: ${{ steps.report.outputs.sdk }}
           CHECK_OK: ${{ steps.report.outputs.check_ok }}
           BASE: ${{ steps.guard.outputs.base }}
+          LEASE: ${{ steps.guard.outputs.lease }}
         run: |
           cd site
           git config user.name 'github-actions[bot]'
           git config user.email "$BOT_EMAIL"
           git switch -C "$BRANCH"
-          # Only the files the prepare job listed are copied in; no site code runs in this job.
-          while IFS= read -r rel; do
-            case "$rel" in /*|*..*) echo "::error::Refusing path ${rel}"; exit 1 ;; esac
-            mkdir -p "$(dirname "$rel")"; cp "../out/files/${rel}" "$rel"
-          done < ../changed.txt
+          # The working tree holds only this job's own rebuild; stage exactly the files it reported.
+          outside="$(git status --porcelain --untracked-files=all | cut -c4- | grep -vxF -f ../changed.txt || true)"
+          if [ -n "$outside" ]; then echo "::error title=Unexpected change::Files changed outside the rebuild: ${outside}"; exit 1; fi
           git add -A
           git commit -q -m "Sync Pulseboard SDK ${SDK} from Pulseboard ${GITHUB_SHA:0:7}"
           outside="$(git diff --name-only HEAD~1 HEAD | grep -vxF -f ../changed.txt || true)"
           if [ -n "$outside" ]; then echo "::error title=Unexpected change::The commit touches files outside the sync: ${outside}"; exit 1; fi
           gh auth setup-git
-          git push -q --force origin "$BRANCH"
+          # The lease refuses the push if the branch moved since the guard looked (for example a person pushed).
+          git push -q --force-with-lease="refs/heads/${BRANCH}:${LEASE}" origin "$BRANCH"
           head="$(git rev-parse HEAD)"
           if [ "$CHECK_OK" = "true" ]; then
             title="Sync Pulseboard SDK ${SDK}"
