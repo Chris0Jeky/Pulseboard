@@ -17,7 +17,7 @@ npm run build:sdk -- alibi ../../Alibi public/pulseboard.js 0.12.0   # pin a rel
 - The project must be registered in `src/projects.mjs` with a public origin. The release defaults to the
   newest registered release and must be one of them, except for a project with `releasePattern` (Alibi only,
   owner decision q-28), which also accepts any well-formed version: `MAJOR.MINOR.PATCH` with an optional short
-  `-prerelease` (`src/release-label.mjs`). The SDK inlines the same pattern, so such a build counts under its
+  lowercase `-prerelease` (`src/release-label.mjs`). The SDK inlines the same pattern, so such a build counts under its
   own release instead of `unattributed`.
 - The output is deterministic and LF-only. Its header names `pulseboard-sdk 3.3.0`, the project, and the
   SHA-256 of the body below the header. The writer refuses absolute paths, `..`, symlinked parents that

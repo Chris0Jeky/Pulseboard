@@ -21,13 +21,16 @@ are never mixed into telemetry totals, operational rules or public pulse exports
 
 Alibi's `package.json` version is sent as the release label on opted-in events.
 Since owner decision q-28 (2026-09-27) the collector accepts any well-formed Alibi
-version: `MAJOR.MINOR.PATCH` with an optional short `-prerelease`, one pattern in
+version: `MAJOR.MINOR.PATCH` with an optional short lowercase `-prerelease`, one pattern in
 `observatory/src/release-label.mjs` shared by every ingest path, the embeds and
 the host checker, and inlined in SDK 3.3.0 and later. A new Alibi version is
 therefore counted before anyone registers it. `observatory/src/alibi-releases.mjs`
 remains the known release history; `projects.mjs` sets `releasePattern` for Alibi
 only, so every other project keeps its closed list and malformed labels still
-fail closed. The generated Alibi host checker compares the app version with the
+fail closed. Because a sender can now mint distinct labels, the statistics and
+portfolio readers return at most 64 release rows: the 63 heaviest, then one `other`
+row summing the rest, with no merged timings. The Release lab never offers `other`
+as a cohort. The generated Alibi host checker compares the app version with the
 installed artifact and prints the version, known releases and artifact hash.
 
 From a Pulseboard checkout, synchronize a candidate Alibi release with:
