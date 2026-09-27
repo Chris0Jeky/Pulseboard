@@ -5,7 +5,7 @@ import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
 import { requestStatistics, assertStatistics, usageReading, usageQuestions, makeStatisticsDemo, foldTop, hourSeries, STATISTICS_MAX_BYTES, USAGE_WINDOWS } from './desk-usage.mjs';
 import { requestProduct, requestProductEvents, assertProduct, assertProductEvents, propertyBreakdown, vitalRating, PRODUCT_MAX_BYTES, PRODUCT_EVENTS_MAX_BYTES, PRODUCT_EVENTS_LIMIT } from './desk-product.mjs';
 import { productPanel } from './products/index.mjs';
-import { requestVoices, assertVoices, makeVoicesDemo, voiceKindCounts, VOICE_KINDS, VOICES_MAX_BYTES } from './desk-voices.mjs';
+import { requestVoices, assertVoices, makeVoicesDemo, voiceKindCounts, voiceContent, VOICE_KINDS, VOICE_CONTENT_NAMES, VOICES_MAX_BYTES } from './desk-voices.mjs';
 import { assertGithubEvidence, deploymentLeads, pinInvestigation, makeReleaseNote, releaseNoteMarkdown } from './desk-release.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -14,7 +14,7 @@ const REFRESH_MS = 30_000;
 const state = { snapshot: null, token: '', days: 7, scenario: 'release', phase: 1, query: '', sort: 'attention',
   view: 'overview', reviewed: false, reviews: {}, releaseProject: '', baseline: '', candidate: '',
   stale: false, busy: false, epoch: 0, controller: null, timer: null, export: null, error: '', imported: {}, pendingImport: null, publicSelection: [], github: {}, pin: null, usage: null, product: null, voices: null, errors: { usage: '', product: '', voices: '' }, reads: { usage: null, product: null, voices: null }, usageProject: 'alibi', usageDays: 7,
-  explorer: null, explorerName: '', plugin: null, guideClosed: {}, voiceKind: 'all' };
+  explorer: null, explorerName: '', plugin: null, guideClosed: {}, voiceKind: 'all', content: null };
 const views = {
   overview: ['Overview', 'Every site at a glance: which are up, how busy they are, and what needs you.'],
   signals: ['Alerts', 'Things the rules noticed. Open one to see why, then mark it reviewed or snooze it.'],
@@ -481,7 +481,7 @@ function resetSiteReads() {
   state.usage = demo ? makeStatisticsDemo(state.usageDays, now, state.usageProject) : null;
   state.product = demo ? makeProductDemo(state.usageDays, now, state.usageProject) : null;
   state.voices = demo ? makeVoicesDemo(state.usageDays, now, state.usageProject) : null;
-  state.errors = { usage: '', product: '', voices: '' }; state.explorer = null; state.plugin = null; state.voiceKind = 'all';
+  state.errors = { usage: '', product: '', voices: '' }; state.explorer = null; state.plugin = null; state.voiceKind = 'all'; state.content = null;
   if (Object.hasOwn(siteReads, state.view)) readSite(state.view);
   render();
 }
@@ -637,6 +637,41 @@ function voiceSurvey(s) {
     s.comments.map(text => e('p', { class: 'voice-text voice-item' }, text))) : e('p', { class: 'muted' }, 'No comments in this window.'),
   tag(s.commentsTruncated ? 'NEWEST 100 · CAPPED' : 'NO AUTHOR · TEXT ONLY')));
 }
+const minutes = value => value === null ? '—' : value < 60 ? `${Math.round(value)} s` : `${Math.floor(value / 60)} min ${Math.round(value % 60)} s`;
+function readContent() {
+  onDemand('content', async () => {
+    const reads = [];
+    for (const name of VOICE_CONTENT_NAMES) { const data = await productEvents(name, PRODUCT_EVENTS_LIMIT); if (!data) return null; reads.push(data); }
+    return { model: voiceContent(reads.flatMap(r => r.events), state.voices?.ratings ?? null), truncated: reads.filter(r => r.truncated).map(r => r.name) };
+  });
+}
+function contentTable(result, dim, heading) {
+  const share = (n, total) => total ? `${Math.round(n / total * 100)}%` : '—';
+  return e('div', {}, e('div', { class: 'table-shell voice-scroll', tabindex: '0', role: 'region', 'aria-label': `Content by ${dim}` },
+    table([heading, 'Started', 'Completed', 'Completions per start', 'Median time', 'Hints per completion', 'Rated', 'Too hard', 'More like this'],
+      result.rows.map(x => [x[dim], count(x.started), count(x.completed), ratio(x.completionRate), `${minutes(x.medianSeconds)}${x.timed ? ` · n=${count(x.timed)}` : ''}`,
+        ratio(x.hintsPerCompletion), x.ratings ? count(x.ratings.n) : '—', x.ratings ? share(x.ratings.tooHard, x.ratings.n) : '—', x.ratings ? share(x.ratings.more, x.ratings.n) : '—']))),
+  result.more ? e('p', { class: 'tiny muted' }, `+${count(result.more)} more ${dim} values with fewer starts are not shown.`) : null);
+}
+function contentSection() {
+  const x = state.content;
+  let body;
+  if (!x) body = [e('p', { class: 'muted' }, `Reads the raw ${VOICE_CONTENT_NAMES.join(', ')} events for this window on demand, newest ${count(PRODUCT_EVENTS_LIMIT)} per name, and groups them by the family and tier they carry. Computed in this tab.`)];
+  else if (x.busy) body = [e('p', { class: 'muted' }, 'Reading raw events…')];
+  else if (x.error) body = [e('p', { class: 'notice' }, x.error)];
+  else {
+    const m = x.model;
+    body = m.families.rows.length || m.tiers.rows.length ? [e('div', { class: 'overview-grid' },
+      panel('By family', contentTable(m.families, 'family', 'Family'), tag('PLAYED · FINISHED · RATED')),
+      panel('By tier', contentTable(m.tiers, 'tier', 'Tier'), tag('PLAYED · FINISHED · RATED')))]
+      : [e('p', { class: 'muted' }, m.unattributed ? 'No puzzle event in this window carries a family or tier yet.' : 'No puzzle events in this window.')];
+    if (m.unattributed) body.push(e('p', { class: 'tiny muted' }, `${count(m.unattributed)} puzzle events carry no family or tier (sent before the release that adds them) and are not counted here.`));
+    if (x.truncated.length) body.push(e('p', { class: 'notice' }, `Capped at the newest ${count(PRODUCT_EVENTS_LIMIT)} for ${x.truncated.join(', ')}: older events in the window are not counted here.`));
+  }
+  return e('section', { class: 'product-plugin' }, e('div', { class: 'section-heading' }, e('h2', {}, 'Content: what players play, finish and rate'),
+    button(x && !x.busy && !x.error ? 'Read again' : 'Read puzzle events', () => readContent(), 'primary')), ...body,
+  e('p', { class: 'tiny muted' }, 'Completions per start and hints per completion divide two independent event counts; they are not per-player rates. Median time is the nearest-rank median of the raw seconds on completions. Ratings are the roll-ups above.'));
+}
 function voicesView() {
   const v = state.voices, label = siteLabel();
   const picker = sitePicker('Only what players chose to send: written feedback, survey answers and puzzle ratings.');
@@ -669,6 +704,7 @@ function voicesView() {
         table(['Puzzle', 'Family', 'Tier', 'Ratings', 'Too easy', 'Just right', 'Too hard', 'More like this'],
           r.subjects.map(x => [x.subject, x.family, x.tier, count(x.n), count(x.tooEasy), count(x.justRight), count(x.tooHard), count(x.more)])))
         : e('p', { class: 'muted' }, 'No puzzle ratings in this window.'), tag(r.subjectsTruncated ? 'TOP 500 BY RATINGS · CAPPED' : 'MOST RATED FIRST')))] : []),
+    contentSection(),
     panel('Limits of these numbers', e('ul', { class: 'tiny muted' }, v.limitations.map(text => e('li', {}, text))))].filter(Boolean);
 }
 function render() {
@@ -709,7 +745,7 @@ function render() {
 }
 function navigate(view) { if (!Object.hasOwn(views, view)) return; if (location.hash === '#' + view) { state.view = view; render(); } else location.hash = view; }
 function cancelRead() { state.epoch++; clearTimeout(state.timer); state.controller?.abort(); state.controller = null; state.busy = false; }
-function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.usage = null; state.product = null; state.voices = null; state.errors = { usage: '', product: '', voices: '' }; state.reads = { usage: null, product: null, voices: null }; state.explorer = null; state.plugin = null; state.voiceKind = 'all'; state.drawerSnapshot = null; state.drawerStale = false; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
+function disconnect() { cancelRead(); state.token = ''; state.snapshot = null; state.stale = false; state.error = ''; state.imported = {}; state.pendingImport = null; state.export = null; state.publicSelection = []; state.github = {}; state.pin = null; state.usage = null; state.product = null; state.voices = null; state.errors = { usage: '', product: '', voices: '' }; state.reads = { usage: null, product: null, voices: null }; state.explorer = null; state.plugin = null; state.voiceKind = 'all'; state.content = null; state.drawerSnapshot = null; state.drawerStale = false; $('#suspected').value = ''; $('#alternative-check').value = ''; $('#notebook-summary').textContent = ''; $('#import-preview').textContent = ''; $('#export-confirm').checked = false; $('#token').value = ''; $('#export-preview').textContent = ''; $('#detail').replaceChildren(); for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close(); render(); }
 function beginDemo() { disconnect(); state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); resetSiteReads(); }
 async function refresh() {
   if (!state.token) { if (state.snapshot?.mode === 'demo') { state.snapshot = makeDemo(state.scenario, { days: state.days, phase: state.phase }); render(); } return; }

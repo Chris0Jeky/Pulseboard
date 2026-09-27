@@ -179,6 +179,10 @@ async def run(args):
         assert await page.locator('.voice-survey meter.share-meter').count() >= 40, 'every survey option has a bar'
         await expect(page.locator('#view')).to_contain_text('By family')
         await expect(page.locator('#view')).to_contain_text('More like this')
+        await page.get_by_role('button', name='Read puzzle events').click()
+        content = page.locator('.product-plugin', has_text='Content: what players play')
+        await expect(content).to_contain_text('Completions per start')
+        await expect(content).to_contain_text('binary')
         # Keyboard: the scrolling regions take focus so their content is reachable without a pointer.
         await page.locator('.voice-list').first.focus()
         await expect(page.locator('.voice-list').first).to_be_focused()
@@ -192,7 +196,7 @@ async def run(args):
         await page.locator('[data-view=overview]').click()
         assert not any('/v1/' in url for url in requests[demo_mark:]), 'Replay and demo interaction must not read or write the collector'
         results.append('synthetic usage dimensions, product view, Alibi panel and explorer write nothing to the collector')
-        results.append('synthetic Voices: kind filter, markup as text, survey bars, ratings tables, keyboard focus and a 390 px layout')
+        results.append('synthetic Voices: kind filter, markup as text, survey bars, ratings tables, content demand, keyboard focus and a 390 px layout')
         await page.locator('[data-view=signals]').click()
         await expect(page.locator('#page-title')).to_have_text('Alerts')
         before = await page.locator('.signal').count()

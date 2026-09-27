@@ -16,6 +16,7 @@
  *                      families: [{ family, n, tooEasy, justRight, tooHard, more }], tiers: [{ tier, … }] } }
  */
 import { plain, requireValue, boundedString, list, exactKeys, unique } from './desk-bridge.mjs';
+import { rankQuantile } from './desk-product.mjs';
 export const VOICES_SCHEMA = 'pulseboard.voices/1';
 /** 500 feedback texts of up to 2,000 characters (6 KB of UTF-8 each at worst) plus surveys and ratings. */
 export const VOICES_MAX_BYTES = 4 * 1048576;
@@ -101,6 +102,46 @@ export function assertVoices(input, days, project) {
     requireValue(r.subjectsTruncated ? voiceSum(r.subjects) <= r.n : voiceSum(r.subjects) === r.n, 'Rated puzzles disagree with the total');
   }
   return input;
+}
+
+/** Content demand (docs/VOICES.md section 4): the puzzle journey events Alibi sends with props.family and props.tier. */
+export const VOICE_CONTENT_NAMES = Object.freeze(['puzzle.started', 'puzzle.completed', 'puzzle.failed', 'hint.requested']);
+const VOICE_CONTENT_ROWS = 64;
+/** Per family and per tier: started, completed and failed counts, completions per start (two independent counts, not a
+ *  per-player rate), the nearest-rank median of the raw props.seconds on completions (never an average of medians), and
+ *  hint requests per completion; joined with the rating roll-ups. Computed in the tab from events already read.
+ *  Property values are open JSON, so rows are capped at 64 per table, most started first, and the rest are counted. */
+export function voiceContent(events, ratings = null) {
+  const groups = { family: new Map(), tier: new Map() };
+  let attributed = 0, unattributed = 0;
+  const slot = (map, key) => { let r = map.get(key); if (!r) map.set(key, r = { started: 0, completed: 0, failed: 0, hints: 0, seconds: [] }); return r; };
+  for (const x of events) {
+    if (!VOICE_CONTENT_NAMES.includes(x.name)) continue;
+    const labels = { family: x.props?.family, tier: x.props?.tier };
+    if (!['family', 'tier'].some(dim => typeof labels[dim] === 'string' && labels[dim])) { unattributed++; continue; }
+    attributed++;
+    for (const dim of ['family', 'tier']) {
+      if (typeof labels[dim] !== 'string' || !labels[dim]) continue;
+      const r = slot(groups[dim], labels[dim]);
+      if (x.name === 'puzzle.started') r.started++;
+      else if (x.name === 'puzzle.failed') r.failed++;
+      else if (x.name === 'hint.requested') r.hints++;
+      else { r.completed++; const time = x.props.seconds; if (typeof time === 'number' && Number.isFinite(time) && time >= 0) r.seconds.push(time); }
+    }
+  }
+  const grouped = dim => {
+    const rolled = (ratings?.[dim === 'family' ? 'families' : 'tiers'] ?? []).filter(x => x.n > 0);
+    const keys = new Set([...groups[dim].keys(), ...rolled.map(x => x[dim])]);
+    const rows = [...keys].map(key => {
+      const r = groups[dim].get(key) ?? { started: 0, completed: 0, failed: 0, hints: 0, seconds: [] }, sorted = r.seconds.sort((a, b) => a - b);
+      const rating = rolled.find(x => x[dim] === key);
+      return { [dim]: key, started: r.started, completed: r.completed, failed: r.failed, completionRate: r.started ? r.completed / r.started : null,
+        medianSeconds: rankQuantile(sorted, 0.5), timed: sorted.length, hintsPerCompletion: r.completed ? r.hints / r.completed : null,
+        ratings: rating ? { n: rating.n, tooEasy: rating.tooEasy, justRight: rating.justRight, tooHard: rating.tooHard, more: rating.more } : null };
+    }).sort((a, b) => b.started - a.started || b.completed - a.completed || (a[dim] < b[dim] ? -1 : a[dim] > b[dim] ? 1 : 0));
+    return { rows: rows.slice(0, VOICE_CONTENT_ROWS), more: Math.max(0, rows.length - VOICE_CONTENT_ROWS) };
+  };
+  return { families: grouped('family'), tiers: grouped('tier'), attributed, unattributed };
 }
 
 /** Feedback counts per kind in the rows read, in contract order, for the kind filter. */
