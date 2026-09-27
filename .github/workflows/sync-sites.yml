@@ -68,11 +68,13 @@ jobs:
           mkdir -p out
           if [ "${{ matrix.build }}" = "true" ]; then
             # Write the synced files first, build the site from them, then run the check on the build.
-            node pulseboard/observatory/adapters/sync-hosts.mjs site --no-run > /dev/null
+            node pulseboard/observatory/adapters/sync-hosts.mjs site --no-run > pass1.json
             (cd site && npm ci --no-audit --no-fund && npm run build)
           fi
           node pulseboard/observatory/adapters/sync-hosts.mjs site > out/report.json
           echo "### ${{ matrix.repo }}" >> "$GITHUB_STEP_SUMMARY"
+          # For a built site the files were written by the first pass, so its list is the one worth reading (#158).
+          if [ -f pass1.json ]; then echo "Synced before the build: $(jq -c '.changed' pass1.json)" >> "$GITHUB_STEP_SUMMARY"; fi
           echo '```json' >> "$GITHUB_STEP_SUMMARY"; cat out/report.json >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
@@ -183,7 +185,7 @@ jobs:
             # Delete the branch only if it still points where the guard saw it, so a person's late push survives (#158).
             cd site && gh auth setup-git
             git push -q --force-with-lease="refs/heads/${BRANCH}:${LEASE}" origin ":refs/heads/${BRANCH}" \
-              || echo "::warning title=Sync branch kept::${REPO} ${BRANCH} moved since the guard looked; it was not deleted."
+              || echo "::warning title=Sync branch kept::${REPO} ${BRANCH} was not deleted: it moved since the guard looked, or the push failed (see the git error above)."
           fi
       - name: Leave a person's work alone
         if: steps.report.outputs.changed == 'true' && steps.guard.outputs.human == 'true'
