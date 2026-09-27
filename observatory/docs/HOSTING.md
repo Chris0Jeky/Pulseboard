@@ -7,7 +7,7 @@ The hosted Desk serves its UI and authenticated aggregate API from one Worker wi
 Then one list per channel admits collection: `COLLECT_PROJECTS` (legacy session events, Alibi only since 2026-09-10),
 `COLLECT_STAT_PROJECTS` (aggregate counts) and `COLLECT_PRODUCT_PROJECTS` (product events); the last two list every
 public host since usage plan v2 (receipt below). `COLLECT_VOICE_PROJECTS` admits the player-initiated Voices channel
-(`VOICES.md`; `alibi` by owner decision q-27, live only once schema 5 is deployed). Publishing never activates a host integration by itself. Since 2026-09-10 a
+(`VOICES.md`; `alibi` by owner decision q-30, live since 2026-09-27: schema 5 applied and Worker `415057c9` deployed). Publishing never activates a host integration by itself. Since 2026-09-10 a
 `*/15 * * * *` cron is registered to probe the seven registered public origins (status, timing and a
 content marker; never page content) and run retention; the handler is proven on the edge, but see the
 receipts below for whether Cloudflare has actually invoked it. Synthetic demo data stays in the
