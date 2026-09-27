@@ -144,6 +144,14 @@ builders or the host checker, daily at 06:41 UTC, and on demand. For each site i
 updates the lock's hashes and SDK version, refreshes a *generated* `observatory/check.mjs` only when the new one
 passes there (hand-written checkers are never touched), and runs the site's own check.
 
+It runs as two jobs per site. `prepare` has no secrets and is the only place the site's own code runs; it hands on
+only two booleans (did the site check pass, did a refreshed generated checker pass). `publish` holds `SITES_TOKEN`,
+runs no site code and trusts no file from `prepare`: it rebuilds every byte itself with `sync-hosts.mjs --no-run` on a
+fresh clone, reading the site's lock as data and refusing dot-folders and symlinked paths. It finds a person's
+commits on the sync branch through the compare API (author and committer) and pushes with a lease, so it never
+replaces their work. A forged boolean can at most auto-merge Pulseboard-generated files, and only when every check on
+the site passes.
+
 - Changes go to one `pulseboard/sdk-sync` pull request per site. It merges itself (merge commit) after the
   three-minute floor when the diff stays inside the lock's files, the site check passes and every GitHub Actions
   run on its head succeeds. Otherwise it is titled `[needs a person]` and stays open with the reason.
