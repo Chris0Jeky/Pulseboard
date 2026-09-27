@@ -68,32 +68,32 @@ export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) 
     if (snapshot.collectionEnabled && p.collectionEligible && !p.collectionAdmitted) {
       const retainedEvents = p.totals.events;
       const detail = retainedEvents === 0
-        ? 'This site is not in the detailed session-event pilot, so its zero on the Overview does not mean no traffic. Its counts and product events are on the Usage and Product pages.'
-        : `${retainedEvents} older session events are in this window, but the site no longer sends detailed session events. Its counts and product events are on the Usage and Product pages.`;
+        ? 'This site is not in the detailed session-event pilot, so its zero on the Overview does not mean no traffic. Counts and product events are separate: the Usage and Product pages show whether this site sends them.'
+        : `${retainedEvents} older session events are in this window, but the collector no longer accepts detailed session events from this site. The Usage and Product pages show whether it sends counts and product events.`;
       add(p, 'collection.not_admitted', 'note', `${p.label} sends no detailed session events`, detail,
         { collectionEnabled: true, collectionEligible: true, collectionAdmitted: false, retainedEvents },
-        'Nothing to do. Detailed session events for this site would need an owner decision and its id in COLLECT_PROJECTS.');
+        'Nothing to do here. Check its Usage page; detailed session events would need an owner decision and its id in COLLECT_PROJECTS.');
     }
     const state = monitorState(p, now);
     const recordedDown = p.monitor?.state === 'down';
     const lastKnownDown = refreshFailed === true && recordedDown;
     if (state === 'down' || lastKnownDown) {
       const lastKnown = refreshFailed === true;
-      add(p, 'monitor.down', 'critical', lastKnown ? `${p.label} was failing its site check (last known)` : `${p.label} is failing its site check`,
+      add(p, 'monitor.down', 'critical', lastKnown ? `${p.label} was failing its site check (last-known)` : `${p.label} is failing its site check`,
         lastKnown ? 'The last reading that worked showed the check failing. The current state is unknown.'
-          : 'The 15-minute check failed 3 times in a row: the page errored, timed out or lacked its expected content. Other pages may still work.',
+          : 'The scheduled site check failed 3 times in a row (the page errored, timed out or lacked its expected content) and has not passed twice since. Other pages may still work.',
         { state: p.monitor.state, freshness: state, checked: p.monitor.checked, failures: p.monitor.failures, status: p.monitor.status,
           ...(lastKnown ? { lastKnown: true } : {}) },
         lastKnown ? 'Refresh, then open the site yourself and look at its latest deployment.'
           : 'Open the site yourself, then look at its latest deployment.');
     }
     if (state === 'stale') add(p, 'monitor.stale', 'warning', `${p.label} has not been checked recently`,
-      'The last site check is over 30 minutes old, so its current state is unknown.', { checked: p.monitor.checked }, 'Check that the 15-minute cron is running (HOSTING.md) and that the collector is ready.');
-    if (state === 'unknown') add(p, 'monitor.unknown', 'note', `${p.label} has not been checked yet`,
-      'Not checked is neither healthy nor broken.', { state }, 'Wait for the next 15-minute check, or check the cron if this persists.');
+      'The last site check is over 30 minutes old, so its current state is unknown.', { checked: p.monitor.checked }, 'Check that the scheduled cron is running (HOSTING.md) and that the collector is ready.');
+    if (state === 'unknown') add(p, 'monitor.unknown', 'note', `${p.label} has no settled site check yet`,
+      'Its checks have not yet passed twice or failed 3 times in a row, so it is neither healthy nor broken.', { state }, 'Wait for more scheduled checks (every 15 minutes when hosted); if this persists, the checks may be alternating or the cron may be off.');
     const ratio = p.budget.limit > 0 ? p.budget.used / p.budget.limit : null;
     if (ratio !== null && ratio >= 0.8) add(p, 'budget.pressure', 'warning', `${p.label} is close to its daily event budget`,
-      'Over 80% of today’s budget is used. Past the limit, new events are refused until midnight UTC, so counts would undercount traffic.',
+      'Over 80% of today’s budget is used. Past the limit, new session events and counts are refused until midnight UTC, so they would undercount traffic. Product events have their own budget.',
       { used: p.budget.used, limit: p.budget.limit, day: p.budget.day }, 'Find out what is sending so many events before raising the budget.');
     const outcomes = p.totals.completed + p.totals.failed;
     if (outcomes >= MIN_OUTCOMES && p.totals.failed / outcomes >= 0.1) add(p, 'outcomes.failure', 'warning', `${p.label}: many actions are failing`,
