@@ -116,3 +116,28 @@ test('install targets in dot-folders, with a backslash, or through a symlink, ar
   catch (error) { if (error.code === 'EPERM') { t.skip('this host cannot create symlinks'); return; } throw error; }
   assert.throws(() => syncHost(linked, { run: false }), /Refusing symlinked path x\/config/);
 });
+
+test('a pinned lock source follows the commit the copies were rebuilt from, at the host\'s own length', t => {
+  const OLD = '3a882cc6969b798fcf4cd698f185e3718945a3a7', NEW = 'f1495c3' + '0'.repeat(33);
+  const pinnedLock = (source, sha256) => JSON.stringify({ ...JSON.parse(lockFor(sha256)), source }, null, 2) + '\n';
+  const shortRoot = host({ artifact: buildSdk('mdviewer'), lock: pinnedLock('Chris0Jeky/Pulseboard:observatory@3a882cc', '0'.repeat(64)) });
+  const fullRoot = host({ artifact: buildSdk('mdviewer'), lock: pinnedLock('Chris0Jeky/Pulseboard:observatory@' + OLD, '0'.repeat(64)) });
+  const bareRoot = host({ artifact: buildSdk('mdviewer'), lock: lockFor('0'.repeat(64)) });
+  t.after(() => [shortRoot, fullRoot, bareRoot].forEach(root => rmSync(root, { recursive: true, force: true })));
+  const source = root => JSON.parse(readFileSync(path.join(root, 'observatory.lock.json'), 'utf8')).source;
+  syncHost(shortRoot, { run: false, commit: NEW });
+  assert.equal(source(shortRoot), 'Chris0Jeky/Pulseboard:observatory@f1495c3');
+  syncHost(fullRoot, { run: false, commit: NEW });
+  assert.equal(source(fullRoot), 'Chris0Jeky/Pulseboard:observatory@' + NEW);
+  // The generated checker requires the bare source, so it never gains a pin.
+  assert.equal(syncHost(bareRoot, { commit: NEW }).hostCheck.ok, true);
+  assert.equal(source(bareRoot), 'Chris0Jeky/Pulseboard:observatory');
+  // A later Pulseboard commit that changes no copy leaves the pin, so it opens no site pull request by itself.
+  assert.deepEqual(syncHost(shortRoot, { run: false, commit: 'a'.repeat(40) }).changed, []);
+  assert.equal(source(shortRoot), 'Chris0Jeky/Pulseboard:observatory@f1495c3');
+  // Without a known commit (not a git checkout) the pin is left as it is rather than guessed.
+  const unknown = host({ artifact: buildSdk('mdviewer'), lock: pinnedLock('Chris0Jeky/Pulseboard:observatory@3a882cc', '0'.repeat(64)) });
+  t.after(() => rmSync(unknown, { recursive: true, force: true }));
+  syncHost(unknown, { run: false, commit: null });
+  assert.equal(source(unknown), 'Chris0Jeky/Pulseboard:observatory@3a882cc');
+});

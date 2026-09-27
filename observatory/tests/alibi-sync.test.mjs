@@ -9,6 +9,21 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { ALIBI_RELEASES } from '../src/alibi-releases.mjs';
 
+// The late-write rollback cases make the host lock read-only to force a write failure. Root (and Windows without the
+// read-only attribute honoured) writes through mode 0444, so those cases run only where a read-only file really refuses.
+const READ_ONLY_BLOCKS_WRITES = (() => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'observatory-ro-probe-'));
+  const file = path.join(dir, 'probe');
+  try {
+    writeFileSync(file, 'x');
+    chmodSync(file, 0o444);
+    try { writeFileSync(file, 'y'); return false; } catch { return true; }
+  } finally {
+    chmodSync(file, 0o644);
+    rmSync(dir, { recursive: true });
+  }
+})();
+
 // A probe release one patch past the newest registered release, so registering a
 // new Alibi version never requires editing this test.
 const VERSION = (([major, minor, patch]) => `${major}.${minor}.${patch + 1}`)(
@@ -159,25 +174,27 @@ test('Alibi release sync is repository-scoped, validates the catalogue and rolls
     assert.match(rejectedJson.error.message, /10000\.0\.0 is missing from the Pulseboard collector contract/);
     makeAlibi(alibi);
 
-    projects.alibi.releases = oldReleases;
-    writeFileSync(registryFile, renderAlibiReleaseRegistry(oldReleases));
-    makeAlibi(lateAlibi);
-    install('alibi', lateAlibi, 'observatory/browser.js', ENDPOINT);
-    const beforeHost = hostFiles(lateAlibi);
-    const beforeRegistry = readFileSync(registryFile);
-    const lock = path.join(lateAlibi, 'observatory.lock.json');
-    const lockMode = (await import('node:fs')).statSync(lock).mode & 0o777;
-    try {
-      chmodSync(lock, 0o444);
-      assert.throws(() => syncAlibi(lateAlibi, { mode: 'write' }), /EACCES|EPERM|permission denied|read-only/i);
-    } finally {
-      chmodSync(lock, lockMode);
+    if (READ_ONLY_BLOCKS_WRITES) {
+      projects.alibi.releases = oldReleases;
+      writeFileSync(registryFile, renderAlibiReleaseRegistry(oldReleases));
+      makeAlibi(lateAlibi);
+      install('alibi', lateAlibi, 'observatory/browser.js', ENDPOINT);
+      const beforeHost = hostFiles(lateAlibi);
+      const beforeRegistry = readFileSync(registryFile);
+      const lock = path.join(lateAlibi, 'observatory.lock.json');
+      const lockMode = (await import('node:fs')).statSync(lock).mode & 0o777;
+      try {
+        chmodSync(lock, 0o444);
+        assert.throws(() => syncAlibi(lateAlibi, { mode: 'write' }), /EACCES|EPERM|permission denied|read-only/i);
+      } finally {
+        chmodSync(lock, lockMode);
+      }
+      assert.equal(readFileSync(registryFile).compare(beforeRegistry), 0, 'failed late host write must restore Pulseboard release registration');
+      for (const [relative, bytes] of beforeHost) {
+        assert.equal(readFileSync(path.join(lateAlibi, relative)).compare(bytes), 0, `failed sync must restore ${relative}`);
+      }
+      assert.deepEqual(projects.alibi.releases, oldReleases, 'failed sync must restore temporary module state');
     }
-    assert.equal(readFileSync(registryFile).compare(beforeRegistry), 0, 'failed late host write must restore Pulseboard release registration');
-    for (const [relative, bytes] of beforeHost) {
-      assert.equal(readFileSync(path.join(lateAlibi, relative)).compare(bytes), 0, `failed sync must restore ${relative}`);
-    }
-    assert.deepEqual(projects.alibi.releases, oldReleases, 'failed sync must restore temporary module state');
   } finally {
     rmSync(temp, { recursive: true });
   }
@@ -301,23 +318,25 @@ test('Alibi release sync detects the SDK v3 layout from the lock, repins it, and
     assert.equal(syncAlibi(alibi, { mode: 'check' }).status, 'in-sync');
 
     // A late lock write failure rolls back the SDK artifact and the Pulseboard registry.
-    projects.alibi.releases = oldReleases;
-    writeFileSync(registryFile, renderAlibiReleaseRegistry(oldReleases));
-    makeSdkAlibi(lateAlibi, registered);
-    makeAlibi(lateAlibi, VERSION);
-    const before = ['observatory/pulseboard.js', 'observatory.lock.json'].map(relative => [relative, readFileSync(path.join(lateAlibi, relative))]);
-    const beforeRegistry = readFileSync(registryFile);
-    const lateLock = path.join(lateAlibi, 'observatory.lock.json');
-    const lockMode = statSync(lateLock).mode & 0o777;
-    try {
-      chmodSync(lateLock, 0o444);
-      assert.throws(() => syncAlibi(lateAlibi, { mode: 'write' }), /EACCES|EPERM|permission denied|read-only/i);
-    } finally {
-      chmodSync(lateLock, lockMode);
+    if (READ_ONLY_BLOCKS_WRITES) {
+      projects.alibi.releases = oldReleases;
+      writeFileSync(registryFile, renderAlibiReleaseRegistry(oldReleases));
+      makeSdkAlibi(lateAlibi, registered);
+      makeAlibi(lateAlibi, VERSION);
+      const before = ['observatory/pulseboard.js', 'observatory.lock.json'].map(relative => [relative, readFileSync(path.join(lateAlibi, relative))]);
+      const beforeRegistry = readFileSync(registryFile);
+      const lateLock = path.join(lateAlibi, 'observatory.lock.json');
+      const lockMode = statSync(lateLock).mode & 0o777;
+      try {
+        chmodSync(lateLock, 0o444);
+        assert.throws(() => syncAlibi(lateAlibi, { mode: 'write' }), /EACCES|EPERM|permission denied|read-only/i);
+      } finally {
+        chmodSync(lateLock, lockMode);
+      }
+      assert.equal(readFileSync(registryFile).compare(beforeRegistry), 0, 'failed SDK sync must restore the registry');
+      for (const [relative, bytes] of before) assert.equal(readFileSync(path.join(lateAlibi, relative)).compare(bytes), 0, `failed SDK sync must restore ${relative}`);
+      assert.deepEqual(projects.alibi.releases, oldReleases);
     }
-    assert.equal(readFileSync(registryFile).compare(beforeRegistry), 0, 'failed SDK sync must restore the registry');
-    for (const [relative, bytes] of before) assert.equal(readFileSync(path.join(lateAlibi, relative)).compare(bytes), 0, `failed SDK sync must restore ${relative}`);
-    assert.deepEqual(projects.alibi.releases, oldReleases);
   } finally {
     rmSync(temp, { recursive: true });
   }

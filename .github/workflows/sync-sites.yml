@@ -86,7 +86,8 @@ jobs:
     # One site's failed prepare must not stop the others; its own publish then fails loudly on the missing report.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Up to three rounds of site CI (about 20 minutes each on Alibi) when the site's base moves during a round.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -241,27 +242,69 @@ jobs:
           GH_TOKEN: ${{ secrets.SITES_TOKEN }}
           NUMBER: ${{ steps.pr.outputs.number }}
           HEAD: ${{ steps.pr.outputs.head }}
+          BASE: ${{ steps.guard.outputs.base }}
+          SDK: ${{ steps.report.outputs.sdk }}
         run: |
-          # Every pushed head ages at least three minutes before merge; it also lets the site's CI start.
-          sleep 180
-          runs="$(gh run list --repo "$REPO" --commit "$HEAD" --json databaseId -q '.[].databaseId')"
-          for id in $runs; do
-            gh run watch "$id" --repo "$REPO" > /dev/null
-            # A workflow that does not apply to this pull request (for example Dependabot auto-merge) ends skipped.
-            conclusion="$(gh run view "$id" --repo "$REPO" --json conclusion -q .conclusion)"
-            case "$conclusion" in
-              success|skipped|neutral) ;;
-              *) echo "::error title=Site CI failed::Run $id on ${REPO} ended ${conclusion}; the pull request stays open."; exit 1 ;;
-            esac
+          wait_for_checks() {
+            # Every pushed head ages at least three minutes before merge; it also lets the site's CI start.
+            sleep 180
+            runs="$(gh run list --repo "$REPO" --commit "$HEAD" --json databaseId -q '.[].databaseId')"
+            for id in $runs; do
+              gh run watch "$id" --repo "$REPO" > /dev/null
+              # A workflow that does not apply to this pull request (for example Dependabot auto-merge) ends skipped.
+              conclusion="$(gh run view "$id" --repo "$REPO" --json conclusion -q .conclusion)"
+              case "$conclusion" in
+                success|skipped|neutral) ;;
+                *) echo "::error title=Site CI failed::Run $id on ${REPO} ended ${conclusion}; the pull request stays open."; exit 1 ;;
+              esac
+            done
+            # Every check and status on the pull request, from Actions or elsewhere, must pass as well.
+            if ! checks="$(gh pr checks "$NUMBER" --repo "$REPO" --watch --fail-fast 2>&1)"; then
+              case "$checks" in
+                *"no checks reported"*)
+                  # The prepare job's site check ran on the old base; after a replay only the site's own CI can
+                  # vouch for the new one, so a site without CI waits for the next sync run instead.
+                  if [ "$replayed" = true ]; then echo "::error title=No site CI after replay::${REPO} reports no checks for the replayed head, and the site check ran on the old base; the next sync run rechecks it."; exit 1; fi
+                  echo "::notice title=No site CI::${REPO} reports no checks for this head; the site's own check passed in the prepare job." ;;
+                *) echo "::error title=Site checks failed::${checks}"; exit 1 ;;
+              esac
+            fi
+            current="$(gh pr view "$NUMBER" --repo "$REPO" --json headRefOid -q .headRefOid)"
+            if [ "$current" != "$HEAD" ]; then echo "::error title=Head moved::The pull request changed while waiting; not merging."; exit 1; fi
+          }
+          # A site that requires up-to-date branches refuses the merge once its base moved during CI (Alibi merges
+          # often and its CI takes about 20 minutes). The same bytes are then replayed on the new base as a new bot
+          # commit, never merged in with `gh pr update-branch`, whose merge commit would carry the token owner's name
+          # and read as a person's work to the guard above. Only when the base left every installed copy, the lock and
+          # the site's checker untouched, so the rebuild is byte-identical; bounded to three merge attempts.
+          cd site
+          replayed=false
+          for attempt in 1 2 3; do
+            wait_for_checks
+            if out="$(gh pr merge "$NUMBER" --repo "$REPO" --merge --match-head-commit "$HEAD" --delete-branch 2>&1)"; then
+              echo "- ${REPO}: merged #${NUMBER}" >> "$GITHUB_STEP_SUMMARY"; exit 0
+            fi
+            state="$(gh pr view "$NUMBER" --repo "$REPO" --json mergeStateStatus -q .mergeStateStatus || true)"
+            case "$out" in *"not up to date"*) state=BEHIND ;; esac
+            if [ "$state" != "BEHIND" ] || [ "$attempt" = 3 ]; then echo "::error title=Merge refused::${out}"; exit 1; fi
+            old_base="$(git rev-parse "${HEAD}~1")"
+            git fetch -q --depth=1 origin "refs/heads/${BASE}"
+            new_base="$(git rev-parse FETCH_HEAD)"
+            installs="$(jq -er '.installs | keys[]' observatory.lock.json)" || { echo "::error title=Unreadable lock::${REPO} observatory.lock.json lists no installs; not replaying."; exit 1; }
+            # One path per line, so a file name with spaces stays one path.
+            while IFS= read -r path; do
+              if [ "$(git rev-parse -q --verify "${old_base}:${path}" || true)" != "$(git rev-parse -q --verify "${new_base}:${path}" || true)" ]; then
+                echo "::error title=Base changed a synced file::${REPO} ${BASE} changed ${path} since this sync was built; the next sync run rebuilds on it."; exit 1
+              fi
+            done < <(sort -u ../changed.txt <(printf '%s\n' "$installs") <(printf '%s\n' observatory.lock.json observatory/check.mjs observatory/check.local.mjs))
+            git switch -q -C "$BRANCH" "$new_base"
+            git checkout -q "$HEAD" --pathspec-from-file=../changed.txt
+            git add -A
+            git commit -q -m "Sync Pulseboard SDK ${SDK} from Pulseboard ${GITHUB_SHA:0:7}"
+            outside="$(git diff --name-only "$new_base" HEAD | grep -vxF -f ../changed.txt || true)"
+            if [ -n "$outside" ]; then echo "::error title=Unexpected change::The replayed commit touches files outside the sync: ${outside}"; exit 1; fi
+            git push -q --force-with-lease="refs/heads/${BRANCH}:${HEAD}" origin "$BRANCH"
+            HEAD="$(git rev-parse HEAD)"
+            replayed=true
+            echo "::notice title=Base moved::${REPO} ${BASE} moved during CI; replayed the sync on ${new_base:0:7} (attempt ${attempt})."
           done
-          # Every check and status on the pull request, from Actions or elsewhere, must pass as well.
-          if ! checks="$(gh pr checks "$NUMBER" --repo "$REPO" --watch --fail-fast 2>&1)"; then
-            case "$checks" in
-              *"no checks reported"*) echo "::notice title=No site CI::${REPO} reports no checks for this head; the site's own check passed in the prepare job." ;;
-              *) echo "::error title=Site checks failed::${checks}"; exit 1 ;;
-            esac
-          fi
-          current="$(gh pr view "$NUMBER" --repo "$REPO" --json headRefOid -q .headRefOid)"
-          if [ "$current" != "$HEAD" ]; then echo "::error title=Head moved::The pull request changed while waiting; not merging."; exit 1; fi
-          gh pr merge "$NUMBER" --repo "$REPO" --merge --match-head-commit "$HEAD" --delete-branch
-          echo "- ${REPO}: merged #${NUMBER}" >> "$GITHUB_STEP_SUMMARY"
