@@ -3,7 +3,7 @@
 Agents surface this file in every summary and tick an item only when its completion is directly
 verified. Items that need the owner's judgement stay open until the owner answers here or in chat.
 
-- [ ] q-27 — **Turn on automatic deploys (about 2 minutes, once).** Every merge that touches `observatory/` then
+- [x] q-27 — **Turn on automatic deploys. DONE 2026-09-27:** owner set `CLOUDFLARE_API_TOKEN`; the first automatic run (Actions run 36282730847, #146 merge) checked schema 4, deployed Worker `6900768e` and saw `/readyz` ready. Original steps: Every merge that touches `observatory/` then
   deploys itself (`.github/workflows/deploy-observatory.yml`); until then it skips with a notice. The account id
   secret is already set. Only you can create the API token:
   1. Open https://dash.cloudflare.com/profile/api-tokens and choose **Create Token**, then the **Edit Cloudflare

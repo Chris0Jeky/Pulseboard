@@ -136,7 +136,7 @@ production schema, runs `npx wrangler deploy --env=""`, then waits for `/readyz`
 names the new version.
 
 - It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. The account id was set on
-  2026-09-27; the token is HUMAN_TODO q-27. Without both, the job skips with a notice.
+  2026-09-27; the owner set the token the same day (HUMAN_TODO q-27). Without both, the job skips with a notice.
 - It deploys only what the head of `main` holds in `observatory/`: a manual run from another branch, or a run whose
   commit `main` has since changed inside `observatory/`, skips (the newer commit has its own run). A run that `main`
   moved past with unrelated commits still deploys, because its observatory files are the same.
@@ -395,6 +395,9 @@ return 400 `contract` for every 0.14.1 batch.
 | `dbe69053` | #136 | MDviewer admitted |
 | `909648c8` | #140, #141 | Desk clarity pass: readable type and colours, page guides, plain labels (UI only; no data or contract change) |
 | `2f95ea1b` | #142 | Plain-language alerts; the session-pilot note no longer tells the owner to admit sites already measured (UI only) |
+| `d2601f1c` | #144, #145 | Plain Connections page and site details; the Desk remembers the read token on the browser (HUMAN_TODO q-26) |
+| `4115316c` | #147 | Outcome counts labelled finished or failed (UI only); the last manual deploy |
+| `6900768e` | #146 | First automatic deploy (Actions run 36282730847): schema 4 checked, `/readyz` ready. Later deploys are in the Actions history, not this table |
 
 - `/readyz` after `10669420`: 200, schema 4, statistics and product both admitting `alibi, portfolio, commitatlas,
   idleharbor, developer-lens, wealthlens`. `COLLECT_PROJECTS` (legacy session events) stays `alibi`.
