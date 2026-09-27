@@ -303,7 +303,9 @@ async def run(args):
         await page.locator('#refresh').click()
         await expect(page.locator('#mode')).to_have_text('NOT CONNECTED')
         assert await page.locator('.project-name').count() == 0
-        results.append('malformed payload preserves evidence; 401 clears private state')
+        if not args.offline:
+            assert await page.evaluate("localStorage.getItem('pulseboard.desk.token')") is None, 'A 401 must remove the saved token'
+        results.append('malformed payload preserves evidence; 401 clears private state and the saved token')
         await page.evaluate('window.deskTestStatus = 200; window.deskTestDelay = 300')
         await page.locator('#open-connect').click()
         await page.locator('#token').fill(TOKEN)
@@ -316,7 +318,7 @@ async def run(args):
             stored = await page.evaluate('JSON.stringify({...localStorage})')
             assert TOKEN not in stored and 'PRIVATE_SENTINEL' not in stored
             assert not any('never-fetch.invalid' in url for url in requests)
-            results.append('no token or imported payload persisted; import URLs never fetched')
+            results.append('Disconnect leaves no token or imported payload in storage; import URLs never fetched')
         await page.locator('#demo').click()
         await page.locator('[data-view=overview]').click()
         await expect(page.locator('#page-title')).to_have_text('Overview')

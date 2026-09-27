@@ -115,7 +115,8 @@ function readSettings() {
  * by itself. It is kept only when the owner leaves "Remember" ticked; Disconnect and any 401 remove it. Never in a URL or export. */
 const TOKEN_KEY = 'pulseboard.desk.token';
 function rememberedToken() { try { const t = localStorage.getItem(TOKEN_KEY) || ''; return t.length >= 32 && t.length <= 256 ? t : ''; } catch { return ''; } }
-function forgetToken() { try { localStorage.removeItem(TOKEN_KEY); } catch { /* Restricted storage keeps nothing. */ } }
+/** With a token, forget only if it is the one stored: a stale tab's 401 must not erase a token another tab just saved. */
+function forgetToken(only = '') { try { if (!only || localStorage.getItem(TOKEN_KEY) === only) localStorage.removeItem(TOKEN_KEY); } catch { /* Restricted storage keeps nothing. */ } }
 function connectWith(token) { disconnect(); state.token = token; refresh(); }
 function review(signal, kind) {
   state.reviews[signal.key] = { state: kind, until: Date.now() + (kind === 'snoozed' ? 3600_000 : 7 * DAY) };
@@ -247,7 +248,7 @@ async function readGithub(id) {
       if (!state.token) throw new Error('Connect the collector first.');
       const response = await fetch(`/v1/github-evidence?project=${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${state.token}` }, cache: 'no-store', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(90_000) });
       if (epoch !== state.epoch) return;
-      if (response.status === 401) { forgetToken(); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
+      if (response.status === 401) { forgetToken(state.token); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
       if (!response.ok) throw new Error('GitHub evidence is unavailable.');
       ev = await readLimitedJson(response, 65536);
     }
@@ -381,7 +382,7 @@ async function readSite(kind) {
     const { request, check, max, fail } = siteReads[kind];
     const response = await request(fetch, { project, token: state.token, days, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
     if (epoch !== state.epoch) return;
-    if (response.status === 401) { forgetToken(); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
+    if (response.status === 401) { forgetToken(state.token); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
     if (!response.ok) throw new Error(fail);
     const data = check(await readLimitedJson(response, max), days, project);
     if (current()) { state[kind] = data; state.errors[kind] = ''; }
@@ -397,7 +398,7 @@ async function productEvents(name, limit) {
     if (!state.token) throw new Error('Connect the collector first.');
     const response = await requestProductEvents(fetch, { project, token: state.token, days, name, limit, signal: AbortSignal.timeout(3 * READ_TIMEOUT_MS) });
     if (epoch !== state.epoch) return null;
-    if (response.status === 401) { forgetToken(); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return null; }
+    if (response.status === 401) { forgetToken(state.token); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return null; }
     if (!response.ok) throw new Error('Product events are unavailable.');
     data = await readLimitedJson(response, PRODUCT_EVENTS_MAX_BYTES);
   }
@@ -657,7 +658,7 @@ async function refresh() {
   try {
     const response = await requestPortfolio(fetch, { token: state.token, days: state.days, signal: controller.signal });
     if (epoch !== state.epoch) return;
-    if (response.status === 401) { forgetToken(); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
+    if (response.status === 401) { forgetToken(state.token); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
     if (!response.ok) throw new Error('Collector unavailable');
     const data = await readLimitedJson(response);
     if (epoch !== state.epoch) return;
@@ -721,7 +722,12 @@ document.addEventListener('keydown', event => {
 document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelRead(); render(); } else if (state.token) refresh(); });
 // Leaving the page clears tab memory; a remembered token reconnects when the page comes back from the back/forward cache.
 window.addEventListener('pagehide', disconnect);
-window.addEventListener('pageshow', event => { const saved = rememberedToken(); if (event.persisted && !state.token && saved) connectWith(saved); });
+// A ?demo= page returns to its scenario, never to live data.
+window.addEventListener('pageshow', event => {
+  if (!event.persisted) return;
+  const saved = rememberedToken();
+  if (Object.hasOwn(SCENARIOS, requestedDemo)) beginDemo(); else if (!state.token && saved) connectWith(saved);
+});
 state.view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
 const requestedDemo = new URLSearchParams(location.search).get('demo');
 const savedToken = rememberedToken();

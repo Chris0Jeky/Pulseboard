@@ -22,7 +22,7 @@ In the Signal inbox, open evidence before marking an observation reviewed.
 Acknowledgements last seven days and snoozes one hour, on this browser only.
 Changed evidence resurfaces because review keys include an evidence fingerprint.
 This is not a shared incident-management system. Clear the site's local storage
-to reset these preferences; neither tokens nor snapshots are stored there.
+to reset these preferences; that also removes a remembered read token. Snapshots are never stored there.
 
 The **Usage** view (`5`) shows how a site is used: page views, starts,
 completions, hints, errors, a day-by-day chart, route, event and release mixes, and

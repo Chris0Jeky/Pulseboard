@@ -38,7 +38,7 @@ The first consented Alibi events and a withdrawal check were recorded on 10 Sept
 | Connections | Protected Observatory reads, CommitAtlas catalogues, reviewed Lens projections, and selected public probe capsules |
 | Field notes | Previewed Markdown observations and JSON handoffs downloaded only after review |
 
-The interface includes keyboard navigation, command palette, density controls, reduced-motion support, and narrow-screen layouts. Tokens, private snapshots, and imports stay in tab memory. Local acknowledgement/snooze and display preferences can persist in the browser. Imported context remains separate from operational readings and is cleared on disconnect.
+The interface includes keyboard navigation, command palette, density controls, reduced-motion support, and narrow-screen layouts. Private snapshots and imports stay in tab memory; the read token does too unless Remember is ticked, which keeps it on that browser until Disconnect. Local acknowledgement/snooze and display preferences can persist in the browser. Imported context remains separate from operational readings and is cleared on disconnect.
 
 ## The product split
 
