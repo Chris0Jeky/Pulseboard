@@ -408,5 +408,6 @@ return 400 `contract` for every 0.14.1 batch.
 - Host installs (all reviewed, artifacts reproduced byte for byte from Pulseboard `main`): CV_and_Portfolio #5, #6, #7;
   CommitAtlas #247, #248 (deploys through its own workflow); IdleHarbor #88, #89; developer-lens #378, #379;
   wealthlens-hq #633, #634; MDviewer #105, #107; Alibi #391 (0.14.1). All sites except Alibi run SDK 3.2.0.
-  Alibi 0.14.1 pins 3.1.0; its next release moves to 3.2 and needs a registered release.
+  Alibi 0.14.1 pins 3.1.0; its next release moves to 3.2 and needs a registered release
+  (no longer since q-28: a Worker with the release pattern admits any well-formed Alibi version).
 - MDviewer is admitted by #136, which adds this receipt; the collector refused its data until #136's deploy.

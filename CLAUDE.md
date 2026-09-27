@@ -49,7 +49,8 @@ repo-side; merge with a merge commit.
   bridges and direction; `tests/*.test.mjs` plus `tests/desk-browser.py`.
 - Alibi release sync: `cd observatory && npm run sync:alibi` finds one Alibi checkout beside
   Pulseboard; `ALIBI_REPO` or a positional path selects another. It validates Alibi's package and
-  release records, updates the shared release contract, and refreshes the locked host adapter.
+  release records, records the release history, and refreshes the locked host adapter; the collector
+  already accepts any well-formed Alibi version (q-28), so a new release is not blocked on it.
   `npm run check:alibi` checks without writing. Both commands support `--json`; a daily
   read-only Actions watch reports drift against public Alibi `main`. See
   `observatory/docs/DESK_BRIDGES.md`.

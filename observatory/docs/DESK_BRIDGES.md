@@ -20,11 +20,15 @@ are never mixed into telemetry totals, operational rules or public pulse exports
 ## Alibi collection contract
 
 Alibi's `package.json` version is sent as the release label on opted-in events.
-The collector and the copied browser adapter share one closed release list in
-`observatory/src/alibi-releases.mjs`; `projects.mjs` feeds that list to both
-collector validation and artifact generation. The generated Alibi host checker
-compares the app version with the installed artifact and prints the version,
-registered releases and artifact hash, so release drift fails during host CI.
+Since owner decision q-28 (2026-09-27) the collector accepts any well-formed Alibi
+version: `MAJOR.MINOR.PATCH` with an optional short `-prerelease`, one pattern in
+`observatory/src/release-label.mjs` shared by every ingest path, the embeds and
+the host checker, and inlined in SDK 3.3.0 and later. A new Alibi version is
+therefore counted before anyone registers it. `observatory/src/alibi-releases.mjs`
+remains the known release history; `projects.mjs` sets `releasePattern` for Alibi
+only, so every other project keeps its closed list and malformed labels still
+fail closed. The generated Alibi host checker compares the app version with the
+installed artifact and prints the version, known releases and artifact hash.
 
 From a Pulseboard checkout, synchronize a candidate Alibi release with:
 
@@ -42,7 +46,7 @@ success and failure receipts.
 
 The sync command requires `alibi-puzzle-club`, a stable package version and one
 matching `content/releases.json` record with the matching `v<version>` tag. It
-adds only that version to the closed collector list and then refreshes the host
+records only that version in the release history and then refreshes the host
 artifact. Alibi's `observatory.lock.json` selects one of two layouts:
 
 - **Statistics embed** (lock without `"sdk"`; Alibi up to 0.14.0). Sync regenerates
@@ -68,7 +72,10 @@ changed in both repositories. `check:alibi` is read-only. It reports `in-sync`
 only when the host artifact matches the Pulseboard source and lock. It accepts
 either of two builds: one from the current list, or one from the list up to and
 including the artifact's own release. Registering a newer release therefore
-leaves a published older checkout in sync.
+leaves a published older checkout in sync. An unregistered package version that
+matches the release pattern is not drift: `check:alibi` reports `in-sync` with
+`registered: false` when the artifact is otherwise current. Stale adapter bytes,
+a lock mismatch or an SDK version mismatch still fail.
 
 The **Alibi connection watch** workflow checks public Alibi `main` once a day and
 can be run on demand. It writes a release and adapter receipt to the Actions
@@ -76,8 +83,8 @@ summary; drift fails the run with the specific reconciliation command. The watch
 does not write either repository, deploy the collector or change collection
 settings.
 
-Merge the Pulseboard contract before the Alibi release that first sends the new
-label. Do not deploy or publish as part of synchronization; hosted collection
+A well-formed new label needs no Pulseboard change before the Alibi release that
+first sends it (a Worker deployed before q-28 still refuses it; see `HOSTING.md`). Do not deploy or publish as part of synchronization; hosted collection
 and Alibi publication remain separate release gates.
 
 ## CommitAtlas: consume the contract that already exists

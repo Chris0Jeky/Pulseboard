@@ -122,7 +122,8 @@ This is the "plug in anything" channel: diagnostics and journeys both travel her
 - Top-level keys are exactly `v`, `session`, `release`, `context` and `events`; `context` is exactly
   `{ device }` with `mobile | tablet | desktop`.
 - `session` is a uuid only with the Journeys category; Diagnostics-only batches send `null`.
-- `release` `^[0-9A-Za-z.+-]{1,32}$`. `name` `^[a-z][a-z0-9_.:-]{0,63}$`. `route` `^[a-z0-9._-]{1,48}$`.
+- `release` `^[0-9A-Za-z.+-]{1,32}$` and accepted by the project's release rule (its listed releases, or any
+  well-formed version for Alibi; `src/release-label.mjs`, owner decision q-28). `name` `^[a-z][a-z0-9_.:-]{0,63}$`. `route` `^[a-z0-9._-]{1,48}$`.
   `seq` an integer from 1 to 1,000,000. `ms`, milliseconds since the page loaded, 0–86,400,000.
 - `props` is any JSON object, bounded: nesting depth 4, 32 keys per object, keys
   `^[A-Za-z0-9_.-]{1,48}$`, strings up to 256 characters, arrays up to 32 items, finite numbers,
