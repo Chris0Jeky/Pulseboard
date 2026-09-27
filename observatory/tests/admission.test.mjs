@@ -93,15 +93,15 @@ test('portfolio v2 distinguishes eligible, admitted and local-only projects', as
 
   const excluded = await readPortfolio(DB, { now, projects: registry, collectionEnabled: true, admittedProjects: [] });
   const signal = buildSignals(excluded, now).find(item => item.rule === 'collection.not_admitted');
-  assert.equal(signal.project, 'web'); assert.match(signal.detail, /zero event count/i);
+  assert.equal(signal.project, 'web'); assert.match(signal.detail, /zero on the Overview does not mean no traffic/i);
   assert.match(makeBrief(excluded, [signal]), /Browser admission: 0\/1 eligible projects/);
 
   const retained = structuredClone(excluded);
   retained.projects.find(project => project.id === 'web').totals.events = 7;
   const retainedSignal = buildSignals(retained, now).find(item => item.rule === 'collection.not_admitted');
-  assert.doesNotMatch(retainedSignal.detail, /zero event count/i);
-  assert.match(retainedSignal.detail, /7 retained events/i);
-  assert.doesNotMatch(makeBrief(retained, [retainedSignal]), /zero event count/i);
+  assert.doesNotMatch(retainedSignal.detail, /does not mean no traffic/i);
+  assert.match(retainedSignal.detail, /7 older session events/i);
+  assert.doesNotMatch(makeBrief(retained, [retainedSignal]), /does not mean no traffic/i);
 });
 
 test('summary and portfolio endpoints share per-project admission truth', async t => {

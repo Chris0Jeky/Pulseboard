@@ -115,7 +115,7 @@ test('small named-operation samples produce a synthetic review-only handoff', as
   assert.equal(handoff.mode, 'demo');
   assert.equal(handoff.destination, 'review-before-import');
   assert.equal(handoff.project, 'alibi');
-  assert.match(handoff.observation, /too little evidence/i);
+  assert.match(handoff.observation, /too few to judge/i);
   assert.ok(handoff.boundaries.includes('No automatic task creation or execution.'));
 });
 
