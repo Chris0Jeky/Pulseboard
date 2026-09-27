@@ -128,6 +128,20 @@ origins' HTTP and offline/save acceptance. Alibi's physical-device checks
 remain open; the statistical-purpose exception and international applicability
 remain subject to the product-specific review described in `ENGINEERING.md`.
 
+## Automatic deploys
+
+`.github/workflows/deploy-observatory.yml` deploys the production Worker after every push to `main` that touches
+`observatory/` (merges included), and on demand from the Actions tab. It runs `npm ci` and `npm test`, then
+`npx wrangler deploy`, then waits for `/readyz` to report ready; the run summary names the new version.
+
+- It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. The account id was set on
+  2026-09-27; the token is HUMAN_TODO q-27. Without both, the job skips with a notice.
+- A range that changes `observatory/migrations/`, `schema.sql` or `watch/schema.sql` stops before deploying. Apply
+  the migration to production D1 by hand first, then run the workflow manually with **schema_applied** ticked.
+- If `/readyz` does not report ready, the job fails; roll back with `npx wrangler rollback` (see the rollback limits
+  in the usage plan v2 receipt below).
+- Admission lists in `wrangler.jsonc` still change only by owner decision; the workflow deploys whatever `main` holds.
+
 ## Read token: rotate, copy, recover
 
 The read token is the password to the hosted Desk's private data. The owner lets agents rotate it

@@ -3,6 +3,15 @@
 Agents surface this file in every summary and tick an item only when its completion is directly
 verified. Items that need the owner's judgement stay open until the owner answers here or in chat.
 
+- [ ] q-27 — **Turn on automatic deploys (about 2 minutes, once).** Every merge that touches `observatory/` then
+  deploys itself (`.github/workflows/deploy-observatory.yml`); until then it skips with a notice. The account id
+  secret is already set. Only you can create the API token:
+  1. Open https://dash.cloudflare.com/profile/api-tokens and choose **Create Token**, then the **Edit Cloudflare
+     Workers** template.
+  2. Under **Permissions** choose **Add more**: Account, **D1**, **Edit**. Under **Account Resources** pick your
+     account; under **Zone Resources** pick **All zones**. Continue, then **Create Token**, and copy it.
+  3. In a terminal in this repository run `gh secret set CLOUDFLARE_API_TOKEN` and paste the token when asked.
+  Tell an agent it is done; it re-runs the workflow and closes this item once a deploy succeeds.
 - [x] q-1 — **Ratify the tier. DONE 2026-09-10:** owner replied "T2 is good"; tier.json notes now start `Ratified 2026-09-10`. Original item: `.agent-harness/tier.json` declares T2 (daily driver; push free,
   merge free within the global gate). Proposed by the 2026-09-10 harness session on this evidence:
   public repository, no deployment, no accounts or participant data, collection disabled by default,
