@@ -97,7 +97,8 @@ test('all served desk assets exist and stay within a small static transfer budge
   const names = [...new Set([...assets.values()].map(([name]) => name))];
   const bytes = names.map(name => readFileSync(new URL(`../public/${name}`, import.meta.url)));
   // Raised from 128/40 KiB when the Usage view landed, then from 144/48 KiB for the Product view, its explorer and the
-  // first product panel (both 2026-09-26; measured 184/61 KiB). Raise again only for a concrete interaction.
-  assert.ok(bytes.reduce((n, b) => n + b.length, 0) < 192 * 1024, 'Desk assets exceed 192 KiB raw');
-  assert.ok(bytes.reduce((n, b) => n + gzipSync(b).length, 0) < 64 * 1024, 'Desk assets exceed 64 KiB gzip');
+  // first product panel (both 2026-09-26; measured 184/61 KiB), then from 192/64 KiB for the page guides, onboarding
+  // steps and the readable-type stylesheet (2026-09-27; measured 198/64.4 KiB). Raise again only for a concrete interaction.
+  assert.ok(bytes.reduce((n, b) => n + b.length, 0) < 208 * 1024, 'Desk assets exceed 208 KiB raw');
+  assert.ok(bytes.reduce((n, b) => n + gzipSync(b).length, 0) < 68 * 1024, 'Desk assets exceed 68 KiB gzip');
 });
