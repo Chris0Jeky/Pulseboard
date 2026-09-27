@@ -80,10 +80,13 @@ inputs and dialogs. `/` focuses search. Escape closes the active native dialog.
 The density button switches between comfortable and compact spacing.
 
 **Connect data** reads the same origin's API. No arbitrary URL or proxy field is
-accepted. The token is held in memory and the password input is cleared when
-connection starts. Refresh occurs every 30 seconds, pauses in hidden tabs, and
+accepted. The password input is cleared when connection starts. With **Remember on this browser** ticked (the
+default, owner decision 2026-09-27, HUMAN_TODO q-26) the token is also kept in this browser's local storage, so
+opening the desk later connects by itself; untick it to keep the token in tab memory only. Disconnect and any 401
+remove the saved token. The token never goes into a URL, an export or a file. Refresh occurs every 30 seconds, pauses in hidden tabs, and
 has a ten-second timeout. A failed read preserves a stale last-good snapshot.
-A 401, disconnect or pagehide clears the token, snapshot, imports and previews.
+A 401, disconnect or pagehide clears the in-memory token, snapshot, imports and previews; only a 401 or Disconnect
+also removes the remembered token.
 A delayed response cannot revive a disconnected session.
 
 Local startup does not run external probes. Hosted cron deployment and collection
