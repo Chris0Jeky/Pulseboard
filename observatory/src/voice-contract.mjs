@@ -47,15 +47,16 @@ export const cleanVoiceText = value => value.replace(CONTROL, ' ').trim();
 // ends the sentence stays.
 const LINK = /\b[a-z][a-z0-9+.-]*:\/\/\S*|\bwww\.[^\s]+/gi;
 const LINK_TAIL = /[.,;:!?)\]}'"]+$/;
-// Dates are not phone numbers: ISO days, year-first and day-first shapes are set aside before the phone pass.
-const DATES = /\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b|\b\d{1,2}[-./]\d{1,2}[-./]\d{2,4}\b/g;
+// Dates are not phone numbers: ISO days, year-first and day-first shapes are set aside before the phone pass, but only
+// when they stand alone. A date shape inside a longer digit run (06.12.34.56.78, a dotted phone number) is not a date.
+const DATES = /(?<!\d[-./])\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b(?![-./]\d)|(?<!\d[-./])\b\d{1,2}[-./]\d{1,2}[-./]\d{2,4}\b(?![-./]\d)/g;
 // A candidate run starts at a digit, `+` or `(` that is not inside a word, version or path, and ends at a digit.
-const PHONE = /(?<![\w+./-])(?:\+|\()?\d[\d ().-]{5,40}\d(?!\w)/g;
+const PHONE = /(?<![\w+./-])(?:\+|\()?\d[\d ()./-]{5,40}\d(?!\w)/g;
 /** Phone-number-like: nine or more digits, or seven or more written with a separator, `+` or brackets. Long digit
  *  runs of any length (card numbers, account numbers) are therefore removed too. */
 const phoneLike = run => {
   const digits = run.replace(/\D/g, '').length;
-  return digits >= 9 || (digits >= 7 && /[ ().+-]/.test(run));
+  return digits >= 9 || (digits >= 7 && /[ ()./+-]/.test(run));
 };
 /** Best-effort removal of links, e-mail addresses, IP addresses and phone-number-like runs from free text. Each removal
  *  is replaced by a marker ([link], [email], [ip], [phone]) and counted; the result is cut back to `max` because a

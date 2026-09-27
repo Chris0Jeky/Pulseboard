@@ -124,6 +124,9 @@ test('e-mail addresses, IP addresses, links and phone-number-like runs are repla
     ['mobile 07700900123', 'mobile [phone]', 1],
     ['local 555-1234', 'local [phone]', 1],
     ['card 4111111111111111 no', 'card [phone] no', 1],
+    // A date shape at the start of a longer run is part of a phone number, not a date (review of #149).
+    ['call me on 06.12.34.56.78', 'call me on [phone]', 1],
+    ['or 06-12-34-56-78 or 06/12/34/56/78', 'or [phone] or [phone]', 2],
     ['a@b.co and https://x.test and 10.0.0.1 and +1 202 555 0143', '[email] and [link] and [ip] and [phone]', 4],
   ];
   for (const [input, expected, count] of cases) assert.deepEqual(redactVoiceText(input, 2000), { text: expected, redacted: count }, input);
