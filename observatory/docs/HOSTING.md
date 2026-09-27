@@ -373,6 +373,9 @@ return 400 `contract` for every 0.14.1 batch.
 | `2b1f13f8` | #132 | Alibi 0.14.1 registered; Alibi, CommitAtlas, IdleHarbor admitted to product events; CommitAtlas, IdleHarbor to counts |
 | `ce5a2d00` | #133 | Campaign allowlist enforced on the server (no project registers campaigns yet, so every tag reads `other`) |
 | `10669420` | #135 | Developer Lens and WealthLens admitted |
+| `dbe69053` | #136 | MDviewer admitted |
+| `909648c8` | #140, #141 | Desk clarity pass: readable type and colours, page guides, plain labels (UI only; no data or contract change) |
+| `2f95ea1b` | #142 | Plain-language alerts; the session-pilot note no longer tells the owner to admit sites already measured (UI only) |
 
 - `/readyz` after `10669420`: 200, schema 4, statistics and product both admitting `alibi, portfolio, commitatlas,
   idleharbor, developer-lens, wealthlens`. `COLLECT_PROJECTS` (legacy session events) stays `alibi`.

@@ -95,3 +95,4 @@ htmlcov/
 .dev.vars
 .dev.vars.*
 .browser-venv/
+.worktrees/
