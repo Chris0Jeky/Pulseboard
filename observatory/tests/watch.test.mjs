@@ -80,7 +80,8 @@ test('daily budget is transactional, including the first oversized batch and con
   assert.equal((await snapshot(env.DB, [s], true, NOW + 1)).events.length, 0);
   const results = await Promise.all([handleWatch(request(batch(event(), event())), env, NOW), handleWatch(request(batch(event())), env, NOW)]);
   assert.deepEqual(results.map(r => r.status).sort(), [202, 429]);
-  assert.equal((await snapshot(env.DB, [s], true, NOW + 1)).events.length, 2);
+  // Whichever body finishes reading first reserves first (#153): the admitted batch alone is stored.
+  assert.equal((await snapshot(env.DB, [s], true, NOW + 1)).events.length, results[0].status === 202 ? 2 : 1);
 });
 test('credential scope cannot select another source, route or event category', async t => {
   const env = setup(t), other = { ...source(), id: 'other-app', token: 'b'.repeat(40), allowedKinds: ['http.request'] };
