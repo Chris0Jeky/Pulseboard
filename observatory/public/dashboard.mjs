@@ -184,7 +184,7 @@ function projectTable() {
       e('td', {}, e('div', { class: 'project-name' }, e('span', { class: 'project-glyph', 'aria-hidden': true }, p.label.slice(0, 2).toUpperCase()), e('div', {}, button(p.label, () => projectDetail(p)), e('small', {}, p.probeExpected ? `Last event ${relative(p.totals.last).toLowerCase()}` : 'Not checked from outside, by design')))),
       e('td', {}, chip(p), e('div', { class: 'tiny muted' }, p.collectionEligible ? (p.collectionAdmitted ? 'Session events on' : 'Session events off (see Usage)') : 'Nothing collected, by design')), e('td', { class: 'right mono' }, count(p.totals.events), chart([p], true)),
       e('td', { class: 'right mono' }, count(p.totals.sessions)),
-      e('td', { class: 'right' }, e('span', { class: 'mono' }, percent(fraction(p.totals.completed, p.totals.completed + p.totals.failed).value)), e('div', { class: 'tiny muted' }, `of ${count(p.totals.completed + p.totals.failed)} actions`)),
+      e('td', { class: 'right' }, e('span', { class: 'mono' }, percent(fraction(p.totals.completed, p.totals.completed + p.totals.failed).value)), e('div', { class: 'tiny muted' }, `of ${count(p.totals.completed + p.totals.failed)} finished or failed`)),
       e('td', { class: 'right' }, e('span', { class: 'mono' }, `${count(p.budget.used)} / ${count(p.budget.limit)}`), e('meter', { class: 'budget-meter', min: 0, max: Math.max(1, p.budget.limit), value: p.budget.used, 'aria-label': `${p.label}: ${p.budget.used} of ${p.budget.limit} daily admission units used` }))))));
   return e('section', {}, e('div', { class: 'section-heading' }, e('h2', {}, 'Your sites'), e('p', {}, `${projects.length} shown. Click a column name to sort, or a site name for its details.`)),
     projects.length ? e('div', { class: 'table-shell', tabindex: '0', role: 'region', 'aria-label': 'Project register; scroll horizontally on small screens' }, content) : empty('No matches.', 'Try another project name or clear the search.'));
@@ -207,14 +207,14 @@ function projectDetail(p) {
   const outcomes = p.totals.completed + p.totals.failed;
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, p.label), chip(p),
     e('div', { class: 'facts' }, ...[['Session events', count(p.totals.events)], ['Sessions', count(p.totals.sessions)],
-      ['Actions finished / reported', `${p.totals.completed} / ${outcomes}`], ['Site checks passed / run', `${p.probeSamples.numerator} / ${p.probeSamples.denominator}`],
+      ['Finished / finished or failed', `${p.totals.completed} / ${outcomes}`], ['Site checks passed / run', `${p.probeSamples.numerator} / ${p.probeSamples.denominator}`],
       ['Detailed session events', p.collectionEligible ? (p.collectionAdmitted ? 'On' : 'Off (see Usage and Product)') : 'Not collected (local only)']]
       .map(([label, value]) => e('div', { class: 'fact' }, e('span', {}, label), e('strong', {}, value)))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Where these numbers come from'), e('p', { class: 'muted' }, `Read ${date(state.snapshot.generatedAt)}. Last site check: ${date(p.monitor.checked)}. Session events come from visitors’ browsers after they opt in, and are self-reported. Site status comes from the scheduled site check.`)),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Started and finished'), e('p', {}, `${p.flow.numerator} of ${p.flow.denominator} groups that started something also finished it (${percent(p.flow.value)}). A group is one session on one page and version.`),
       e('p', { class: 'muted' }, 'A finish only counts when a later event matches the same session, page and version. This is not retention or a conversion funnel.')),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Events by page'), e('div', { class: 'table-shell' }, table(['Page (route)', 'Events'], p.routes.map(r => [r.route, count(r.n)])))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Actions', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Finished or failed', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
       button('Compare versions →', () => { state.releaseProject = p.id; state.baseline = ''; state.candidate = ''; $('#detail-dialog').close(); navigate('releases'); })),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Builds, deploys and releases (GitHub)'), e('div', { id: 'github-evidence', 'data-project': p.id }, githubView(p.id))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Limits of these numbers'), e('ul', {}, state.snapshot.limitations.map(text => e('li', {}, text)))));
