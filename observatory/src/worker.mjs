@@ -6,13 +6,14 @@ import { validateProductBatch, redactProps, consentRegion, PRODUCT_DEFAULT_LIMIT
 import { readStatistics, READ_WINDOWS, AGGREGATE_RETENTION_DAYS } from './statistics.mjs';
 import { readProduct, readProductEvents, EVENTS_DEFAULT_LIMIT } from './product.mjs';
 import { readPortfolio, WINDOWS } from './portfolio.mjs';
+import { FEEDBACK_RETENTION_DAYS, SURVEY_RETENTION_DAYS } from './voice-contract.mjs';
 import { assets } from './assets.mjs';
 import { createGithubEvidence } from './github.mjs';
 import { githubMap } from './github-map.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 // Naming every column means a database missing a later-added column fails readiness instead of failing a request.
 const READINESS = [
   'SELECT project,day,used,receipt FROM budget LIMIT 0',
@@ -20,6 +21,8 @@ const READINESS = [
   'SELECT project,day,event,route,release,n,received FROM statistics LIMIT 0',
   'SELECT project,day,dimension,value,n FROM statistics_dimensions LIMIT 0',
   'SELECT project,received,day,session,seq,name,route,release,ms,props,redacted,country,region,browser,os,device FROM product_events LIMIT 0',
+  'SELECT project,id,received,day,written,release,kind,route,subject,text,redacted,device,country,browser,os FROM voice_feedback LIMIT 0',
+  'SELECT project,survey,subject,respondent,first_received,received,day,release,answers,meta,comment,redacted,device,country,submissions FROM voice_survey LIMIT 0',
   'SELECT project,state,failures,successes,opened,checked,status,duration FROM probes LIMIT 0',
   'SELECT project,checked,ok,duration FROM probe_history LIMIT 0',
 ];
@@ -349,11 +352,14 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
 export async function maintain(env, now = Date.now()) {
   // Product events are kept 90 days (USAGE_PLAN.md "Consent categories"). Legacy session events keep 14 days: the deployed
   // opt-in embed tells people "Raw events expire after 14 days" (adapters/embed.mjs). Aggregates follow
-  // AGGREGATE_RETENTION_DAYS, 14 while the deployed stats notice promises 14-day aggregates.
+  // AGGREGATE_RETENTION_DAYS, 14 while the deployed stats notice promises 14-day aggregates. Voices keep 365 days of
+  // feedback and 400 of survey answers and ratings, counted from the last update (docs/VOICES.md).
   const dayBefore = days => new Date(now - days * 86400000).toISOString().slice(0, 10);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM events WHERE received<?').bind(now - 14 * 86400000),
     env.DB.prepare('DELETE FROM product_events WHERE day<=?').bind(dayBefore(90)),
+    env.DB.prepare('DELETE FROM voice_feedback WHERE day<=?').bind(dayBefore(FEEDBACK_RETENTION_DAYS)),
+    env.DB.prepare('DELETE FROM voice_survey WHERE day<=?').bind(dayBefore(SURVEY_RETENTION_DAYS)),
     env.DB.prepare('DELETE FROM statistics WHERE day<=?').bind(dayBefore(AGGREGATE_RETENTION_DAYS)),
     env.DB.prepare('DELETE FROM statistics_dimensions WHERE day<=?').bind(dayBefore(AGGREGATE_RETENTION_DAYS)),
     env.DB.prepare('DELETE FROM budget WHERE day<?').bind(dayBefore(14)),

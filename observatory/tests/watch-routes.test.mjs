@@ -58,7 +58,7 @@ test('the Watch wrapper routes every Desk route exactly as the legacy worker doe
   // Guard against a vacuous match: the writes were admitted and the authenticated reads succeeded.
   assert.deepEqual(statuses.slice(0, 8), [200, 200, 202, 200, 401, 202, 200, 200]);
   const ready = await (await wrapped(new Request('https://desk.test/readyz'), wrappedEnv)).json();
-  assert.equal(ready.schema, 4);
+  assert.equal(ready.schema, 5);
 });
 
 test('the deployed entry is the Watch wrapper and keeps the scheduled handler', async t => {
@@ -67,6 +67,6 @@ test('the deployed entry is the Watch wrapper and keeps the scheduled handler', 
   const wrappedEnv = env(database(t, true));
   const response = await entry.fetch(new Request('https://desk.test/readyz'), wrappedEnv, {});
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).schema, 4);
+  assert.equal((await response.json()).schema, 5);
   assert.equal((await entry.fetch(new Request('https://desk.test/v1/watch/readyz'), wrappedEnv, {})).status, 401);
 });

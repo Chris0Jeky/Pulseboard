@@ -477,12 +477,12 @@ test('retention keeps 90 days of product events and 14 of legacy session events'
   assert.deepEqual(kept.totals.names.map(n => n.name).sort(), ['kept', 'new'], 'the 90-day read window matches retention');
 });
 
-test('readiness reports schema 4 and the product switch, and fails without the product table', async t => {
+test('readiness reports schema 5 and the product switch, and fails without the product table', async t => {
   const DB = database(t);
   const ready = await handle(new Request('https://desk.test/readyz'), env(DB, { COLLECT_PRODUCT_PROJECTS: 'alibi,mdviewer' }));
   assert.equal(ready.status, 200);
   const body = await ready.json();
-  assert.equal(body.schema, 4);
+  assert.equal(body.schema, 5);
   assert.deepEqual(body.product, { configured: true, admitted: ['alibi', 'mdviewer'] });
   assert.deepEqual((await (await handle(new Request('https://desk.test/readyz'), env(DB, { COLLECT_PRODUCT_PROJECTS: 'alibi, mdviewer' }))).json()).product,
     { configured: true, admitted: [] });

@@ -195,12 +195,12 @@ test('the first stat batch of a day is refused when it alone exceeds the daily l
   }
 });
 
-test('migrations are idempotent and readiness tracks version 4', async t => {
+test('migrations are idempotent and readiness tracks version 5', async t => {
   const DB = database(t);
   const ready = await handle(new Request('https://collector.example/readyz'), statEnv(DB));
   assert.equal(ready.status, 200);
-  assert.equal((await ready.json()).schema, 4);
-  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 4);
+  assert.equal((await ready.json()).schema, 5);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 5);
   const dimensionColumns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics_dimensions') ORDER BY cid").all()).results.map(r => r.name);
   assert.deepEqual(dimensionColumns, ['project', 'day', 'dimension', 'value', 'n'], 'no timestamp finer than the day');
   const withoutRowid = (await DB.prepare("SELECT sql FROM sqlite_master WHERE name='statistics_dimensions'").first()).sql;
@@ -209,7 +209,9 @@ test('migrations are idempotent and readiness tracks version 4', async t => {
   const columns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics') ORDER BY cid").all()).results.map(r => r.name);
   assert.deepEqual(columns, ['project', 'day', 'event', 'route', 'release', 'n', 'received']);
 
-  // An unmigrated v1 database (no statistics or product tables, version 1) is not ready.
+  // An unmigrated v1 database (no statistics, product or voice tables, version 1) is not ready.
+  DB.exec('DROP TABLE voice_survey');
+  DB.exec('DROP TABLE voice_feedback');
   DB.exec('DROP TABLE product_events');
   DB.exec('DROP TABLE statistics_dimensions');
   DB.exec('DROP TABLE statistics');
@@ -233,13 +235,21 @@ test('migrations are idempotent and readiness tracks version 4', async t => {
   DB.exec(migration4);
   DB.exec(migration4);
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 4);
+  assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 503, 'schema 4 is not ready for a schema 5 Worker');
+  const migration5 = readFileSync(new URL('../migrations/0005-voices.sql', import.meta.url), 'utf8');
+  DB.exec(migration5);
+  DB.exec(migration5);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 5);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
   assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 200);
   DB.exec(migration);
   DB.exec(migration3);
-  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 4,
+  DB.exec(migration4);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 5,
     'an old migration cannot downgrade a newer schema marker');
-  // The documented rollback marker is exact: it only moves 4 to 3.
+  // The documented rollback markers are exact: each moves one version down and nothing else.
+  DB.exec('UPDATE schema_version SET version=4 WHERE id=1 AND version=5');
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 4);
   DB.exec('UPDATE schema_version SET version=3 WHERE id=1 AND version=4');
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 3);
 });
