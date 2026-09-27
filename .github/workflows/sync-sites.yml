@@ -261,7 +261,11 @@ jobs:
             # Every check and status on the pull request, from Actions or elsewhere, must pass as well.
             if ! checks="$(gh pr checks "$NUMBER" --repo "$REPO" --watch --fail-fast 2>&1)"; then
               case "$checks" in
-                *"no checks reported"*) echo "::notice title=No site CI::${REPO} reports no checks for this head; the site's own check passed in the prepare job." ;;
+                *"no checks reported"*)
+                  # The prepare job's site check ran on the old base; after a replay only the site's own CI can
+                  # vouch for the new one, so a site without CI waits for the next sync run instead.
+                  if [ "$replayed" = true ]; then echo "::error title=No site CI after replay::${REPO} reports no checks for the replayed head, and the site check ran on the old base; the next sync run rechecks it."; exit 1; fi
+                  echo "::notice title=No site CI::${REPO} reports no checks for this head; the site's own check passed in the prepare job." ;;
                 *) echo "::error title=Site checks failed::${checks}"; exit 1 ;;
               esac
             fi
@@ -274,6 +278,7 @@ jobs:
           # and read as a person's work to the guard above. Only when the base left every installed copy, the lock and
           # the site's checker untouched, so the rebuild is byte-identical; bounded to three merge attempts.
           cd site
+          replayed=false
           for attempt in 1 2 3; do
             wait_for_checks
             if out="$(gh pr merge "$NUMBER" --repo "$REPO" --merge --match-head-commit "$HEAD" --delete-branch 2>&1)"; then
@@ -285,18 +290,21 @@ jobs:
             old_base="$(git rev-parse "${HEAD}~1")"
             git fetch -q --depth=1 origin "refs/heads/${BASE}"
             new_base="$(git rev-parse FETCH_HEAD)"
-            for path in $(sort -u ../changed.txt <(jq -r '.installs | keys[]' observatory.lock.json) <(printf '%s\n' observatory.lock.json observatory/check.mjs observatory/check.local.mjs)); do
+            installs="$(jq -er '.installs | keys[]' observatory.lock.json)" || { echo "::error title=Unreadable lock::${REPO} observatory.lock.json lists no installs; not replaying."; exit 1; }
+            # One path per line, so a file name with spaces stays one path.
+            while IFS= read -r path; do
               if [ "$(git rev-parse -q --verify "${old_base}:${path}" || true)" != "$(git rev-parse -q --verify "${new_base}:${path}" || true)" ]; then
                 echo "::error title=Base changed a synced file::${REPO} ${BASE} changed ${path} since this sync was built; the next sync run rebuilds on it."; exit 1
               fi
-            done
+            done < <(sort -u ../changed.txt <(printf '%s\n' "$installs") <(printf '%s\n' observatory.lock.json observatory/check.mjs observatory/check.local.mjs))
             git switch -q -C "$BRANCH" "$new_base"
-            xargs -a ../changed.txt git checkout -q "$HEAD" --
+            git checkout -q "$HEAD" --pathspec-from-file=../changed.txt
             git add -A
             git commit -q -m "Sync Pulseboard SDK ${SDK} from Pulseboard ${GITHUB_SHA:0:7}"
             outside="$(git diff --name-only "$new_base" HEAD | grep -vxF -f ../changed.txt || true)"
             if [ -n "$outside" ]; then echo "::error title=Unexpected change::The replayed commit touches files outside the sync: ${outside}"; exit 1; fi
             git push -q --force-with-lease="refs/heads/${BRANCH}:${HEAD}" origin "$BRANCH"
             HEAD="$(git rev-parse HEAD)"
+            replayed=true
             echo "::notice title=Base moved::${REPO} ${BASE} moved during CI; replayed the sync on ${new_base:0:7} (attempt ${attempt})."
           done
