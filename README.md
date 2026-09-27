@@ -22,6 +22,13 @@ The hosted Cloudflare Worker/D1 Desk is live. Its operating boundary is delibera
 - content-free collection is enabled only for the explicitly approved **Alibi pilot** through the `COLLECT_PROJECTS` allowlist;
 - every other project integration remains inert until separately reviewed and activated;
 - optional Alibi events require player consent and withdrawal stops later events;
+- a separate, player-initiated **Voices** channel (written feedback, survey answers and puzzle ratings;
+  [contract](observatory/docs/VOICES.md)) is built for Alibi and listed in `COLLECT_VOICE_PROJECTS`, and goes
+  live only once schema 5 is applied to D1 and the collector is redeployed. Nothing is sent unless the player
+  presses Send, submits a survey or taps a rating. Feedback carries no identifier, and links, e-mail and IP
+  addresses and phone-number-like runs are removed on the server. Surveys and ratings carry a random
+  installation key so one installation can replace its own answers; the collector stores only its SHA-256
+  hash with the project id, the one exception to "no cross-visit identifier";
 - Taskdeck handoffs are reviewed files, not remotely issued commands;
 - there is no portfolio-wide product-event collection or cross-product user tracking, and no automatic paging, deployment, remediation, or task creation.
 
