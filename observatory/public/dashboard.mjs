@@ -625,11 +625,11 @@ function render() {
   if (state.view === 'connections') view.replaceChildren(...[guide('connections'), ...connections()].filter(Boolean));
   else if (!state.snapshot) view.replaceChildren(empty('See how your sites are doing.',
     'Pulseboard shows how your sites are used and whether they are healthy, without identifying anyone. Opening this page collects nothing.',
-    e('ol', { class: 'steps' },
+    e('div', { class: 'onramp' }, e('ol', { class: 'steps' },
       e('li', {}, e('strong', {}, 'Connect'), 'Paste your read token to load live numbers, or try sample data first.'),
       e('li', {}, e('strong', {}, 'Scan the overview'), 'See which sites are online, how busy they are, and which alerts are open.'),
       e('li', {}, e('strong', {}, 'Dig into a site'), 'Usage shows who visits and from where; Product shows what they do inside.')),
-    e('div', { class: 'onramp-actions' }, button('Connect live data', () => showDialog('#connect-dialog'), 'primary'), button('Try sample data', () => beginDemo()))));
+    e('div', { class: 'onramp-actions' }, button('Connect live data', () => showDialog('#connect-dialog'), 'primary'), button('Try sample data', () => beginDemo())))));
   else {
     const content = state.view === 'overview' ? overview() : state.view === 'signals' ? inbox() : state.view === 'usage' ? usageView() : state.view === 'product' ? productView() : releaseLab();
     const list = Array.isArray(content) ? content : [content];

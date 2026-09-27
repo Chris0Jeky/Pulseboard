@@ -53,6 +53,8 @@ async def run(args):
         else:
             await page.goto(args.origin, wait_until='networkidle')
         await expect(page.locator('#mode')).to_have_text('NOT CONNECTED')
+        await expect(page.locator('#view').get_by_role('button', name='Try sample data')).to_be_visible()
+        await expect(page.locator('#view').get_by_role('button', name='Connect live data')).to_be_visible()
         assert not any('/v1/' in url for url in requests), 'Opening the desk must not read private data'
         results.append('empty onramp makes no API request')
         if not args.offline:
