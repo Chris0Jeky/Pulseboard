@@ -57,75 +57,75 @@ export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) 
       label: project?.label || 'Portfolio', rule, version: RULE_VERSION, severity, title, detail, evidence, next });
   };
   if (!snapshot.collectionEnabled) add(null, 'collection.paused', 'note', 'Collection is switched off',
-    'The desk is readable. Browser events are not being admitted.', { collectionEnabled: false },
-    'Finish the rollout checks before explicitly enabling collection.');
-  if (now - snapshot.generatedAt > STALE_AFTER || snapshot.generatedAt > now) add(null, 'snapshot.stale', 'warning', 'This snapshot needs a fresh reading',
-    'Keep its observations as history, not current health.', { generatedAt: snapshot.generatedAt }, 'Reconnect to the collector or import a newer snapshot.');
+    'You can still read past numbers, but the collector is not accepting new events from any site.', { collectionEnabled: false },
+    'Switch collection back on (COLLECT_ENABLED) once the rollout checks pass.');
+  if (now - snapshot.generatedAt > STALE_AFTER || snapshot.generatedAt > now) add(null, 'snapshot.stale', 'warning', 'These numbers are out of date',
+    'Treat them as history, not as how the sites are doing now.', { generatedAt: snapshot.generatedAt }, 'Reconnect to load a fresh reading.');
   if (refreshFailed === true) add(null, 'snapshot.refresh_failed', 'warning', 'The latest refresh failed',
-    'Current readings are unknown. The remaining observations come from the last-good snapshot.',
-    { generatedAt: snapshot.generatedAt, lastKnown: true }, 'Reconnect to the collector before treating any observation as current health.');
+    'Current readings are unknown. Everything shown comes from the last reading that worked.',
+    { generatedAt: snapshot.generatedAt, lastKnown: true }, 'Reconnect before trusting any number as current.');
   for (const p of snapshot.projects) {
     if (snapshot.collectionEnabled && p.collectionEligible && !p.collectionAdmitted) {
       const retainedEvents = p.totals.events;
       const detail = retainedEvents === 0
-        ? 'Its zero event count cannot be read as no traffic because this project is outside the active collection allowlist.'
-        : `${retainedEvents} retained events belong to the selected historical window; current browser collection is not admitted.`;
-      add(p, 'collection.not_admitted', 'note', `${p.label} is registered but not admitted`, detail,
+        ? 'This site is not in the detailed session-event pilot, so its zero on the Overview does not mean no traffic. Its counts and product events are on the Usage and Product pages.'
+        : `${retainedEvents} older session events are in this window, but the site no longer sends detailed session events. Its counts and product events are on the Usage and Product pages.`;
+      add(p, 'collection.not_admitted', 'note', `${p.label} sends no detailed session events`, detail,
         { collectionEnabled: true, collectionEligible: true, collectionAdmitted: false, retainedEvents },
-        'Add the exact project id to COLLECT_PROJECTS after its rollout review, or keep the exclusion intentional.');
+        'Nothing to do. Detailed session events for this site would need an owner decision and its id in COLLECT_PROJECTS.');
     }
     const state = monitorState(p, now);
     const recordedDown = p.monitor?.state === 'down';
     const lastKnownDown = refreshFailed === true && recordedDown;
     if (state === 'down' || lastKnownDown) {
       const lastKnown = refreshFailed === true;
-      add(p, 'monitor.down', 'critical', lastKnown ? `${p.label} last-known probe failure` : `${p.label} failed its synthetic check`,
-        lastKnown ? 'The last successful snapshot contained a failed probe. Its age is qualified separately; the current reading is unknown.'
-          : 'The configured path failed the monitor hysteresis. This does not prove every user journey is down.',
+      add(p, 'monitor.down', 'critical', lastKnown ? `${p.label} was failing its site check (last known)` : `${p.label} is failing its site check`,
+        lastKnown ? 'The last reading that worked showed the check failing. The current state is unknown.'
+          : 'The 15-minute check failed 3 times in a row: the page errored, timed out or lacked its expected content. Other pages may still work.',
         { state: p.monitor.state, freshness: state, checked: p.monitor.checked, failures: p.monitor.failures, status: p.monitor.status,
           ...(lastKnown ? { lastKnown: true } : {}) },
-        lastKnown ? 'Refresh the desk, then check the configured probe, latest deployment and a real product journey.'
-          : 'Check the configured probe, then the latest deployment and a real product journey.');
+        lastKnown ? 'Refresh, then open the site yourself and look at its latest deployment.'
+          : 'Open the site yourself, then look at its latest deployment.');
     }
-    if (state === 'stale') add(p, 'monitor.stale', 'warning', `${p.label} has an old probe reading`,
-      'No current availability claim is possible.', { checked: p.monitor.checked }, 'Check the probe schedule and collector readiness.');
-    if (state === 'unknown') add(p, 'monitor.unknown', 'note', `${p.label} is waiting for probe evidence`,
-      'Unknown is neither healthy nor broken.', { state }, 'Run the configured synthetic probe after reviewing its target.');
+    if (state === 'stale') add(p, 'monitor.stale', 'warning', `${p.label} has not been checked recently`,
+      'The last site check is over 30 minutes old, so its current state is unknown.', { checked: p.monitor.checked }, 'Check that the 15-minute cron is running (HOSTING.md) and that the collector is ready.');
+    if (state === 'unknown') add(p, 'monitor.unknown', 'note', `${p.label} has not been checked yet`,
+      'Not checked is neither healthy nor broken.', { state }, 'Wait for the next 15-minute check, or check the cron if this persists.');
     const ratio = p.budget.limit > 0 ? p.budget.used / p.budget.limit : null;
-    if (ratio !== null && ratio >= 0.8) add(p, 'budget.pressure', 'warning', `${p.label} is close to its event allowance`,
-      'Admission stops at the configured daily limit. Counts describe admitted events, not all traffic.',
-      { used: p.budget.used, limit: p.budget.limit, day: p.budget.day }, 'Inspect event volume and sampling before raising the allowance.');
+    if (ratio !== null && ratio >= 0.8) add(p, 'budget.pressure', 'warning', `${p.label} is close to its daily event budget`,
+      'Over 80% of today’s budget is used. Past the limit, new events are refused until midnight UTC, so counts would undercount traffic.',
+      { used: p.budget.used, limit: p.budget.limit, day: p.budget.day }, 'Find out what is sending so many events before raising the budget.');
     const outcomes = p.totals.completed + p.totals.failed;
-    if (outcomes >= MIN_OUTCOMES && p.totals.failed / outcomes >= 0.1) add(p, 'outcomes.failure', 'warning', `${p.label} has a failure signal`,
-      'At least 10% of reported action outcomes failed, with at least 20 outcomes. Retries may appear more than once.',
+    if (outcomes >= MIN_OUTCOMES && p.totals.failed / outcomes >= 0.1) add(p, 'outcomes.failure', 'warning', `${p.label}: many actions are failing`,
+      'At least 10% of reported actions failed (out of 20 or more). A retried action can count more than once.',
       { failed: p.totals.failed, outcomes, interval: wilson(p.totals.failed, outcomes), threshold: 0.1, minimum: MIN_OUTCOMES },
-      'Compare release and route cohorts; check the hooks before drawing conclusions.');
+      'Compare versions on the Releases page, and check where the site reports its failures before concluding anything.');
     for (const operation of p.operations || []) {
       const evidence = { operation: operation.id, version: operation.version, attempts: operation.attempts,
         completed: operation.completed, failed: operation.failed, open: operation.open, retries: operation.retries,
         minimum: MIN_OUTCOMES };
       if (p.collectionAdmitted && operation.attempts === 0) add(p, `operation.${operation.id}.no_evidence`, 'note',
-        `${p.label} has no ${operation.id} evidence`,
-        'No reported attempts is an unknown observation, not a healthy journey.', evidence,
-        'Exercise the consented journey and verify collector admission before interpreting this operation.');
+        `${p.label}: no ${operation.id} attempts reported`,
+        'No attempts is unknown, not healthy: nobody may have tried, or the reporting may be broken.', evidence,
+        'Try it yourself with consent given, then check it arrives.');
       else if (operation.attempts > 0 && operation.completed + operation.failed < MIN_OUTCOMES) add(p, `operation.${operation.id}.low_sample`, 'note',
-        `${p.label} ${operation.id} has too little evidence`,
+        `${p.label}: too few ${operation.id} results to judge`,
         // Gate on resolved attempts: many starts with few terminals (abandoned or unhooked) must not read as healthy.
-        `${operation.attempts} reported attempts, ${operation.completed + operation.failed} resolved, are too little evidence to assess journey health. Open attempts and retries remain separate facts.`, evidence,
-        `Collect at least ${MIN_OUTCOMES} resolved consented attempts, then inspect failures, open attempts and route/release cohorts.`);
+        `${operation.attempts} attempts reported, ${operation.completed + operation.failed} finished or failed. That is too few to judge; unfinished attempts and retries are counted separately.`, evidence,
+        `Wait for at least ${MIN_OUTCOMES} finished or failed attempts, then look at the failures.`);
       else {
         const resolved = operation.completed + operation.failed;
         if (operation.failed / resolved >= 0.1) add(p, `operation.${operation.id}.failure`, 'warning',
-          `${p.label} ${operation.id} has a failure signal`,
-          'At least 10% of resolved reported attempts failed. This is descriptive client evidence, not a diagnosis.',
+          `${p.label}: many ${operation.id} attempts are failing`,
+          'At least 10% of finished attempts failed. This describes what browsers reported; it is not a diagnosis.',
           { ...evidence, interval: wilson(operation.failed, resolved), resolved, threshold: 0.1 },
-          'Inspect the host hook, release cohort and a real journey before forming a causal explanation.');
+          'Try it yourself, compare versions on the Releases page, and check where the site reports failures.');
       }
     }
     const unattributed = p.releases.find(r => r.release === 'unattributed')?.events || 0;
-    if (p.totals.events > 0 && unattributed / p.totals.events >= 0.5) add(p, 'release.unattributed', 'note', `${p.label} needs release labels`,
-      'At least half of admitted events cannot be linked to a named release.', { unattributed, total: p.totals.events },
-      'Register an allowed release label in the collector and the client adapter.');
+    if (p.totals.events > 0 && unattributed / p.totals.events >= 0.5) add(p, 'release.unattributed', 'note', `${p.label} events are missing version labels`,
+      'At least half of its events do not say which version of the site sent them, so Releases cannot compare them.', { unattributed, total: p.totals.events },
+      'Register the version name in the collector and in the site’s Pulseboard setup.');
   }
   const rank = { critical: 0, warning: 1, note: 2 };
   return signals.sort((a, b) => rank[a.severity] - rank[b.severity] || a.label.localeCompare(b.label) || a.rule.localeCompare(b.rule));
