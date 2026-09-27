@@ -91,7 +91,7 @@ async def run(args):
         await page.locator('#search').fill('')
         await page.locator('.project-name button').filter(has_text='Alibi').click()
         await expect(page.locator('#detail-dialog')).to_be_visible()
-        await expect(page.locator('#detail')).to_contain_text('Paired flow')
+        await expect(page.locator('#detail')).to_contain_text('Started and finished')
         await expect(page.locator('#github-evidence')).to_contain_text('Not read')
         await page.get_by_role('button', name='Read workflow evidence').click()
         await expect(page.locator('#github-evidence')).to_contain_text('SYNTHETIC')

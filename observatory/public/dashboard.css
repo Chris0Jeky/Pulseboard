@@ -366,3 +366,4 @@ body{background:white;color:black}.muted,.subtitle,.stat-note,.chart-caption{col
 .nowrap{white-space:nowrap}
 .chart-text{font-size:14px}
 .onramp{display:flex;flex-direction:column;align-items:center;width:100%}
+#page-title:focus-visible{outline:none;text-decoration:underline 3px var(--accent);text-underline-offset:8px}
