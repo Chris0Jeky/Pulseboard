@@ -47,7 +47,8 @@ jobs:
           - { repo: Chris0Jeky/developer-lens, name: developer-lens }
           - { repo: Chris0Jeky/wealthlens-hq, name: wealthlens }
           - { repo: Chris0Jeky/MDviewer, name: mdviewer }
-          - { repo: Chris0Jeky/Alibi, name: alibi }
+          # Alibi's check reads the built site (dist/_headers, dist/index.html), so it is built before the check runs.
+          - { repo: Chris0Jeky/Alibi, name: alibi, build: true }
     steps:
       - uses: actions/checkout@v6
         with:
@@ -65,6 +66,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p out
+          if [ "${{ matrix.build }}" = "true" ]; then
+            # Write the synced files first, build the site from them, then run the check on the build.
+            node pulseboard/observatory/adapters/sync-hosts.mjs site --no-run > /dev/null
+            (cd site && npm ci --no-audit --no-fund && npm run build)
+          fi
           node pulseboard/observatory/adapters/sync-hosts.mjs site > out/report.json
           echo "### ${{ matrix.repo }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```json' >> "$GITHUB_STEP_SUMMARY"; cat out/report.json >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
