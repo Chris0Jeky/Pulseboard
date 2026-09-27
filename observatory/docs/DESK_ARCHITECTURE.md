@@ -117,7 +117,7 @@ so either budget full returns 429 and charges neither. Rows go to
 country, region, browser, os, device)` in the same D1 batch as the reservation, gated on its receipt.
 Delivery is at most once; repeated requests store repeated rows.
 
-`GET /v1/product/<id>?days=` (authenticated, windows 1 to 90) returns `pulseboard.product/1`: totals
+`GET /v1/product/<id>?days=` (authenticated, `days` one of 1, 7, 14, 30 or 90) returns `pulseboard.product/1`: totals
 by name, route, release and day; sessions (count, median events, median duration between the first
 and last received batch); the latest 100 journeys as `{ session, startedAt, durationMs,
 steps, stepsTruncated }` (first 60 step names); exits (each session's last event inside the window, summing to the
