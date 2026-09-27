@@ -6,7 +6,7 @@ and q-19 to q-21). This file is the architecture for turning the Desk into the p
 in `ROLLOUT.md`. It amends `ENGINEERING.md` (see "Amendments" below). Version 1 of this plan
 (visitor counts plus enrolled testers only) shipped slices 1 and 2 (#110, #111). Version 2 widens
 what is collected and replaces the tester tier with consent categories. **Amended 27 September 2026**
-(owner decision in chat, HUMAN_TODO q-27): a separate, player-initiated Voices channel for written
+(owner decision in chat, HUMAN_TODO q-30): a separate, player-initiated Voices channel for written
 feedback, survey answers and puzzle ratings (data model section 5, `VOICES.md`).
 
 This is not legal advice. It records the most defensible reading the owner chose; see "Legal basis".
@@ -233,7 +233,7 @@ every failure is silent and drops data, and nothing is queued offline across pag
    Pulseboard PR after the host PRs are ready. MDviewer must never send document text, file names or
    export contents; Developer Lens must prove its private build never loads the SDK.
 7. Cloudflare Web Analytics adapter (#107): dropped for now (q-17).
-8. **Voices (q-27):** schema 5, feedback and survey intake, the Voices read and view, content demand
+8. **Voices (q-30):** schema 5, feedback and survey intake, the Voices read and view, content demand
    (`VOICES.md`). Rollout: migration 0005 on D1, then the collector deploy, then the Alibi client
    release.
 

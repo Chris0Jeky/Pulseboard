@@ -1,6 +1,6 @@
 # Voices: player feedback, surveys and puzzle ratings (contract v1)
 
-Owner decision, 2026-09-27 (in chat; recorded in Alibi `HUMAN_TODO.md` and here as HUMAN_TODO q-27): player
+Owner decision, 2026-09-27 (in chat; recorded in Alibi `HUMAN_TODO.md` and here as HUMAN_TODO q-30): player
 feedback and survey answers go to **Pulseboard**. Written feedback is stored only when a player presses Send. The
 owner also asked for a survey tied to an installation id "so a user can re-submit the same survey multiple times with
 updated answers without making it seem like there are many users", and to understand what players like and want more of.
