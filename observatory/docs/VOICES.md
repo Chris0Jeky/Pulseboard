@@ -181,7 +181,7 @@ counts it in `redacted`; it never rejects:
 | IP addresses | `[ip]` | IPv4, IPv6 and IPv4-mapped IPv6, as for product events (a dotted quad such as `v1.2.3.4` counts) |
 | Phone-number-like runs | `[phone]` | a run of digits with spaces, dots, dashes, slashes, brackets or a leading `+`: nine or more digits, or seven or more with a separator, `+` or brackets. Longer digit runs (card or account numbers) are removed too |
 
-Dates standing alone (`2026-09-27`, `27/09/2026`, `2026/09/27`), clock times, release strings, puzzle ids and short
+Dates standing alone (`2026-09-27`, `27/09/2026`, `2026/09/27`) whose month and day could be real, clock times, release strings, puzzle ids and short
 numbers are kept. A date shape that starts or ends a longer digit run (`06.12.34.56.78`) is treated as part of that run.
 A marker can be longer than what it replaced, so the result is cut back to the bound without splitting a surrogate
 pair. This is best effort: text can still describe a person.

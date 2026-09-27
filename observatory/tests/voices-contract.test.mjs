@@ -139,6 +139,9 @@ test('e-mail addresses, IP addresses, links and phone-number-like runs are repla
     // A date shape at the start of a longer run is part of a phone number, not a date (review of #149).
     ['call me on 06.12.34.56.78', 'call me on [phone]', 1],
     ['or 06-12-34-56-78 or 06/12/34/56/78', 'or [phone] or [phone]', 2],
+    // A date's shape with no possible month and day is a phone-number-like run (review of the merged Voices intake).
+    ['ring 5551-23-45', 'ring [phone]', 1],
+    ['call 98/76/5432', 'call [phone]', 1],
     ['a@b.co and https://x.test and 10.0.0.1 and +1 202 555 0143', '[email] and [link] and [ip] and [phone]', 4],
   ];
   for (const [input, expected, count] of cases) assert.deepEqual(redactVoiceText(input, 2000), { text: expected, redacted: count }, input);

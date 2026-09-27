@@ -53,6 +53,14 @@ const LINK_TAIL = /[.,;:!?)\]}'"]+$/;
 // Dates are not phone numbers: ISO days, year-first and day-first shapes are set aside before the phone pass, but only
 // when they stand alone. A date shape inside a longer digit run (06.12.34.56.78, a dotted phone number) is not a date.
 const DATES = /(?<!\d[-./])\b\d{4}[-./]\d{1,2}[-./]\d{1,2}\b(?![-./]\d)|(?<!\d[-./])\b\d{1,2}[-./]\d{1,2}[-./]\d{2,4}\b(?![-./]\d)/g;
+/** Only a date that could be real is set aside: month 1-12 and day 1-31, day-first or month-first when the year is
+ *  last. Anything else with a date's shape (5551-23-45, 98/76/5432) stays a phone candidate. */
+const plausibleDate = match => {
+  const parts = match.split(/[-./]/).map(Number);
+  const day = (d, m) => m >= 1 && m <= 12 && d >= 1 && d <= 31;
+  if (/^\d{4}/.test(match)) return day(parts[2], parts[1]);
+  return day(parts[0], parts[1]) || day(parts[1], parts[0]);
+};
 // A candidate run starts at a digit, `+` or `(` that is not inside a word, version or path, and ends at a digit.
 const PHONE = /(?<![\w+./-])(?:\+|\()?\d[\d ()./-]{5,40}\d(?!\w)/g;
 /** Phone-number-like: nine or more digits, or seven or more written with a separator, `+` or brackets. Long digit
@@ -72,7 +80,7 @@ export function redactVoiceText(text, max) {
     .replace(ADDRESS_PATTERNS.IPV6_V4, mark('[ip]')).replace(ADDRESS_PATTERNS.IPV4, mark('[ip]')).replace(ADDRESS_PATTERNS.IPV6, mark('[ip]'));
   // Set dates aside behind private-use placeholders (no digits, no word characters), then restore them untouched.
   const kept = [];
-  value = value.replace(DATES, match => { kept.push(match); return '\u0000' + String.fromCharCode(0xe000 + kept.length - 1) + '\u0000'; });
+  value = value.replace(DATES, match => { if (!plausibleDate(match)) return match; kept.push(match); return '\u0000' + String.fromCharCode(0xe000 + kept.length - 1) + '\u0000'; });
   value = value.replace(PHONE, run => phoneLike(run) ? (redacted++, '[phone]') : run);
   value = value.replace(/\u0000([-])\u0000/g, (_, index) => kept[index.charCodeAt(0) - 0xe000]);
   return { text: cutText(value, max), redacted };
