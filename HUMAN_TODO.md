@@ -3,7 +3,7 @@
 Agents surface this file in every summary and tick an item only when its completion is directly
 verified. Items that need the owner's judgement stay open until the owner answers here or in chat.
 
-- [ ] q-29 — **Let Pulseboard update the sites (about 3 minutes, once).** Owner decision 2026-09-27: one
+- [x] q-29 — **Let Pulseboard update the sites. DONE 2026-09-27:** owner set `SITES_TOKEN` and chose to scope it to ALL their repositories ("a risk I'm willing to take"; new repositories will join). The first real run opened a sync pull request in all seven sites and CV_and_Portfolio#10 merged itself; adding a site now only needs its repository in the workflow matrix. Original steps: Owner decision 2026-09-27: one
   workflow keeps every site's Pulseboard SDK copy in step and merges routine updates itself
   (`.github/workflows/sync-sites.yml`). It skips with a notice until this token exists. Only you can create it:
   1. Open https://github.com/settings/personal-access-tokens/new (a **fine-grained** token).

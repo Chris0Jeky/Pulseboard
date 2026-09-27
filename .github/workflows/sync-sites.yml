@@ -231,7 +231,13 @@ jobs:
           sleep 180
           runs="$(gh run list --repo "$REPO" --commit "$HEAD" --json databaseId -q '.[].databaseId')"
           for id in $runs; do
-            gh run watch "$id" --repo "$REPO" --exit-status > /dev/null || { echo "::error title=Site CI failed::Run $id on ${REPO} failed; the pull request stays open."; exit 1; }
+            gh run watch "$id" --repo "$REPO" > /dev/null
+            # A workflow that does not apply to this pull request (for example Dependabot auto-merge) ends skipped.
+            conclusion="$(gh run view "$id" --repo "$REPO" --json conclusion -q .conclusion)"
+            case "$conclusion" in
+              success|skipped|neutral) ;;
+              *) echo "::error title=Site CI failed::Run $id on ${REPO} ended ${conclusion}; the pull request stays open."; exit 1 ;;
+            esac
           done
           # Every check and status on the pull request, from Actions or elsewhere, must pass as well.
           if ! checks="$(gh pr checks "$NUMBER" --repo "$REPO" --watch --fail-fast 2>&1)"; then

@@ -157,8 +157,10 @@ the site passes.
   run on its head succeeds. Otherwise it is titled `[needs a person]` and stays open with the reason.
 - Alibi's own policy pins its SDK version, so an SDK version bump reaches Alibi as a `[needs a person]` pull
   request until its `check.local.mjs` pin moves.
-- It needs the `SITES_TOKEN` secret (a fine-grained token over the seven site repositories); without it every job
-  skips with a notice. Adding a site means adding its repository to the workflow matrix and to the token.
+- It needs the `SITES_TOKEN` secret; without it every publish job skips with a notice. Since 2026-09-27 the token
+  covers all of the owner's repositories (owner's choice, HUMAN_TODO q-29), so adding a site means adding its
+  repository to both matrices in the workflow. A run that ends `skipped` or `neutral` on the site (a workflow that
+  does not apply to the pull request) does not block the merge; any other non-success does.
 
 ## Automatic deploys
 
