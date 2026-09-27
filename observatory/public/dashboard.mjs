@@ -199,18 +199,18 @@ function projectDetail(p) {
   state.drawerSnapshot = state.snapshot; state.drawerStale = state.stale;
   const outcomes = p.totals.completed + p.totals.failed;
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, p.label), chip(p),
-    e('div', { class: 'facts' }, ...[['Admitted events', count(p.totals.events)], ['Reported sessions', count(p.totals.sessions)],
-      ['Completed / reported outcomes', `${p.totals.completed} / ${outcomes}`], ['Probe successes / samples', `${p.probeSamples.numerator} / ${p.probeSamples.denominator}`],
-      ['Collection admission', p.collectionEligible ? (p.collectionAdmitted ? 'Admitted' : 'Not admitted') : 'Not eligible (local-only)']]
+    e('div', { class: 'facts' }, ...[['Session events', count(p.totals.events)], ['Sessions', count(p.totals.sessions)],
+      ['Actions finished / reported', `${p.totals.completed} / ${outcomes}`], ['Site checks passed / run', `${p.probeSamples.numerator} / ${p.probeSamples.denominator}`],
+      ['Detailed session events', p.collectionEligible ? (p.collectionAdmitted ? 'On' : 'Off (see Usage and Product)') : 'Not collected (local only)']]
       .map(([label, value]) => e('div', { class: 'fact' }, e('span', {}, label), e('strong', {}, value)))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'Provenance'), e('p', { class: 'muted' }, `Snapshot: ${date(state.snapshot.generatedAt)}. Last probe: ${date(p.monitor.checked)}. Browser data is opt-in and client-reported. Probe data comes from the configured synthetic check.`)),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'Paired flow'), e('p', {}, `${p.flow.numerator} completed of ${p.flow.denominator} started session / route / release groups (${percent(p.flow.value)}).`),
-      e('p', { class: 'muted' }, 'A later completion must match the session, route and release. This is not a user retention metric or a named-action conversion funnel.')),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'Route receipts'), e('div', { class: 'table-shell' }, table(['Allowed route', 'Events'], p.routes.map(r => [r.route, count(r.n)])))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'Release cohorts'), e('div', { class: 'table-shell' }, table(['Release', 'Outcomes', 'Failures', 'p95 duration'], p.releases.map(r => [r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · n=${r.duration.n}` : 'No samples']))),
-      button('Open release comparison →', () => { state.releaseProject = p.id; state.baseline = ''; state.candidate = ''; $('#detail-dialog').close(); navigate('releases'); })),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'Development evidence (GitHub)'), e('div', { id: 'github-evidence', 'data-project': p.id }, githubView(p.id))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'Reading limits'), e('ul', {}, state.snapshot.limitations.map(text => e('li', {}, text)))));
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'Where these numbers come from'), e('p', { class: 'muted' }, `Read ${date(state.snapshot.generatedAt)}. Last site check: ${date(p.monitor.checked)}. Session events come from visitors’ browsers after they opt in, and are self-reported. Site status comes from the scheduled site check.`)),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'Started and finished'), e('p', {}, `${p.flow.numerator} of ${p.flow.denominator} groups that started something also finished it (${percent(p.flow.value)}). A group is one session on one page and version.`),
+      e('p', { class: 'muted' }, 'A finish only counts when a later event matches the same session, page and version. This is not retention or a conversion funnel.')),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'Events by page'), e('div', { class: 'table-shell' }, table(['Page (route)', 'Events'], p.routes.map(r => [r.route, count(r.n)])))),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Actions', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
+      button('Compare versions →', () => { state.releaseProject = p.id; state.baseline = ''; state.candidate = ''; $('#detail-dialog').close(); navigate('releases'); })),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'Builds, deploys and releases (GitHub)'), e('div', { id: 'github-evidence', 'data-project': p.id }, githubView(p.id))),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'Limits of these numbers'), e('ul', {}, state.snapshot.limitations.map(text => e('li', {}, text)))));
   showDialog('#detail-dialog');
 }
 const githubClass = { passing: 'up', observed: 'up', failing: 'down', stale: 'stale', 'rate-limited': 'stale' };
@@ -346,18 +346,18 @@ function importedContext() {
 }
 function connections() {
   const card = (badge, title, detail, action = null) => e('section', { class: 'panel connection-card' }, e('span', { class: 'badge' }, badge), e('h2', {}, title), e('p', {}, detail), action);
-  return [e('div', { class: 'flow-map', 'aria-label': 'Observatory provides aggregates to Pulseboard; Pulseboard provides reviewed handoffs' },
-    e('div', { class: 'flow-node' }, 'COLLECT', e('strong', {}, 'Observatory')), e('span', { class: 'flow-arrow', 'aria-hidden': true }, '→'),
-    e('div', { class: 'flow-node' }, 'UNDERSTAND', e('strong', {}, 'Pulseboard')), e('span', { class: 'flow-arrow', 'aria-hidden': true }, '→'),
-    e('div', { class: 'flow-node' }, 'REVIEW', e('strong', {}, 'Your next move'))),
+  return [e('div', { class: 'flow-map', 'aria-label': 'Your sites send data to the collector; you read it on this desk; you decide the next step' },
+    e('div', { class: 'flow-node' }, 'YOUR SITES SEND', e('strong', {}, 'Collector')), e('span', { class: 'flow-arrow', 'aria-hidden': true }, '→'),
+    e('div', { class: 'flow-node' }, 'YOU READ', e('strong', {}, 'This desk')), e('span', { class: 'flow-arrow', 'aria-hidden': true }, '→'),
+    e('div', { class: 'flow-node' }, 'YOU DECIDE', e('strong', {}, 'Your next step'))),
     e('div', { class: 'connections-grid' },
-      card('AVAILABLE', 'Observatory', 'Read aggregate product events, synthetic probe state and admission budgets from the same-origin protected API.', button('Connect collector', () => showDialog('#connect-dialog'))),
-      card('REVIEW HANDOFF', 'Taskdeck / repository agent', 'Inspect a signal and prepare a small JSON task handoff. The file is a proposal; it does not create or execute tasks.', button('Open signal inbox', () => navigate('signals'))),
-      card('NATIVE V2 FILE READER', 'CommitAtlas', 'Import the existing projects.json catalogue. Named-workflow CI, lifecycle and release context remain separate from availability. No URLs in the file are followed.', importControl('commitatlas', 'Review a projects.json file')),
-      card('PROJECTION READER / PRODUCER PENDING', 'Developer Lens', 'Import a reviewed pulseboard.lens-projection/1 file. Observations, patterns, hypotheses, censoring and limitations stay intact. Native Lens export support is a follow-up.', importControl('developer-lens', 'Review a redacted projection')),
-      card('SELECT / REVIEW / DOWNLOAD', 'Public pulse', 'Prepare an expiring, minimal probe capsule for a future CommitAtlas or status-card consumer. No usage counts, task contents or private findings are included.', publicPulseForm()),
-      card('SEPARATE RUNTIME', 'Feed workbench', 'The original FastAPI / Vue dashboard remains available for system metrics, HTTP JSON and custom feeds. Run its existing scripts; it has not been silently migrated.'),
-      card('EXTENSION SEAM', 'OpenTelemetry / specialist backends', 'Keep traces and high-volume metrics in suitable backends. A future bounded adapter can bring evidence and links into this desk. No OTLP receiver is claimed.')),
+      card('LIVE DATA', 'Collector', 'Where your sites’ counts, product events, site checks and daily budgets are kept. Connect with your read token to read them; reading never changes what is collected.', button('Connect live data', () => showDialog('#connect-dialog'))),
+      card('TASK FILE', 'Taskdeck or a coding agent', 'Open an alert and turn it into a small JSON task file. The file is only a suggestion: nothing is created or run.', button('Open alerts', () => navigate('signals'))),
+      card('READS A FILE', 'CommitAtlas', 'Choose a CommitAtlas projects.json file to see each repository’s CI, lifecycle and latest release here. It stays separate from site status, and links in the file are never opened.', importControl('commitatlas', 'Review a projects.json file')),
+      card('READS A FILE', 'Developer Lens', 'Choose a reviewed Developer Lens projection file (pulseboard.lens-projection/1) to see its findings here with their caveats intact. Lens cannot write this file by itself yet.', importControl('developer-lens', 'Review a redacted projection')),
+      card('SHAREABLE FILE', 'Public pulse', 'Build a small, expiring file with only the site-check status of the sites you pick, for a status card elsewhere. No usage numbers, tasks or private findings go in it, and you review it before download.', publicPulseForm()),
+      card('SEPARATE APP', 'Feed workbench (legacy)', 'The older FastAPI and Vue dashboard for system metrics, HTTP JSON and custom feeds still runs from legacy/. Nothing from it was moved into this desk.'),
+      card('NOT BUILT', 'OpenTelemetry and other tools', 'Traces and high-volume metrics belong in tools built for them. A small adapter could link them here later; nothing receives them today.')),
     ...importedContext()];
 }
 const siteReads = {
@@ -522,7 +522,7 @@ function usageView() {
       dimensionPanels(u)),
     e('div', { class: 'overview-grid' },
       panel('Which build sent counts', share(u.releases, 'release', u.total), tag('RELEASE MIX')),
-      panel('Reading limits', e('ul', { class: 'tiny muted' }, u.limitations.map(text => e('li', {}, text))))),
+      panel('Limits of these numbers', e('ul', { class: 'tiny muted' }, u.limitations.map(text => e('li', {}, text))))),
     coverage()];
 }
 const seconds = ms => ms === null ? '—' : ms < 60_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.floor(ms / 60_000)} min ${Math.round(ms % 60_000 / 1000)} s`;
@@ -600,12 +600,12 @@ function productView() {
         panel('Errors', p.errors.length ? e('div', { class: 'table-shell' }, table(['Kind', 'Message', 'Count', 'Last seen'], p.errors.map(x => [x.kind, x.message, count(x.n), date(x.lastSeen)])))
           : e('p', { class: 'muted' }, 'No errors reported in this window.'), tag('GROUPED BY KIND AND MESSAGE')))),
     plugin ? pluginSection(plugin) : null, explorer(),
-    panel('Reading limits', e('ul', { class: 'tiny muted' }, p.limitations.map(text => e('li', {}, text))))].filter(Boolean);
+    panel('Limits of these numbers', e('ul', { class: 'tiny muted' }, p.limitations.map(text => e('li', {}, text))))].filter(Boolean);
 }
 function render() {
   const focusId = document.activeElement?.id;
   const [title, subtitle] = views[state.view];
-  $('#page-title').textContent = title; $('#page-subtitle').textContent = subtitle; $('#breadcrumb').textContent = state.view.toUpperCase();
+  $('#page-title').textContent = title; $('#page-subtitle').textContent = subtitle; $('#breadcrumb').textContent = title.toUpperCase();
   for (const link of document.querySelectorAll('nav a')) { if (link.dataset.view === state.view) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); }
   const openAlerts = state.snapshot ? signalSet().filter(s => reviewState(s, state.reviews) === 'open').length : 0;
   $('#signal-count').textContent = String(openAlerts); $('#signal-count').classList.toggle('hot', openAlerts > 0);
