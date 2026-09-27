@@ -59,8 +59,20 @@ test('the example feedback is accepted and returned as the record to store', () 
   assert.equal(validateFeedback(feedback({ subject: '' }), 'alibi', NOW), true, 'no subject');
   assert.equal(validateFeedback(feedback({ subject: '0' }), 'alibi', NOW), true);
   assert.equal(validateFeedback(feedback({ subject: 'a' + 'b'.repeat(63) }), 'alibi', NOW), true);
-  assert.equal(validateFeedback(feedback({ release: 'a'.repeat(32) }), 'alibi', NOW), true);
-  assert.equal(validateFeedback(feedback({ release: '0.15.0+build.7-rc' }), 'alibi', NOW), true);
+  // Release labels follow the product rule (q-28): any well-formed Alibi version, listed or not.
+  for (const release of ['0.16.0', '1.0.0-rc.1', '12.3.4-beta.2']) {
+    assert.equal(validateFeedback(feedback({ release }), 'alibi', NOW), true, release);
+    assert.equal(validateSurvey(taste({ release }), 'alibi'), true, release);
+  }
+});
+
+test('Voices release labels pass the shared release admission, not only the release shape', () => {
+  // Each of these fits the product-batch shape ^[0-9A-Za-z.+-]{1,32}$ but is not an admissible Alibi release.
+  for (const release of ['totally-bogus', 'a'.repeat(32), '0.15.0+build.7-rc', '0.15', 'v0.15.0', '0.15.0-RC1', 'unattributed-x']) {
+    assert.equal(parseFeedback(feedback({ release }), 'alibi', NOW), null, release);
+    assert.equal(parseSurvey(taste({ release }), 'alibi'), null, release);
+    assert.equal(parseSurvey(rating({ release }), 'alibi'), null, release);
+  }
 });
 
 test('feedback refuses extra or missing keys at every level and every out-of-contract value', () => {

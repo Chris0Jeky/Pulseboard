@@ -4,6 +4,8 @@
  *  project's registry in src/surveys.mjs. Free text is cleaned, bounded and redacted on the server before storage;
  *  redaction never rejects. A survey key is hashed with the project id before storage and never stored or returned raw. */
 import { ADDRESS_PATTERNS, cutText } from './product-contract.mjs';
+import { projects } from './projects.mjs';
+import { releaseAccepted } from './release-label.mjs';
 import { voiceRegistry } from './surveys.mjs';
 
 export const VOICE_VERSION = 1;
@@ -35,7 +37,8 @@ const SURVEY_KEYS = Object.freeze(['v', 'survey', 'subject', 'respondent', 'rele
 const plain = value => !!value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 /** Every listed key present and no other: a missing key and an extra key are both a contract failure. */
 const exact = (value, keys) => plain(value) && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
-const releaseOf = value => typeof value === 'string' && RELEASE.test(value);
+/** The product-batch rule: the release shape, then the project's release admission (src/release-label.mjs, q-28). */
+const releaseOf = (id, value) => typeof value === 'string' && RELEASE.test(value) && Object.hasOwn(projects, id) && releaseAccepted(projects[id], value);
 const deviceOf = context => exact(context, ['device']) && VOICE_DEVICES.includes(context.device) ? context.device : null;
 
 /** Control characters other than newline and tab become spaces, then the text is trimmed. Length is in UTF-16 units,
@@ -88,7 +91,7 @@ export function writtenInWindow(value, now) {
 export function parseFeedback(body, project, now = Date.now()) {
   const registry = voiceRegistry(project);
   if (!registry || !exact(body, FEEDBACK_KEYS) || body.v !== VOICE_VERSION) return null;
-  if (typeof body.id !== 'string' || !UUID_V4.test(body.id) || !releaseOf(body.release)) return null;
+  if (typeof body.id !== 'string' || !UUID_V4.test(body.id) || !releaseOf(project, body.release)) return null;
   if (!FEEDBACK_KINDS.includes(body.kind) || !registry.routes.includes(body.route)) return null;
   if (body.subject !== '' && (typeof body.subject !== 'string' || !SUBJECT.test(body.subject))) return null;
   if (typeof body.text !== 'string') return null;
@@ -142,7 +145,7 @@ export function parseSurvey(body, project) {
   if (typeof body.survey !== 'string' || !Object.hasOwn(registry.surveys, body.survey)) return null;
   const survey = registry.surveys[body.survey];
   if (survey.subject === 'none' ? body.subject !== '' : typeof body.subject !== 'string' || !SUBJECT.test(body.subject)) return null;
-  if (typeof body.respondent !== 'string' || !UUID_V4.test(body.respondent) || !releaseOf(body.release)) return null;
+  if (typeof body.respondent !== 'string' || !UUID_V4.test(body.respondent) || !releaseOf(project, body.release)) return null;
   const answers = canonicalAnswers(body.answers, survey.questions), meta = canonicalMeta(body.meta, survey.meta);
   if (answers === null || meta === null || typeof body.comment !== 'string') return null;
   const comment = cleanVoiceText(body.comment);
