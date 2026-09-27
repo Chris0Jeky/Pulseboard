@@ -102,10 +102,13 @@ test('no-run mode refreshes a stale generated checker only when told it passed',
   assert.equal(readFileSync(path.join(refreshed, 'observatory/check.mjs'), 'utf8'), buildHostChecker());
 });
 
-test('install targets in dot-folders, or through a symlink, are refused', t => {
+test('install targets in dot-folders, with a backslash, or through a symlink, are refused', t => {
   const dotted = host({ artifact: buildSdk('portfolio'), lock: lockFor('0'.repeat(64)).replace(TARGET, '.git/config') });
   t.after(() => rmSync(dotted, { recursive: true, force: true }));
   assert.throws(() => syncHost(dotted, { run: false }), /Refusing path \.git\/config/);
+  const slashed = host({ artifact: buildSdk('portfolio'), lock: lockFor('0'.repeat(64)).replace(TARGET, 'x\\\\y/config') });
+  t.after(() => rmSync(slashed, { recursive: true, force: true }));
+  assert.throws(() => syncHost(slashed, { run: false }), /Refusing path x\\y\/config/);
   const linked = host({ artifact: buildSdk('portfolio'), lock: lockFor('0'.repeat(64)).replace(TARGET, 'x/config') });
   t.after(() => rmSync(linked, { recursive: true, force: true }));
   mkdirSync(path.join(linked, 'real'), { recursive: true });

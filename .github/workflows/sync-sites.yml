@@ -172,11 +172,18 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.SITES_TOKEN }}
+          LEASE: ${{ steps.guard.outputs.lease }}
         run: |
           number="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number -q '.[0].number')"
           if [ -n "$number" ]; then
-            gh pr close "$number" --repo "$REPO" --delete-branch --comment "The site already matches Pulseboard main; this sync is no longer needed."
+            gh pr close "$number" --repo "$REPO" --comment "The site already matches Pulseboard main; this sync is no longer needed."
             echo "- ${REPO}: closed stale #${number}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -n "$LEASE" ]; then
+            # Delete the branch only if it still points where the guard saw it, so a person's late push survives (#158).
+            cd site && gh auth setup-git
+            git push -q --force-with-lease="refs/heads/${BRANCH}:${LEASE}" origin ":refs/heads/${BRANCH}" \
+              || echo "::warning title=Sync branch kept::${REPO} ${BRANCH} moved since the guard looked; it was not deleted."
           fi
       - name: Leave a person's work alone
         if: steps.report.outputs.changed == 'true' && steps.guard.outputs.human == 'true'
