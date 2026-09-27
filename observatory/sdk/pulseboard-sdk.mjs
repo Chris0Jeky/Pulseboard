@@ -10,7 +10,7 @@
  * CSSOM (element.style), which a strict `style-src` without 'unsafe-inline' does not block.
  */
 import { referrerDomain, referrerSource } from './referrers.mjs';
-export const SDK_VERSION = '3.2.0';
+export const SDK_VERSION = '3.3.0';
 const COUNT_BATCH = 20;
 const PRODUCT_BATCH = 20;
 const PRODUCT_BODY_LIMIT = 16384;
@@ -30,6 +30,9 @@ const CATEGORIES = ['counts', 'diagnostics', 'journeys'];
 const NAME_RE = /^[a-z][a-z0-9_.:-]{0,63}$/;
 const ROUTE_RE = /^[a-z0-9._-]{1,48}$/;
 const RELEASE_RE = /^[0-9A-Za-z.+-]{1,32}$/;
+// Same source as RELEASE_PATTERN in src/release-label.mjs (a test pins them equal). With `project.releasePattern`
+// any well-formed version counts as a release even when the baked list predates it (owner decision q-28, SDK 3.3).
+const RELEASE_PATTERN_RE = /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[0-9A-Za-z][0-9A-Za-z.-]{0,15})?$/;
 const KEY_RE = /^[A-Za-z0-9_.-]{1,48}$/;
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const CAMPAIGN_RE = /^[a-z0-9_-]{1,40}$/;
@@ -181,7 +184,7 @@ function checkConfig(config) {
     const route = typeof config.route === 'string' && project.routes.includes(config.route) ? config.route : 'home';
     const campaigns = strings(project.campaigns) ? project.campaigns.filter(tag => CAMPAIGN_RE.test(tag)) : [];
     return { id: config.id, label: config.label, collector, origin, release, route, campaigns,
-      events: [...project.events], routes: [...project.routes], releases: [...project.releases] };
+      events: [...project.events], routes: [...project.routes], releases: [...project.releases], releasePattern: project.releasePattern === true };
   } catch { return null; }
 }
 
@@ -392,7 +395,8 @@ export function createPulseboard(config, runtime = globalThis) {
     return cfg.routes.includes(currentRoute) ? currentRoute : cfg.routes.includes('other') ? 'other' : 'home';
   }
   const productRoute = () => (ROUTE_RE.test(currentRoute) ? currentRoute : 'other');
-  const countRelease = () => (cfg.releases.includes(cfg.release) ? cfg.release : cfg.releases.includes('unattributed') ? 'unattributed' : null);
+  const releaseAccepted = label => cfg.releases.includes(label) || (cfg.releasePattern && label.length <= 32 && RELEASE_PATTERN_RE.test(label));
+  const countRelease = () => (releaseAccepted(cfg.release) ? cfg.release : cfg.releases.includes('unattributed') ? 'unattributed' : null);
 
   function queued() { return lanes.counts.queue.length + lanes.product.queue.length; }
 
@@ -426,7 +430,7 @@ export function createPulseboard(config, runtime = globalThis) {
       return { items, body };
     }
     const sid = l.queue[0]?.sid ?? null;
-    const head = { v: 1, session: current.journeys ? sid : null, release: cfg.release, context: { device: device() } };
+    const head = { v: 1, session: current.journeys ? sid : null, release: countRelease() ?? cfg.release, context: { device: device() } };
     const items = [];
     let body = '';
     for (const entry of l.queue.slice(0, PRODUCT_BATCH)) {

@@ -1,4 +1,5 @@
 /** Pulseboard Observatory 0.1.0. Content-free, closed event contract. */
+import { releaseAccepted } from './release-label.mjs';
 export const VERSION = 1;
 export const MAX_BYTES = 16384;
 export const MAX_BATCH = 20;
@@ -9,7 +10,7 @@ export function validateEvent(e, project) {
   return e.v === VERSION && typeof e.id === 'string' && typeof e.session === 'string' && UUID.test(e.id) && UUID.test(e.session)
     && Number.isSafeInteger(e.seq) && e.seq >= 1 && e.seq <= 1000000
     && project.events.includes(e.event) && project.routes.includes(e.route)
-    && project.releases.includes(e.release)
+    && releaseAccepted(project, e.release)
     && (e.value === undefined || (project.measurements.includes(e.event)
       && typeof e.value === 'number' && Number.isFinite(e.value) && e.value >= 0 && e.value <= 3600000));
 }

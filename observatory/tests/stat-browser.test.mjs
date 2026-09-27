@@ -119,6 +119,17 @@ test('enabled payload contains only closed count fields', async () => {
   obs.dispose();
 });
 
+test('a releasePattern vocabulary admits a well-formed unregistered release and still drops malformed ones (q-28)', async () => {
+  const { runtime } = baseRuntime();
+  const obs = createStatisticObserver(baseConfig({ project: { ...VOCAB, releasePattern: true } }), runtime);
+  assert.equal(obs.setEnabled(true), true);
+  assert.equal(obs.track('puzzle.started', { release: '9.9.9' }), true);
+  assert.equal(obs.track('puzzle.started', { release: '1.2.3-beta.1' }), true);
+  for (const release of ['v1.2', '1.2', '1.2.3.4', '../x', '']) assert.equal(obs.track('puzzle.started', { release }), false, release);
+  assert.equal(obs.status().queued, 2);
+  obs.dispose();
+});
+
 test('invalid event/options drop without network', async () => {
   const { runtime, calls } = baseRuntime();
   const obs = createStatisticObserver(baseConfig(), runtime);

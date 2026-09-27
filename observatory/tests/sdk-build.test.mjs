@@ -30,10 +30,14 @@ test('the artifact is deterministic, LF-only, hash-stamped and carries only the 
   assert.equal(config.collector, SDK_COLLECTOR);
   assert.equal(config.origin, projects.alibi.origin);
   assert.equal(config.release, projects.alibi.releases.at(-1), 'defaults to the newest registered release');
-  assert.deepEqual(Object.keys(config.project), ['events', 'routes', 'releases', 'campaigns']);
+  assert.deepEqual(Object.keys(config.project), ['events', 'routes', 'releases', 'campaigns', 'releasePattern']);
+  assert.equal(config.project.releasePattern, true);
+  assert.deepEqual(Object.keys(configOf(buildSdk('mdviewer')).project), ['events', 'routes', 'releases', 'campaigns']);
   for (const secret of ['probe', 'marker', 'dailyLimit', 'binding', 'ALIBI']) assert.equal(JSON.stringify(config).includes(secret), false, secret);
   assert.equal(configOf(buildSdk('alibi', { release: '0.12.0' })).release, '0.12.0');
-  assert.throws(() => buildSdk('alibi', { release: '9.9.9' }), /registered releases/);
+  assert.equal(configOf(buildSdk('alibi', { release: '9.9.9' })).release, '9.9.9', 'a well-formed Alibi version need not be registered (q-28)');
+  assert.throws(() => buildSdk('alibi', { release: '9.9' }), /registered releases/);
+  assert.throws(() => buildSdk('mdviewer', { release: '9.9.9' }), /registered releases/);
   assert.throws(() => buildSdk('taskdeck'), /no public collection origin/);
   assert.throws(() => buildSdk('nope'), /Register the project/);
 });

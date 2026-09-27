@@ -6,6 +6,7 @@
  * context are included in event payloads. Vocabulary, endpoint, origin and defaults
  * come only from `config`; all host capabilities come only from `runtime`.
  */
+import { releaseAccepted } from './release-label.mjs';
 const STAT_V = 1;
 const MAX_QUEUE = 100;
 const MAX_REQUESTS = 120;
@@ -20,6 +21,7 @@ export function createStatisticObserver(config, runtime = globalThis) {
   const events = Array.isArray(vocab.events) ? vocab.events : [];
   const routes = Array.isArray(vocab.routes) ? vocab.routes : [];
   const releases = Array.isArray(vocab.releases) ? vocab.releases : [];
+  const releaseRule = { releases, releasePattern: vocab.releasePattern === true };
   const endpoint = typeof cfg.endpoint === 'string' ? cfg.endpoint : '';
   const origin = typeof cfg.origin === 'string' ? cfg.origin : '';
   const defaultRoute = typeof (cfg.route ?? cfg.defaultRoute) === 'string'
@@ -152,7 +154,7 @@ export function createStatisticObserver(config, runtime = globalThis) {
         stats.dropped += 1;
         return false;
       }
-      if (!events.includes(event) || !routes.includes(route) || !releases.includes(release)) {
+      if (!events.includes(event) || !routes.includes(route) || !releaseAccepted(releaseRule, release)) {
         stats.dropped += 1;
         return false;
       }

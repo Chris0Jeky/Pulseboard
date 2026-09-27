@@ -194,7 +194,7 @@ export async function handle(request, env) {
       if (!/^application\/json(?:\s*;.*)?$/i.test(request.headers.get('content-type') || '')) return json({ error: 'media_type' }, 415, cors);
       let productBody;
       try { productBody = await readBounded(request); } catch { return json({ error: 'invalid_body' }, 400, cors); }
-      if (!validateProductBatch(productBody)) return json({ error: 'contract' }, 400, cors);
+      if (!validateProductBatch(productBody, productProject)) return json({ error: 'contract' }, 400, cors);
       const productNow = Date.now(), productDay = new Date(productNow).toISOString().slice(0, 10), productReceipt = crypto.randomUUID();
       const budgetKey = productId + ':product', productLimit = productProject.productLimit ?? PRODUCT_DEFAULT_LIMIT;
       const size = productBody.events.length;

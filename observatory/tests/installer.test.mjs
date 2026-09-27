@@ -160,10 +160,17 @@ test('host checker reports the registered Alibi app release and rejects contract
     assert.match(catalogueDrift.stderr + catalogueDrift.stdout, /content\/releases\.json must contain exactly one matching v0\.11\.6 record/);
     writeAlibiRelease(root);
 
+    // Owner decision q-28: an unregistered well-formed Alibi version is accepted by a releasePattern artifact,
+    // but its catalogue record is still required.
     writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'alibi-puzzle-club', version: '0.11.7' }));
-    const drift = runChecker(root);
-    assert.notEqual(drift.status, 0);
-    assert.match(drift.stderr + drift.stdout, /package version 0\.11\.7 is not registered/i);
+    const missingRecord = runChecker(root);
+    assert.notEqual(missingRecord.status, 0);
+    assert.match(missingRecord.stderr + missingRecord.stdout, /exactly one matching v0\.11\.7 record/);
+    writeAlibiRelease(root, '0.11.7');
+    const unregistered = runChecker(root);
+    assert.equal(unregistered.status, 0, unregistered.stderr || unregistered.stdout);
+    assert.equal(JSON.parse(unregistered.stdout).alibi.packageVersion, '0.11.7');
+    assert.equal(JSON.parse(unregistered.stdout).alibi.registeredReleases.includes('0.11.7'), false);
   } finally { rmSync(root, { recursive: true }); }
 });
 test('installer preserves host notes and refuses an edited shared checker', () => {

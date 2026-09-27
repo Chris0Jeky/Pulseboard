@@ -1,11 +1,13 @@
 import { projects as registry } from './projects.mjs';
 import { exactProjectList } from './admission.mjs';
 import { referrerDomain } from '../sdk/referrers.mjs';
+import { releaseAccepted } from './release-label.mjs';
 /** Aggregate admission contract (producer half of issue #89; multi-project since #102; v3 context since #104).
  * Accepted body is exactly { v: 1, counts: [...] }, { v: 2, context, counts } or { v: 3, context, counts }
  * with 1..20 counts { event, route, release, n: 1 }. No event IDs, session IDs, puzzle IDs, text, URLs or IPs
  * are accepted or persisted; any unexpected key fails the whole batch closed.
- * Vocabulary is the registered closed vocabulary (project.events, project.routes, project.releases).
+ * Vocabulary is the registered closed vocabulary (project.events, project.routes); a release passes releaseAccepted
+ * (the project's list, or any well-formed version for a `releasePattern` project, release-label.mjs).
  * Each admitted count reserves one unit of the same daily budget and increments one aggregate row. */
 export const STAT_VERSION = 1;
 export const STAT_CONTEXT_VERSION = 2;
@@ -139,7 +141,7 @@ export function validateStatCount(count, project) {
   if (typeof count.event !== 'string' || typeof count.route !== 'string' || typeof count.release !== 'string') return false;
   if (!project.events.includes(count.event)) return false;
   if (!project.routes.includes(count.route)) return false;
-  if (!project.releases.includes(count.release)) return false;
+  if (!releaseAccepted(project, count.release)) return false;
   if (count.n !== 1) return false;
   return true;
 }

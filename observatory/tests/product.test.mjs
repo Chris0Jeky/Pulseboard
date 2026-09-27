@@ -60,7 +60,7 @@ test('the batch and event shapes are exact and bounded', async t => {
   const bad = [
     { ...batch(), v: 2 }, { ...batch(), extra: 1 }, (({ context: _c, ...b }) => b)(batch()), (({ session: _s, ...b }) => b)(batch()),
     batch({ session: 'not-a-uuid' }), batch({ session: '3b241101-e2bb-1255-8caf-4136c566a962' }), batch({ session: SESSION.toUpperCase() }), batch({ session: 7 }),
-    batch({ release: '' }), batch({ release: 'x'.repeat(33) }), batch({ release: '0.13.0 beta' }), batch({ release: 13 }),
+    batch({ release: '' }), batch({ release: 'x'.repeat(33) }), batch({ release: '0.13.0 beta' }), batch({ release: 13 }), batch({ release: 'v0.13.0' }), batch({ release: '0.13' }),
     batch({ context: {} }), batch({ context: { device: 'phone' } }), batch({ context: { device: 'desktop', scheme: 'dark' } }), batch({ context: null }),
     batch({ events: [] }), batch({ events: Array.from({ length: 21 }, (_, i) => event({ seq: i + 1 })) }), batch({ events: {} }),
     batch({ events: [event({ name: 'Puzzle' })] }), batch({ events: [event({ name: '1puzzle' })] }), batch({ events: [event({ name: 'a'.repeat(65) })] }),
@@ -72,8 +72,8 @@ test('the batch and event shapes are exact and bounded', async t => {
   ];
   for (const body of bad) assert.equal((await handle(post(body), env(DB))).status, 400, JSON.stringify(body).slice(0, 160));
   assert.equal((await handle(post('{not json'), env(DB))).status, 400);
-  assert.equal(validateProductBatch(batch({ events: Array.from({ length: 20 }, (_, i) => event({ seq: i + 1 })) })), true);
-  assert.equal(validateProductBatch(batch({ events: [event({ name: 'a:b_c.d-e', route: 'a.b_c-d', seq: 1000000, ms: 86400000 })] })), true);
+  assert.equal(validateProductBatch(batch({ events: Array.from({ length: 20 }, (_, i) => event({ seq: i + 1 })) }), projects.alibi), true);
+  assert.equal(validateProductBatch(batch({ events: [event({ name: 'a:b_c.d-e', route: 'a.b_c-d', seq: 1000000, ms: 86400000 })] }), projects.alibi), true);
   assert.equal((await rows(DB)).length, 0);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM budget').first()).n, 0);
 });
@@ -229,7 +229,8 @@ test('the product budget is separate, per project, and a refused batch stores no
 test('a global product budget across every project refuses a batch that would pass its own project budget', async t => {
   const DB = database(t), today = new Date().toISOString().slice(0, 10);
   const e = env(DB, { COLLECT_PRODUCT_PROJECTS: 'alibi,mdviewer' });
-  const md = body => handle(post(body, { id: 'mdviewer', origin: projects.mdviewer.origin }), e);
+  // MDviewer keeps a closed release list, so its batches carry the label its SDK sends.
+  const md = body => handle(post({ ...body, release: 'unattributed' }, { id: 'mdviewer', origin: projects.mdviewer.origin }), e);
   const used = async key => (await DB.prepare('SELECT used FROM budget WHERE project=? AND day=?').bind(key, today).first())?.used ?? null;
   assert.equal(PRODUCT_GLOBAL_LIMIT, 1500); assert.equal(PRODUCT_GLOBAL_KEY, '*:product');
   // Both projects are charged to the one global row.

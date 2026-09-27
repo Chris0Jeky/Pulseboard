@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { assertArtifactShape, isReservedInstallTarget } from './build-embed.mjs';
 import { projects } from '../src/projects.mjs';
+import { releaseAccepted } from '../src/release-label.mjs';
 
 /** Builds the per-project classic-script SDK artifact (USAGE_PLAN "The SDK"; docs/SDK.md).
  * The output is deterministic: no timestamps or commit ids, LF only, and a header naming the SDK version
@@ -19,10 +20,14 @@ export function buildSdk(id, { release } = {}) {
   if (!project.origin) throw new Error('This project deliberately has no public collection origin');
   const releases = project.releases;
   const chosen = release ?? releases[releases.length - 1];
-  if (typeof chosen !== 'string' || !releases.includes(chosen)) throw new Error('Release must be one of the registered releases for ' + id + ': ' + releases.join(', '));
+  if (!releaseAccepted(project, chosen)) {
+    throw new Error('Release must be one of the registered releases for ' + id + ': ' + releases.join(', ')
+      + (project.releasePattern === true ? ', or a well-formed version (x.y.z with an optional short -prerelease)' : ''));
+  }
   // Only the client-side contract is published: probe URLs, markers and budgets stay operator data.
   const config = { id, label: project.label, origin: project.origin, collector: SDK_COLLECTOR, release: chosen, route: 'home',
-    project: { events: project.events, routes: project.routes, releases, campaigns: project.campaigns ?? [] } };
+    project: { events: project.events, routes: project.routes, releases, campaigns: project.campaigns ?? [],
+      ...(project.releasePattern === true ? { releasePattern: true } : {}) } };
   const json = JSON.stringify(config).replaceAll('<', '\\u003c');
   // The referrer allowlist is one module shared with the collector (stat-contract.mjs); it is inlined first.
   const inline = name => readFileSync(new URL('../sdk/' + name, import.meta.url), 'utf8').replaceAll('\r\n', '\n')
