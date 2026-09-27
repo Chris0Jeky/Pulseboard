@@ -4,6 +4,7 @@
  * Default-on is implemented here but must stay behind review: builder/Alibi
  * integration is a later task and this slice must not be deployed alone.
  */
+import { releaseAccepted } from '../src/release-label.mjs';
 const PREF_KEY = 'pulseboard:statistics:v1:alibi';
 const OLD_PREFIX = 'pulseboard:consent:v1:alibi:';
 const HARDCODED_LEGACY = 'https://pulseboard-observatory.commit-atlas.workers.dev/v1/collect/alibi';
@@ -399,7 +400,7 @@ export function mountStatisticObserver(config, create, runtime = globalThis) {
       const out = {};
       try {
         if (typeof value.route === 'string' && project.routes.includes(value.route)) out.route = value.route;
-        if (typeof value.release === 'string' && project.releases.includes(value.release)) out.release = value.release;
+        if (releaseAccepted(project, value.release)) out.release = value.release;
       } catch {
         return {};
       }

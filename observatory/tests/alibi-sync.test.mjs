@@ -138,9 +138,16 @@ test('Alibi release sync is repository-scoped, validates the catalogue and rolls
     assert.match(staleCatalogue.stderr, /content\/releases\.json must contain exactly one matching/);
     writeFileSync(path.join(alibi, 'content/releases.json'), JSON.stringify([{ version: VERSION, tag: 'v' + VERSION }]));
 
+    // Owner decision q-28: an unregistered well-formed version is not drift; the collector admits it as it is.
     makeAlibi(alibi, '0.11.8');
+    const unregistered = syncAlibi(alibi, { mode: 'check' });
+    assert.equal(unregistered.status, 'in-sync');
+    assert.equal(unregistered.registered, false);
+    assert.equal(unregistered.packageVersion, '0.11.8');
+    // A stable version the release pattern refuses (five-digit part) is still missing from the contract.
+    makeAlibi(alibi, '10000.0.0');
     assert.throws(() => syncAlibi(alibi, { mode: 'check' }), error => {
-      assert.match(error.message, /0\.11\.8 is missing from the Pulseboard collector contract/);
+      assert.match(error.message, /10000\.0\.0 is missing from the Pulseboard collector contract/);
       assert.match(error.message, /npm run sync:alibi -- <alibi-repository>/);
       assert.doesNotMatch(error.message, /sync:alibi -- --write/);
       return true;
@@ -149,7 +156,7 @@ test('Alibi release sync is repository-scoped, validates the catalogue and rolls
     assert.notEqual(rejectedReport.status, 0);
     const rejectedJson = JSON.parse(rejectedReport.stdout);
     assert.equal(rejectedJson.ok, false);
-    assert.match(rejectedJson.error.message, /0\.11\.8 is missing from the Pulseboard collector contract/);
+    assert.match(rejectedJson.error.message, /10000\.0\.0 is missing from the Pulseboard collector contract/);
     makeAlibi(alibi);
 
     projects.alibi.releases = oldReleases;
@@ -225,9 +232,16 @@ test('Alibi release sync detects the SDK v3 layout from the lock, repins it, and
     assert.equal(initial.sha256, lockOf(alibi).installs[SDK_TARGET].sha256);
     assert.equal(syncAlibi(olderEmbed, { mode: 'check' }).layout, 'embed', 'a lock without "sdk" keeps the embed layout');
 
-    // A new package version fails the read-only check, then write registers it and repins the SDK artifact.
+    // A new package version is not contract drift (q-28): an SDK artifact already built for it is in sync while
+    // unregistered, and one still built for the previous release fails only because its bytes are stale.
+    makeSdkAlibi(olderSdk, VERSION);
+    const ahead = syncAlibi(olderSdk, { mode: 'check' });
+    assert.equal(ahead.status, 'in-sync');
+    assert.equal(ahead.registered, false);
+    makeSdkAlibi(olderSdk, registered);
     makeAlibi(alibi, VERSION);
-    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), new RegExp(`${VERSION.replaceAll('.', '\\.')} is missing from the Pulseboard collector contract`));
+    assert.throws(() => syncAlibi(alibi, { mode: 'check' }), /built for release/);
+    // Write still records the version as history and repins the SDK artifact.
     const synced = syncAlibi(alibi, { mode: 'write' });
     assert.equal(synced.status, 'updated');
     assert.equal(synced.layout, 'sdk');

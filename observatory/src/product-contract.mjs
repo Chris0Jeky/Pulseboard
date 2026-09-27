@@ -3,6 +3,7 @@
  * exactly { name, route, seq, ms } plus an optional bounded `props` object. Shape and size are closed; property
  * content is open, so personal keys, e-mail and IP addresses and URL paths are redacted on the server before storage.
  * Redaction is never a rejection: a batch that only needed redacting is admitted and records what it lost. */
+import { releaseAccepted } from './release-label.mjs';
 export const PRODUCT_VERSION = 1;
 export const PRODUCT_MAX_BATCH = 20;
 export const PRODUCT_DEFAULT_LIMIT = 1000;
@@ -108,10 +109,11 @@ export function consentRegion(request) {
   if (typeof code !== 'string' || !/^[A-Z]{2}$/.test(code) || code === 'XX') return 'eea';
   return EEA.has(code) ? 'eea' : 'other';
 }
-export function validateProductBatch(body) {
+/** `project` is the admitting project: the release must pass its release rule (release-label.mjs). */
+export function validateProductBatch(body, project) {
   if (!plain(body) || !exactKeys(body, BODY_KEYS) || body.v !== PRODUCT_VERSION) return false;
   if (body.session !== null && (typeof body.session !== 'string' || !UUID_V4.test(body.session))) return false;
-  if (typeof body.release !== 'string' || !RELEASE.test(body.release)) return false;
+  if (typeof body.release !== 'string' || !RELEASE.test(body.release) || !releaseAccepted(project, body.release)) return false;
   if (!plain(body.context) || !exactKeys(body.context, ['device']) || !DEVICES.includes(body.context.device)) return false;
   if (!Array.isArray(body.events) || body.events.length < 1 || body.events.length > PRODUCT_MAX_BATCH) return false;
   return body.events.every(validateProductEvent);

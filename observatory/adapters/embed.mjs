@@ -1,3 +1,4 @@
+import { releaseAccepted } from '../src/release-label.mjs';
 /** Optional UI facade. Loaded scripts stay inert until deployment configuration exists. */
 export function mountObserver(config, create, runtime = globalThis) {
   const { document, location, navigator } = runtime;
@@ -15,7 +16,7 @@ export function mountObserver(config, create, runtime = globalThis) {
       if (!value || Object.getPrototypeOf(value) !== Object.prototype) return {};
       return {
         ...(config.project.routes.includes(value.route) ? { route: value.route } : {}),
-        ...(config.project.releases.includes(value.release) ? { release: value.release } : {}),
+        ...(releaseAccepted(config.project, value.release) ? { release: value.release } : {}),
       };
     } catch { return {}; }
   }

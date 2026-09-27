@@ -18,9 +18,9 @@ const start = (options = {}) => {
 const events = h => h.products().flatMap(c => c.body.events);
 const click = node => node.emit('click');
 
-test('3.2: SDK_VERSION is 3.2.0 and the artifact header says so', () => {
-  assert.equal(SDK_VERSION, '3.2.0');
-  assert.match(buildSdk('mdviewer'), /pulseboard-sdk 3\.2\.0 for mdviewer/);
+test('3.3: SDK_VERSION is 3.3.0 (release pattern, q-28) and the artifact header says so', () => {
+  assert.equal(SDK_VERSION, '3.3.0');
+  assert.match(buildSdk('mdviewer'), /pulseboard-sdk 3\.3\.0 for mdviewer/);
 });
 
 test('a choice recorded in another tab never moves focus here, even when it collapses the bar', async () => {

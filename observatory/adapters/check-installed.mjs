@@ -1,3 +1,4 @@
+import { RELEASE_PATTERN } from '../src/release-label.mjs';
 const SOURCE = 'Chris0Jeky/Pulseboard:observatory';
 export const HOST_CHECKER = 'observatory/check.mjs';
 export const HOST_README = 'observatory/README.md';
@@ -71,8 +72,10 @@ if (alibiArtifacts.length) {
   if (!match) throw new Error('Alibi artifact client configuration is malformed');
   const config = JSON.parse(match[1]);
   if (config.id !== 'alibi' || !Array.isArray(config.project?.releases)) throw new Error('Alibi artifact has no closed release contract');
-  if (!config.project.releases.includes(manifest.version)) {
-    throw new Error('Alibi package version ' + manifest.version + ' is not registered by its Pulseboard artifact. Registered releases: '
+  // Owner decision q-28: a releasePattern artifact accepts any well-formed version, registered or not.
+  const releasePattern = new RegExp(${JSON.stringify(RELEASE_PATTERN.source)});
+  if (!config.project.releases.includes(manifest.version) && !(config.project.releasePattern === true && releasePattern.test(manifest.version))) {
+    throw new Error('Alibi package version ' + manifest.version + ' is not accepted by its Pulseboard artifact. Registered releases: '
       + config.project.releases.join(', ') + '. Run Pulseboard sync:alibi and commit the regenerated files.');
   }
   const catalogue = JSON.parse(readFileSync(ownedFile('content/releases.json', 'Alibi release catalogue'), 'utf8'));

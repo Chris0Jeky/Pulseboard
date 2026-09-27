@@ -24,7 +24,8 @@ export function buildEmbed(id, options = {}) {
   const project = projects[id];
   if (!project.origin) throw new Error('This project deliberately has no public collection origin');
   // Only the client-side contract is published. Probe URLs, markers, budgets and labels are operator data.
-  const contractOnly = { events: project.events, routes: project.routes, releases: project.releases, measurements: project.measurements };
+  const contractOnly = { events: project.events, routes: project.routes, releases: project.releases, measurements: project.measurements,
+    ...(project.releasePattern === true ? { releasePattern: true } : {}) };
   const config = { id, project: contractOnly, origin: project.origin, endpoint: '',
     scopePath: project.probe ? new URL(project.probe.url).pathname : '/',
     release: 'unattributed', route: 'home', clicks: [], ...options };
@@ -50,6 +51,7 @@ export function buildEmbed(id, options = {}) {
     // Only the two client modules are published: aggregate transport plus
     // statistic control. Server validation from stat-contract stays server-side.
     // Stripping covers only module declarations so vm.Script shape stays plain.
+    const releaseLabel = read('../src/release-label.mjs').replace(/^export /gm, '');
     const statBrowser = read('../src/stat-browser.mjs').replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
     const statEmbed = read('./stat-embed.mjs').replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
     return assertArtifactShape(`/* SPDX-License-Identifier: GPL-3.0-only
@@ -57,6 +59,7 @@ export function buildEmbed(id, options = {}) {
  * Disabled until endpoint is configured. No dynamic/CDN dependency. */
 (function () {
 'use strict';
+${releaseLabel}
 ${statBrowser}
 ${statEmbed}
 const config = ${json};
@@ -72,14 +75,16 @@ globalThis.addEventListener?.('pageshow', event => { if (event.persisted && glob
   }
   // JSON escapes prevent accidental HTML script termination when embedding in an offline artifact.
   const json = JSON.stringify(config).replaceAll('<', '\\u003c');
-  const contract = read('../src/contracts.mjs').split('export function validateBatch')[0].replace(/^export const MAX_(?:BYTES|BATCH) =.*\n/gm, '').replace(/^export /gm, '');
+  const releaseLabel = read('../src/release-label.mjs').replace(/^export /gm, '');
+  const contract = read('../src/contracts.mjs').split('export function validateBatch')[0].replace(/^import .*;\n/gm, '').replace(/^export const MAX_(?:BYTES|BATCH) =.*\n/gm, '').replace(/^export /gm, '');
   const browser = read('../src/browser.mjs').replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
-  const embed = read('./embed.mjs').replace(/^export /gm, '');
+  const embed = read('./embed.mjs').replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
   return assertArtifactShape(`/* SPDX-License-Identifier: GPL-3.0-only
  * Pulseboard Observatory 0.1.0. Generated; see observatory.lock.json.
  * Disabled until endpoint is configured. No dynamic/CDN dependency. */
 (function () {
 'use strict';
+${releaseLabel}
 ${contract}
 ${browser}
 ${embed}

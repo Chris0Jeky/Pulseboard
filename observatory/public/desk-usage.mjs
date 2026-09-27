@@ -24,7 +24,8 @@ const PATTERNS = { country: /^[A-Z]{2}$/, region: /^(?:[A-Z]{2}-[A-Z0-9]{1,3}|ot
 /** Row caps per dimension: 50 values a day for 90 days, plus sentinels. Open-valued lists are bounded here, not trusted to the server. */
 const ROW_LIMITS = { country: 256, region: 4600, language: 4600, hour: 25, referrer: 4600, campaign: 4600 };
 const dimensionValue = (name, value) => value === 'unknown' || (PATTERNS[name] ? PATTERNS[name].test(value) : ENUMS[name].includes(value));
-const VOCABULARY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+/** Event, route and release labels. Every label the collector's release pattern admits must pass it (a test checks). */
+export const VOCABULARY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const DAY_TEXT = /^\d{4}-\d\d-\d\d$/;
 const PROJECT = /^[a-z0-9-]{1,64}$/;
 const nonNegative = value => { requireValue(Number.isSafeInteger(value) && value >= 0, 'Invalid count'); return value; };

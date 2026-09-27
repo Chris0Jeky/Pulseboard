@@ -11,18 +11,21 @@ wave (slice 6) lands; nothing here changes the collector's admission lists.
 cd observatory
 npm run build:sdk -- alibi                                   # print the artifact to stdout
 npm run build:sdk -- alibi ../../Alibi public/pulseboard.js   # write it inside a host checkout
-npm run build:sdk -- alibi ../../Alibi public/pulseboard.js 0.12.0   # pin a registered release
+npm run build:sdk -- alibi ../../Alibi public/pulseboard.js 0.12.0   # pin a release
 ```
 
 - The project must be registered in `src/projects.mjs` with a public origin. The release defaults to the
-  newest registered release and must be one of them (counts only accept the registry's closed list).
-- The output is deterministic and LF-only. Its header names `pulseboard-sdk 3.2.0`, the project, and the
+  newest registered release and must be one of them, except for a project with `releasePattern` (Alibi only,
+  owner decision q-28), which also accepts any well-formed version: `MAJOR.MINOR.PATCH` with an optional short
+  lowercase `-prerelease` (`src/release-label.mjs`). The SDK inlines the same pattern, so such a build counts under its
+  own release instead of `unattributed`.
+- The output is deterministic and LF-only. Its header names `pulseboard-sdk 3.3.0`, the project, and the
   SHA-256 of the body below the header. The writer refuses absolute paths, `..`, symlinked parents that
   leave the repository, symlink targets, the installer's reserved paths, and any existing file that is not
   an unedited SDK artifact (the header hash must match), so it never overwrites host code.
 - The artifact embeds only the client contract: id, label, origin, collector
   (`https://pulseboard-observatory.commit-atlas.workers.dev`), release, and the project's event, route and
-  release vocabulary. Probe targets, markers and budgets stay operator data.
+  release vocabulary (plus `releasePattern: true` for Alibi). Probe targets, markers and budgets stay operator data.
 
 ## Add it to a page
 
@@ -53,7 +56,7 @@ Pulseboard.track('puzzle.completed', { puzzle: 'castle-3', seconds: 212, hints: 
 Pulseboard.consent.get();   // { counts, diagnostics, journeys, decided, region, blocked }
 Pulseboard.consent.set({ journeys: false });     // records a decision, as the switches do
 Pulseboard.consent.open();  // opens the switches (for a "Privacy choices" link)
-Pulseboard.version;         // '3.2.0'
+Pulseboard.version;         // '3.3.0'
 ```
 
 Every call returns `true` when the item was queued and `false` when it was dropped. Nothing throws into the

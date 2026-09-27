@@ -1,5 +1,6 @@
 /** Aggregate-only statistics reader for one project. It never reads the legacy session events table. */
 import { DIMENSION_NAMES } from './stat-contract.mjs';
+import { foldReleaseRows } from './release-label.mjs';
 /** Statistics and product reads (USAGE_PLAN.md section 4); /v1/portfolio keeps its own 1, 7 and 14. */
 export const READ_WINDOWS = Object.freeze([1, 7, 14, 30, 90]);
 /** Daily aggregates (statistics, statistics_dimensions) keep this many UTC dates including today. It stays 14 while any
@@ -49,7 +50,9 @@ export async function readStatistics(db, { project = 'alibi', days = 7, now = Da
     events: events.map(row => ({ event: row.event, n: Number(row.n) })),
     daily: daily.map(row => ({ day: row.day, n: Number(row.n) })),
     routes: routes.map(row => ({ route: row.route, n: Number(row.n) })),
-    releases: releases.map(row => ({ release: row.release, n: Number(row.n) })),
+    // Alibi admits any well-formed release label (q-28), so the list is bounded: past 64 the lightest fold into 'other'.
+    releases: foldReleaseRows(releases.map(row => ({ release: row.release, n: Number(row.n) })), row => row.n,
+      rest => ({ n: rest.reduce((sum, row) => sum + row.n, 0) })),
     eventDaily: eventDaily.map(row => ({ day: row.day, event: row.event, n: Number(row.n) })),
     dimensions,
   };

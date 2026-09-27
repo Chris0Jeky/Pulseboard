@@ -4,7 +4,10 @@ import { DAY, fraction } from '../public/desk-model.mjs';
 // One freshness rule for both server read models. public/desk-model.mjs keeps its own copy for the
 // browser, which must not import from src/; the two must stay in step.
 import { monitorState } from './contracts.mjs';
+import { foldReleaseRows } from './release-label.mjs';
 export const WINDOWS = [1, 7, 14];
+const OPERATION_COUNTS = ['attempts', 'completed', 'failed', 'open', 'retries'];
+const sumOf = (rows, key) => rows.reduce((sum, row) => sum + row[key], 0);
 const LIMITATIONS = [
   'Browser events are opt-in, client-reported and spoofable. Sessions are not people.',
   'Action outcomes count events. Retries and repeated attempts are not deduplicated operations.',
@@ -100,15 +103,19 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
         return { release, events: n(), completed: n('action.completed'), failed: n('action.failed'), errors: n('app.error'),
           last: Math.max(...selected.map(row => row.last)), duration: timing ? { n: timing.n, mean: timing.mean, p95: timing.p95, unit: 'ms', method: 'nearest-rank' } : null };
       }).sort((a, b) => b.last - a.last || a.release.localeCompare(b.release));
+      // Bounded for the Desk (q-28 lets Alibi mint labels): the folded row sums counts and never merges timings.
+      const shownReleases = foldReleaseRows(releases, row => row.events, rest => ({ events: sumOf(rest, 'events'),
+        completed: sumOf(rest, 'completed'), failed: sumOf(rest, 'failed'), errors: sumOf(rest, 'errors'),
+        last: Math.max(...rest.map(row => row.last)), duration: null }));
       const operations = operationEvidence.filter(operation => operation.project === id).map(operation => {
-        const operationReleases = operation.rows.map(row => ({
+        const operationReleases = foldReleaseRows(operation.rows.map(row => ({
           release: row.release,
           attempts: Number(row.attempts || 0),
           completed: Number(row.completed || 0),
           failed: Number(row.failed || 0),
           open: Number(row.open || 0),
           retries: Number(row.retries || 0),
-        }));
+        })), row => row.attempts, rest => Object.fromEntries(OPERATION_COUNTS.map(key => [key, sumOf(rest, key)])));
         const sum = key => operationReleases.reduce((value, row) => value + row[key], 0);
         const attempts = sum('attempts'), completed = sum('completed');
         return { id: operation.id, version: operation.version, attempts, completed, failed: sum('failed'),
@@ -126,7 +133,7 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
           last: events.length ? Math.max(...events.map(row => row.last)) : null },
         flow: fraction(flow?.completed || 0, flow?.started || 0), operations,
         daily: daily.filter(row => row.project === id).map(({ day, n }) => ({ day, n })),
-        routes: routes.filter(row => row.project === id).map(({ route, n }) => ({ route, n })), releases,
+        routes: routes.filter(row => row.project === id).map(({ route, n }) => ({ route, n })), releases: shownReleases,
         budget: { used: budgets.find(row => row.project === id)?.used || 0, limit: config.dailyLimit,
           day: new Date(now).toISOString().slice(0, 10) } };
     }) };

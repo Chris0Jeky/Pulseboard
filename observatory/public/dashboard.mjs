@@ -214,7 +214,7 @@ function projectDetail(p) {
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Started and finished'), e('p', {}, `${p.flow.numerator} of ${p.flow.denominator} groups that started something also finished it (${percent(p.flow.value)}). A group is one session on one page and version.`),
       e('p', { class: 'muted' }, 'A finish only counts when a later event matches the same session, page and version. This is not retention or a conversion funnel.')),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Events by page'), e('div', { class: 'table-shell' }, table(['Page (route)', 'Events'], p.routes.map(r => [r.route, count(r.n)])))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Finished or failed', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Finished or failed', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [r.release === 'other' ? 'other (smaller versions combined)' : r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
       button('Compare versions →', () => { state.releaseProject = p.id; state.baseline = ''; state.candidate = ''; $('#detail-dialog').close(); navigate('releases'); })),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Builds, deploys and releases (GitHub)'), e('div', { id: 'github-evidence', 'data-project': p.id }, githubView(p.id))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Limits of these numbers'), e('ul', {}, state.snapshot.limitations.map(text => e('li', {}, text)))));
@@ -282,7 +282,8 @@ function releaseLab() {
   if (!ps.length) return empty('No matching project.', 'Clear the search to compare release cohorts.');
   const p = ps.find(p => p.id === state.releaseProject) || ps.find(p => p.releases.length >= 2) || ps[0];
   state.releaseProject = p.id;
-  const releases = p.releases.filter(r => r.release !== 'unattributed');
+  // 'other' is the collector's fold of releases past the 64-row limit (src/release-label.mjs), never one cohort.
+  const releases = p.releases.filter(r => r.release !== 'unattributed' && r.release !== 'other');
   const candidate = releases.find(r => r.release === state.candidate) || releases[0];
   const baseline = releases.find(r => r.release === state.baseline) || releases.find(r => r.release !== candidate?.release);
   const options = releases.map(r => [r.release, r.release]);
