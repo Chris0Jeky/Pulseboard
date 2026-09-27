@@ -36,10 +36,22 @@ jobs:
       - name: Deploy only the head of main
         id: head
         if: steps.secrets.outputs.ready == 'true'
+        shell: bash
         run: |
           # A re-run of an older run, or a manual run from another branch, must never replace what main holds.
           head="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main | cut -f1)"
-          if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "$head" = "$GITHUB_SHA" ]; then
+          if [ -z "$head" ]; then echo "::error title=No main head::Could not read the head of main."; exit 1; fi
+          newer_elsewhere=false
+          if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "$head" != "$GITHUB_SHA" ]; then
+            # main moved on while this run queued. If the newer commits leave observatory/ and this workflow
+            # unchanged, they start no deploy of their own, so this run deploys: the deployed files are the same.
+            git fetch -q --depth=100 "https://github.com/${GITHUB_REPOSITORY}.git" main
+            if git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD \
+              && git diff --quiet "$GITHUB_SHA" FETCH_HEAD -- observatory .github/workflows/deploy-observatory.yml; then
+              newer_elsewhere=true
+            fi
+          fi
+          if [ "$GITHUB_REF" = "refs/heads/main" ] && { [ "$head" = "$GITHUB_SHA" ] || [ "$newer_elsewhere" = true ]; }; then
             echo "current=true" >> "$GITHUB_OUTPUT"
           else
             echo "current=false" >> "$GITHUB_OUTPUT"

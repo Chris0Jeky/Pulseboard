@@ -137,7 +137,9 @@ names the new version.
 
 - It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. The account id was set on
   2026-09-27; the token is HUMAN_TODO q-27. Without both, the job skips with a notice.
-- It deploys only the current head of `main`: a re-run of an older run or a manual run from another branch skips.
+- It deploys only what the head of `main` holds in `observatory/`: a manual run from another branch, or a run whose
+  commit `main` has since changed inside `observatory/`, skips (the newer commit has its own run). A run that `main`
+  moved past with unrelated commits still deploys, because its observatory files are the same.
 - Before deploying it reads `schema_version` from production D1 and stops unless it equals `SCHEMA_VERSION` in
   `src/worker.mjs`. After a schema change, apply the migration by hand first, then re-run the workflow. Security
   Watch tables (`watch/schema.sql`) are not versioned this way; apply them by hand before turning Watch on.
