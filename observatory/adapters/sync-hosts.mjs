@@ -20,7 +20,7 @@ function hostCheck(root) {
   try { execFileSync(process.execPath, [path.join(root, HOST_CHECKER)], { cwd: root, stdio: 'pipe', timeout: 60_000 }); return { ok: true }; }
   catch (error) {
     const lines = String(error.stderr || error.message).split('\n').map(line => line.trim()).filter(Boolean);
-    return { ok: false, detail: lines.find(line => /Error\b/.test(line) && !line.startsWith('at ') && !line.startsWith('throw')) ?? lines.at(-1) ?? 'unknown failure' };
+    return { ok: false, detail: lines.find(line => /^[A-Za-z]*Error(?: \[[A-Z_]+\])?: /.test(line)) ?? lines.at(-1) ?? 'unknown failure' };
   }
 }
 
