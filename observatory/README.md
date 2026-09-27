@@ -14,7 +14,7 @@ npm test
 npm start
 ```
 
-Open the local address printed by the runner and paste its temporary read token. The token is held in browser memory, not a cookie, URL or localStorage. The runner binds to `127.0.0.1`, stores its database under ignored `.data/`, and does not contact the public sites. **Explore synthetic demo** requires no token and never writes invented events into the database.
+Open the local address printed by the runner and paste its temporary read token. The token is never put in a cookie or URL; with Remember ticked (the default) the browser also keeps it in localStorage so the desk reconnects by itself, and Disconnect removes it. The runner binds to `127.0.0.1`, stores its database under ignored `.data/`, and does not contact the public sites. **Explore synthetic demo** requires no token and never writes invented events into the database.
 
 An empty live dashboard is the expected first result. Unknown, stale, down and confirmed-up monitoring states are distinct. Product event silence is not treated as service health.
 

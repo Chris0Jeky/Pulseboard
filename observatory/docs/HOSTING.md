@@ -37,7 +37,7 @@ npm run deploy
 
 Use a unique random token of at least 32 characters and the secret command's secure prompt.
 Never put a production token in a command argument, source file, URL or PR. The live read token
-belongs in an operator-controlled secret store; the browser only keeps it in memory.
+belongs in an operator-controlled secret store; the browser keeps it in tab memory, or in its local storage when the owner ticks Remember (HUMAN_TODO q-26).
 
 For the schema-2 Alibi statistics producer, migrate the existing D1 database
 with `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0002-alibi-statistics.sql`

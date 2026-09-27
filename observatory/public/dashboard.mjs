@@ -111,6 +111,13 @@ function readSettings() {
     state.guidesHidden = localStorage.getItem('pulseboard.desk.guides') === 'hidden';
   } catch { /* Restricted storage is a supported mode. */ }
 }
+/** Owner decision 2026-09-27 (HUMAN_TODO q-26): the read token may be remembered on this browser so the desk connects
+ * by itself. It is kept only when the owner leaves "Remember" ticked; Disconnect and any 401 remove it. Never in a URL or export. */
+const TOKEN_KEY = 'pulseboard.desk.token';
+function rememberedToken() { try { const t = localStorage.getItem(TOKEN_KEY) || ''; return t.length >= 32 && t.length <= 256 ? t : ''; } catch { return ''; } }
+/** With a token, forget only if it is the one stored: a stale tab's 401 must not erase a token another tab just saved. */
+function forgetToken(only = '') { try { if (!only || localStorage.getItem(TOKEN_KEY) === only) localStorage.removeItem(TOKEN_KEY); } catch { /* Restricted storage keeps nothing. */ } }
+function connectWith(token) { disconnect(); state.token = token; refresh(); }
 function review(signal, kind) {
   state.reviews[signal.key] = { state: kind, until: Date.now() + (kind === 'snoozed' ? 3600_000 : 7 * DAY) };
   state.reviews = Object.fromEntries(Object.entries(state.reviews).filter(([, r]) => r.until > Date.now()).slice(-500));
@@ -241,7 +248,7 @@ async function readGithub(id) {
       if (!state.token) throw new Error('Connect the collector first.');
       const response = await fetch(`/v1/github-evidence?project=${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${state.token}` }, cache: 'no-store', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(90_000) });
       if (epoch !== state.epoch) return;
-      if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return; }
+      if (response.status === 401) { forgetToken(state.token); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
       if (!response.ok) throw new Error('GitHub evidence is unavailable.');
       ev = await readLimitedJson(response, 65536);
     }
@@ -375,7 +382,7 @@ async function readSite(kind) {
     const { request, check, max, fail } = siteReads[kind];
     const response = await request(fetch, { project, token: state.token, days, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
     if (epoch !== state.epoch) return;
-    if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return; }
+    if (response.status === 401) { forgetToken(state.token); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
     if (!response.ok) throw new Error(fail);
     const data = check(await readLimitedJson(response, max), days, project);
     if (current()) { state[kind] = data; state.errors[kind] = ''; }
@@ -391,7 +398,7 @@ async function productEvents(name, limit) {
     if (!state.token) throw new Error('Connect the collector first.');
     const response = await requestProductEvents(fetch, { project, token: state.token, days, name, limit, signal: AbortSignal.timeout(3 * READ_TIMEOUT_MS) });
     if (epoch !== state.epoch) return null;
-    if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return null; }
+    if (response.status === 401) { forgetToken(state.token); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return null; }
     if (!response.ok) throw new Error('Product events are unavailable.');
     data = await readLimitedJson(response, PRODUCT_EVENTS_MAX_BYTES);
   }
@@ -651,7 +658,7 @@ async function refresh() {
   try {
     const response = await requestPortfolio(fetch, { token: state.token, days: state.days, signal: controller.signal });
     if (epoch !== state.epoch) return;
-    if (response.status === 401) { disconnect(); notify('Read token rejected. Private data and the token were cleared.'); return; }
+    if (response.status === 401) { forgetToken(state.token); disconnect(); notify('Read token rejected. Private data and the saved token were cleared.'); return; }
     if (!response.ok) throw new Error('Collector unavailable');
     const data = await readLimitedJson(response);
     if (epoch !== state.epoch) return;
@@ -672,8 +679,12 @@ function density() { document.body.dataset.density = document.body.dataset.densi
 readSettings();
 for (const close of document.querySelectorAll('.close-dialog')) close.addEventListener('click', () => close.closest('dialog').close());
 $('#open-connect').addEventListener('click', () => showDialog('#connect-dialog'));
-$('#connect').addEventListener('submit', event => { event.preventDefault(); const token = $('#token').value.trim(); if (token.length < 32 || token.length > 256) return; disconnect(); state.token = token; refresh(); });
-$('#disconnect').addEventListener('click', disconnect); $('#demo').addEventListener('click', beginDemo); $('#refresh').addEventListener('click', refresh);
+$('#connect').addEventListener('submit', event => {
+  event.preventDefault(); const token = $('#token').value.trim(), remember = $('#remember').checked; if (token.length < 32 || token.length > 256) return;
+  if (remember) { try { localStorage.setItem(TOKEN_KEY, token); } catch { notify('This browser blocks storage, so the token is kept for this tab only.'); } } else forgetToken();
+  connectWith(token);
+});
+$('#disconnect').addEventListener('click', () => { const saved = Boolean(rememberedToken()); forgetToken(); disconnect(); if (saved) notify('Disconnected. The saved token was removed from this browser.'); }); $('#demo').addEventListener('click', beginDemo); $('#refresh').addEventListener('click', refresh);
 $('#brief').addEventListener('click', fieldNote); $('#density').addEventListener('click', density); $('#guides').addEventListener('click', toggleGuides);
 $('#search').addEventListener('input', event => { state.query = event.target.value.toLowerCase().trim(); render(); });
 $('#scenario').addEventListener('change', event => { state.scenario = event.target.value; beginDemo(); });
@@ -709,7 +720,15 @@ document.addEventListener('keydown', event => {
   if (!event.ctrlKey && !event.altKey && !event.metaKey && /^[1-6]$/.test(event.key)) navigate(Object.keys(views)[Number(event.key) - 1]);
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelRead(); render(); } else if (state.token) refresh(); });
+// Leaving the page clears tab memory; a remembered token reconnects when the page comes back from the back/forward cache.
 window.addEventListener('pagehide', disconnect);
+// A ?demo= page returns to its scenario, never to live data.
+window.addEventListener('pageshow', event => {
+  if (!event.persisted) return;
+  const saved = rememberedToken();
+  if (Object.hasOwn(SCENARIOS, requestedDemo)) beginDemo(); else if (!state.token && saved) connectWith(saved);
+});
 state.view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
 const requestedDemo = new URLSearchParams(location.search).get('demo');
-if (Object.hasOwn(SCENARIOS, requestedDemo)) { state.scenario = requestedDemo; $('#scenario').value = requestedDemo; beginDemo(); } else render();
+const savedToken = rememberedToken();
+if (Object.hasOwn(SCENARIOS, requestedDemo)) { state.scenario = requestedDemo; $('#scenario').value = requestedDemo; beginDemo(); } else if (savedToken) connectWith(savedToken); else render();

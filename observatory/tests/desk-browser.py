@@ -64,6 +64,11 @@ async def run(args):
             await page.locator('#connect button[type=submit]').click()
             await expect(page.locator('#mode')).to_have_text('CONNECTED')
             await expect(page.locator('#message')).to_contain_text('collection disabled')
+            # Remember is ticked by default: the token survives a reload and the desk reconnects by itself.
+            assert await page.evaluate("localStorage.getItem('pulseboard.desk.token')") == TOKEN
+            await page.reload(wait_until='networkidle')
+            await expect(page.locator('#mode')).to_have_text('CONNECTED')
+            assert TOKEN not in page.url
             # Positive control: the recorder below can only prove an absence of /v1/ reads if it sees a real one here.
             assert any('/v1/portfolio' in url for url in requests), 'Request recording missed the authenticated read'
             assert not any('/v1/github-evidence' in url for url in requests), 'GitHub evidence must not join the poll'
@@ -77,7 +82,8 @@ async def run(args):
             assert not any('api.github.com' in url for url in requests)
             await page.keyboard.press('Escape')
             await page.locator('#disconnect').click()
-            results.append('real HTTP assets, protected API and SQLite connection')
+            assert await page.evaluate("localStorage.getItem('pulseboard.desk.token')") is None
+            results.append('real HTTP assets, protected API and SQLite connection; remembered token reconnects and Disconnect forgets it')
         demo_mark = len(requests)
         await page.locator('#demo').click()
         await expect(page.locator('#mode')).to_have_text('SYNTHETIC DEMO')
@@ -297,7 +303,9 @@ async def run(args):
         await page.locator('#refresh').click()
         await expect(page.locator('#mode')).to_have_text('NOT CONNECTED')
         assert await page.locator('.project-name').count() == 0
-        results.append('malformed payload preserves evidence; 401 clears private state')
+        if not args.offline:
+            assert await page.evaluate("localStorage.getItem('pulseboard.desk.token')") is None, 'A 401 must remove the saved token'
+        results.append('malformed payload preserves evidence; 401 clears private state and the saved token')
         await page.evaluate('window.deskTestStatus = 200; window.deskTestDelay = 300')
         await page.locator('#open-connect').click()
         await page.locator('#token').fill(TOKEN)
@@ -310,7 +318,7 @@ async def run(args):
             stored = await page.evaluate('JSON.stringify({...localStorage})')
             assert TOKEN not in stored and 'PRIVATE_SENTINEL' not in stored
             assert not any('never-fetch.invalid' in url for url in requests)
-            results.append('no token or imported payload persisted; import URLs never fetched')
+            results.append('Disconnect leaves no token or imported payload in storage; import URLs never fetched')
         await page.locator('#demo').click()
         await page.locator('[data-view=overview]').click()
         await expect(page.locator('#page-title')).to_have_text('Overview')
