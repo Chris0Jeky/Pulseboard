@@ -144,6 +144,10 @@ builders or the host checker, daily at 06:41 UTC, and on demand. For each site i
 updates the lock's hashes and SDK version, refreshes a *generated* `observatory/check.mjs` only when the new one
 passes there (hand-written checkers are never touched), and runs the site's own check.
 
+It runs as two jobs per site: `prepare` has no secrets and is the only place the site's own code runs; `publish`
+holds `SITES_TOKEN`, runs no site code, copies only the synced files into a fresh clone, and detects a person's
+commits on the sync branch through the compare API (author and committer), so it never replaces their work.
+
 - Changes go to one `pulseboard/sdk-sync` pull request per site. It merges itself (merge commit) after the
   three-minute floor when the diff stays inside the lock's files, the site check passes and every GitHub Actions
   run on its head succeeds. Otherwise it is titled `[needs a person]` and stays open with the reason.
