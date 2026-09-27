@@ -23,10 +23,12 @@ const GENERATED = /^\/\* SPDX-License-Identifier: GPL-3\.0-only\n \* Generated b
 const sdkVersion = content => /^ \* pulseboard-sdk (\S+) for /m.exec(content)?.[1] ?? null;
 
 /** Every path this tool writes is a plain relative path with no dot-segment (so never .git, .github or ..), and no
- * existing component of it is a symlink: a host cannot route a write into repository metadata or out of the tree. */
+ * existing component of it is a symlink: a host cannot route a write into repository metadata or out of the tree.
+ * Lock paths use forward slashes only; a backslash is refused on every platform, because Linux reads it as part of a
+ * file name and the symlink walk below would then miss the component it hides (#158). */
 export function assertPlainPath(root, relative) {
-  const parts = String(relative).split(/[\\/]/);
-  if (path.isAbsolute(relative) || parts.some(part => part === '' || part.startsWith('.'))) throw new Error('Refusing path ' + relative);
+  const parts = String(relative).split('/');
+  if (String(relative).includes('\\') || path.isAbsolute(relative) || parts.some(part => part === '' || part.startsWith('.'))) throw new Error('Refusing path ' + relative);
   for (let i = 1; i <= parts.length; i++) {
     if (lstatSync(path.join(root, ...parts.slice(0, i)), { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error('Refusing symlinked path ' + relative);
   }
