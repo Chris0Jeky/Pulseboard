@@ -155,8 +155,13 @@ the site passes.
 - Changes go to one `pulseboard/sdk-sync` pull request per site. It merges itself (merge commit) after the
   three-minute floor when the diff stays inside the lock's files, the site check passes and every GitHub Actions
   run on its head succeeds (or does not apply). Otherwise it is titled `[needs a person]` and stays open with the reason.
-- Alibi's own policy pins its SDK version, so an SDK version bump reaches Alibi as a `[needs a person]` pull
-  request until its `check.local.mjs` pin moves.
+- A site whose check reads its built output is marked `build: true` in the prepare matrix (Alibi): the job writes
+  the synced files, runs `npm ci` and `npm run build` there, and then runs the check.
+- Every site's checker reads the SDK version from its lock (major 3 only) since 2026-09-27 (Alibi #414 and the
+  matching pull requests in the other sites), so a minor or patch SDK release needs no edit in any site; a new
+  major reaches every site as a `[needs a person]` pull request.
+- A site that requires resolved conversations (MDviewer) keeps a sync pull request open while any review thread,
+  a bot's included, is unresolved; a person or agent triages it and merges.
 - It needs the `SITES_TOKEN` secret; without it every publish job skips with a notice. Since 2026-09-27 the token
   covers all of the owner's repositories (owner's choice, HUMAN_TODO q-29), so adding a site means adding its
   repository to both matrices in the workflow. A run that ends `skipped` or `neutral` on the site (a workflow that
