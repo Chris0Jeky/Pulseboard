@@ -131,13 +131,16 @@ remain subject to the product-specific review described in `ENGINEERING.md`.
 ## Automatic deploys
 
 `.github/workflows/deploy-observatory.yml` deploys the production Worker after every push to `main` that touches
-`observatory/` (merges included), and on demand from the Actions tab. It runs `npm ci` and `npm test`, then
-`npx wrangler deploy`, then waits for `/readyz` to report ready; the run summary names the new version.
+`observatory/` (merges included), and on demand from the Actions tab. It runs `npm ci` and `npm test`, checks the
+production schema, runs `npx wrangler deploy --env=""`, then waits for `/readyz` to report ready; the run summary
+names the new version.
 
 - It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. The account id was set on
   2026-09-27; the token is HUMAN_TODO q-27. Without both, the job skips with a notice.
-- A range that changes `observatory/migrations/`, `schema.sql` or `watch/schema.sql` stops before deploying. Apply
-  the migration to production D1 by hand first, then run the workflow manually with **schema_applied** ticked.
+- It deploys only the current head of `main`: a re-run of an older run or a manual run from another branch skips.
+- Before deploying it reads `schema_version` from production D1 and stops unless it equals `SCHEMA_VERSION` in
+  `src/worker.mjs`. After a schema change, apply the migration by hand first, then re-run the workflow. Security
+  Watch tables (`watch/schema.sql`) are not versioned this way; apply them by hand before turning Watch on.
 - If `/readyz` does not report ready, the job fails; roll back with `npx wrangler rollback` (see the rollback limits
   in the usage plan v2 receipt below).
 - Admission lists in `wrangler.jsonc` still change only by owner decision; the workflow deploys whatever `main` holds.
