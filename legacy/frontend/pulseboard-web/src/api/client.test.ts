@@ -147,6 +147,32 @@ describe('API Client', () => {
       await expect(apiClient.getDashboard('non-existent')).rejects.toThrow('Not found')
     })
 
+    it('should fall back on non-JSON error body and preserve custom headers', async () => {
+      ;(global.fetch as any).mockResolvedValue({
+        ok: false,
+        status: 502,
+        json: async () => {
+          throw new SyntaxError('Unexpected token < in JSON')
+        },
+      })
+
+      await expect(
+        (apiClient as any).request('/api/dashboards', {
+          headers: { Authorization: 'Bearer x' },
+        })
+      ).rejects.toThrow('Unknown error')
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/dashboards'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer x',
+          }),
+        })
+      )
+    })
+
     it('should handle network errors', async () => {
       ;(global.fetch as any).mockRejectedValue(new Error('Network error'))
 
