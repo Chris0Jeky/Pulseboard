@@ -54,6 +54,21 @@ class _UnregisterOnSendFakeWebSocket(_FakeWebSocket):
         await super().send_text(message)
 
 
+class _FailOnceFakeWebSocket(_FakeWebSocket):
+    """Fake websocket whose first send_text raises, then records."""
+
+    def __init__(self, error=None):
+        super().__init__()
+        self.error = error if error is not None else Exception("Connection closed")
+        self.calls = 0
+
+    async def send_text(self, message):
+        self.calls += 1
+        if self.calls == 1:
+            raise self.error
+        await super().send_text(message)
+
+
 class TestDataHub:
     """Tests for DataHub."""
 
@@ -165,6 +180,36 @@ class TestDataHub:
 
         # Check initial state was sent
         websocket.send_text.assert_called_once()
+
+    async def test_register_connection_initial_state_failure_keeps_connection(
+        self, hub: DataHub
+    ):
+        """A failed initial-state send keeps the connection and later sends."""
+        dashboard_id = uuid4()
+        feed1_id = uuid4()
+        feed2_id = uuid4()
+
+        await hub.publish_feed_event(feed1_id, {"value": 1})
+        await hub.publish_feed_event(feed2_id, {"value": 2})
+
+        websocket = _FailOnceFakeWebSocket(Exception("Connection closed"))
+
+        # Fixed order so the first send (feed1) is the one that fails.
+        try:
+            await hub.register_connection(
+                dashboard_id, websocket, [feed1_id, feed2_id]
+            )
+        except Exception as exc:
+            pytest.fail(f"register_connection raised: {exc!r}")
+
+        # Connection remains registered.
+        assert websocket in hub.connections[dashboard_id]
+
+        # Second feed state was still sent and the message is parseable.
+        assert len(websocket.messages) == 1
+        message = FeedEventMessage.model_validate_json(websocket.messages[0])
+        assert message.feed_id == feed2_id
+        assert message.payload == {"value": 2}
 
     async def test_unregister_connection(self, hub: DataHub):
         """Test unregistering a WebSocket connection."""
