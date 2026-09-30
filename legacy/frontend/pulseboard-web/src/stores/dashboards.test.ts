@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useDashboardsStore } from './dashboards'
-import { createTestPinia, createMockDashboard, createMockFetchResponse } from '../test/helpers'
+import { createTestPinia, createMockDashboard, createMockPanel, createMockFetchResponse } from '../test/helpers'
 import apiClient from '../api/client'
 
 vi.mock('../api/client')
@@ -121,6 +121,57 @@ describe('Dashboards Store', () => {
 
       expect(result).toEqual(updated)
       expect(store.dashboards[0].name).toBe('New Name')
+    })
+  })
+
+  describe('cloneDashboard', () => {
+    it('should copy panels and refetch the cloned dashboard', async () => {
+      const store = useDashboardsStore()
+      const panel1 = createMockPanel({ id: 'panel-1', title: 'Panel 1' })
+      const panel2 = createMockPanel({ id: 'panel-2', title: 'Panel 2' })
+      const source = createMockDashboard({
+        id: 'orig-id',
+        name: 'Orig',
+        description: 'Orig description',
+        panels: [panel1, panel2],
+      })
+      const clonedDashboard = createMockDashboard({ id: 'cloned-id', name: 'Orig (Copy)' })
+      const clonedWithPanels = createMockDashboard({
+        id: 'cloned-id',
+        name: 'Orig (Copy)',
+        description: 'Orig description',
+        panels: [panel1, panel2],
+      })
+
+      vi.spyOn(apiClient, 'getDashboard')
+        .mockResolvedValueOnce(source)
+        .mockResolvedValueOnce(clonedWithPanels)
+      vi.spyOn(apiClient, 'createDashboard').mockResolvedValue(clonedDashboard)
+      vi.spyOn(apiClient, 'createPanel').mockResolvedValue(panel1)
+
+      const result = await store.cloneDashboard('orig-id')
+
+      expect(apiClient.getDashboard).toHaveBeenCalledWith('orig-id')
+      expect(apiClient.createDashboard).toHaveBeenCalledWith({
+        name: 'Orig (Copy)',
+        description: 'Orig description',
+      })
+      expect(apiClient.createPanel).toHaveBeenCalledTimes(2)
+      for (const panel of [panel1, panel2]) {
+        expect(apiClient.createPanel).toHaveBeenCalledWith('cloned-id', {
+          title: panel.title,
+          type: panel.type,
+          feed_ids_json: panel.feed_ids_json,
+          options_json: panel.options_json,
+          position_x: panel.position_x,
+          position_y: panel.position_y,
+          width: panel.width,
+          height: panel.height,
+        })
+      }
+      expect(apiClient.getDashboard).toHaveBeenCalledWith('cloned-id')
+      expect(result).toEqual(clonedWithPanels)
+      expect(store.dashboards).toContainEqual(clonedWithPanels)
     })
   })
 
