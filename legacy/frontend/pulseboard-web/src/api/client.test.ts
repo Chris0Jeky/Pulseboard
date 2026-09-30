@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { apiClient } from './client'
 import { createMockFetchResponse, createMockDashboard, createMockFeed } from '../test/helpers'
 
@@ -151,6 +151,24 @@ describe('API Client', () => {
       ;(global.fetch as any).mockRejectedValue(new Error('Network error'))
 
       await expect(apiClient.getDashboards()).rejects.toThrow('Network error')
+    })
+  })
+
+  describe('getWebSocketUrl', () => {
+    const originalBaseUrl = (apiClient as any).baseUrl
+
+    afterEach(() => {
+      ;(apiClient as any).baseUrl = originalBaseUrl
+    })
+
+    it('maps https to wss and strips scheme', () => {
+      ;(apiClient as any).baseUrl = 'https://api.example.com'
+      expect(apiClient.getWebSocketUrl('d1')).toBe('wss://api.example.com/ws/dashboards/d1')
+    })
+
+    it('maps http to ws and strips scheme', () => {
+      ;(apiClient as any).baseUrl = 'http://localhost:8000'
+      expect(apiClient.getWebSocketUrl('d1')).toBe('ws://localhost:8000/ws/dashboards/d1')
     })
   })
 })
