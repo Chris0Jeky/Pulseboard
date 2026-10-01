@@ -183,6 +183,26 @@ async def delete_feed(feed_id: UUID, session: SessionDep, request: Request) -> N
     if not feed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
 
+    from app.models import Panel
+
+    feed_id_str = str(feed_id)
+    panels = session.exec(select(Panel)).all()
+    for panel in panels:
+        try:
+            panel_feed_ids = json.loads(panel.feed_ids_json)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Invalid feed_ids_json in panel {panel.id}")
+            continue
+        if not isinstance(panel_feed_ids, list):
+            logger.warning(f"Invalid feed_ids_json in panel {panel.id}")
+            continue
+        if feed_id_str not in panel_feed_ids:
+            continue
+        panel.feed_ids_json = json.dumps(
+            [entry for entry in panel_feed_ids if entry != feed_id_str]
+        )
+        session.add(panel)
+
     session.delete(feed)
     session.commit()
 
