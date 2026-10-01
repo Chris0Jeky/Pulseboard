@@ -84,13 +84,12 @@ class FeedManager:
 
     async def stop_feed(self, feed_id: UUID) -> None:
         """Stop a feed."""
-        feed = self.feeds.get(feed_id)
-        if not feed:
+        feed = self.feeds.pop(feed_id, None)
+        if feed is None:
             self.logger.warning(f"Feed {feed_id} not found in manager")
             return
 
         await feed.stop()
-        del self.feeds[feed_id]
         self.hub.clear_feed_data(feed_id)
         self.logger.info(f"Stopped feed {feed_id}")
 
