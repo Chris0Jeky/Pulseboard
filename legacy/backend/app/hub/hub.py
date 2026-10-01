@@ -152,6 +152,22 @@ class DataHub:
         # Send initial state for all feeds
         await self._send_initial_state(websocket, feed_ids)
 
+    async def refresh_dashboard_feeds(
+        self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
+    ) -> None:
+        """
+        Replace a connected dashboard's feed set and send state for added feeds.
+
+        No-op when the dashboard has no registered connections.
+        """
+        if dashboard_id not in self.connections:
+            return
+
+        previous = self.dashboard_feeds.get(dashboard_id, set())
+        self.dashboard_feeds[dashboard_id] = set(feed_ids)
+
+        await self._send_initial_state(websocket, set(feed_ids) - previous)
+
     async def _send_initial_state(self, websocket: WebSocket, feed_ids: Set[UUID]) -> None:
         """
         Send initial state (latest events) to a newly connected client.

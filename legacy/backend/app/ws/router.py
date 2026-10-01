@@ -63,6 +63,19 @@ async def websocket_dashboard(
                 try:
                     message = json.loads(data)
                     if message.get("type") == "ping":
+                        try:
+                            session.expire_all()
+                            current = session.get(Dashboard, dashboard_id)
+                            if current:
+                                await hub.refresh_dashboard_feeds(
+                                    dashboard_id,
+                                    websocket,
+                                    collect_feed_ids(current.panels),
+                                )
+                        except Exception:
+                            logger.exception(
+                                f"Failed to refresh feeds for dashboard {dashboard_id}"
+                            )
                         await websocket.send_text(json.dumps({"type": "pong"}))
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid JSON from client: {data}")
