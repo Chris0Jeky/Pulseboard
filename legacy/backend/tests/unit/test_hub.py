@@ -54,6 +54,21 @@ class _UnregisterOnSendFakeWebSocket(_FakeWebSocket):
         await super().send_text(message)
 
 
+class _FailOnceFakeWebSocket(_FakeWebSocket):
+    """Fake websocket whose first send_text raises, then records."""
+
+    def __init__(self, error=None):
+        super().__init__()
+        self.error = error if error is not None else Exception("Connection closed")
+        self.calls = 0
+
+    async def send_text(self, message):
+        self.calls += 1
+        if self.calls == 1:
+            raise self.error
+        await super().send_text(message)
+
+
 class TestDataHub:
     """Tests for DataHub."""
 
@@ -165,6 +180,36 @@ class TestDataHub:
 
         # Check initial state was sent
         websocket.send_text.assert_called_once()
+
+    async def test_register_connection_initial_state_failure_keeps_connection(
+        self, hub: DataHub
+    ):
+        """A failed initial-state send keeps the connection and later sends."""
+        dashboard_id = uuid4()
+        feed1_id = uuid4()
+        feed2_id = uuid4()
+
+        await hub.publish_feed_event(feed1_id, {"value": 1})
+        await hub.publish_feed_event(feed2_id, {"value": 2})
+
+        websocket = _FailOnceFakeWebSocket(Exception("Connection closed"))
+
+        # Fixed order so the first send (feed1) is the one that fails.
+        try:
+            await hub.register_connection(
+                dashboard_id, websocket, [feed1_id, feed2_id]
+            )
+        except Exception as exc:
+            pytest.fail(f"register_connection raised: {exc!r}")
+
+        # Connection remains registered.
+        assert websocket in hub.connections[dashboard_id]
+
+        # Second feed state was still sent and the message is parseable.
+        assert len(websocket.messages) == 1
+        message = FeedEventMessage.model_validate_json(websocket.messages[0])
+        assert message.feed_id == feed2_id
+        assert message.payload == {"value": 2}
 
     async def test_unregister_connection(self, hub: DataHub):
         """Test unregistering a WebSocket connection."""
@@ -319,6 +364,67 @@ class TestDataHub:
 
         assert dashboard_id not in hub.connections
         assert dashboard_id not in hub.dashboard_feeds
+
+    async def test_refresh_dashboard_feeds_replaces_mapping(self, hub: DataHub):
+        """Refreshing replaces the feed set and routes new feeds to the socket."""
+        dashboard_id = uuid4()
+        feed_a = uuid4()
+        feed_b = uuid4()
+        websocket = MagicMock()
+        websocket.send_text = AsyncMock()
+
+        await hub.register_connection(dashboard_id, websocket, {feed_a})
+        await hub.refresh_dashboard_feeds(dashboard_id, websocket, {feed_b})
+
+        # Replace, not union: feed A is gone, feed B remains.
+        assert hub.dashboard_feeds[dashboard_id] == {feed_b}
+
+        # Publishing the new feed reaches the socket.
+        websocket.send_text.reset_mock()
+        await hub.publish_feed_event(feed_b, {"value": 1})
+        assert websocket.send_text.call_count == 1
+
+        # Publishing the removed feed no longer reaches the socket.
+        websocket.send_text.reset_mock()
+        await hub.publish_feed_event(feed_a, {"value": 2})
+        assert websocket.send_text.call_count == 0
+
+    async def test_refresh_dashboard_feeds_sends_latest_for_added_feeds(
+        self, hub: DataHub
+    ):
+        """Newly added feeds with a latest event are sent as initial state."""
+        dashboard_id = uuid4()
+        feed_a = uuid4()
+        feed_b = uuid4()
+        websocket = MagicMock()
+        websocket.send_text = AsyncMock()
+
+        await hub.publish_feed_event(feed_b, {"value": 42})
+        await hub.register_connection(dashboard_id, websocket, {feed_a})
+        websocket.send_text.reset_mock()
+
+        await hub.refresh_dashboard_feeds(dashboard_id, websocket, {feed_b})
+
+        assert websocket.send_text.call_count == 1
+        message = FeedEventMessage.model_validate_json(
+            websocket.send_text.call_args[0][0]
+        )
+        assert message.feed_id == feed_b
+        assert message.payload == {"value": 42}
+
+    async def test_refresh_dashboard_feeds_noop_for_unregistered_dashboard(
+        self, hub: DataHub
+    ):
+        """Refreshing an unregistered dashboard creates no mapping, sends nothing."""
+        dashboard_id = uuid4()
+        websocket = MagicMock()
+        websocket.send_text = AsyncMock()
+
+        await hub.refresh_dashboard_feeds(dashboard_id, websocket, {uuid4()})
+
+        assert dashboard_id not in hub.connections
+        assert dashboard_id not in hub.dashboard_feeds
+        websocket.send_text.assert_not_called()
 
     async def test_clear_feed_data(self, hub: DataHub):
         """Test clearing all data for a feed."""
