@@ -212,6 +212,44 @@ class TestWebSocketDataFlow:
         assert ws2.send_text.call_count >= 1
 
 
+    @pytest.mark.asyncio
+    async def test_ping_refreshes_feeds_for_new_panel(
+        self, client: TestClient, session: Session, hub: DataHub
+    ):
+        """A ping picks up panels added after connect; new feed events arrive."""
+        dashboard = Dashboard(name="Test Dashboard")
+        feed_b = FeedDefinition(type="http_json", name="Feed B")
+        session.add(dashboard)
+        session.add(feed_b)
+        session.commit()
+
+        with client.websocket_connect(f"/ws/dashboards/{dashboard.id}") as websocket:
+            # Add a panel naming feed B via the panels API while connected.
+            response = client.post(
+                f"/api/dashboards/{dashboard.id}/panels",
+                json={
+                    "type": "stat",
+                    "title": "Panel B",
+                    "feed_ids_json": json.dumps([str(feed_b.id)]),
+                    "options_json": "{}",
+                    "position_x": 0,
+                    "position_y": 0,
+                },
+            )
+            assert response.status_code == 201
+
+            # Ping triggers a feed refresh, then replies with pong.
+            websocket.send_text(json.dumps({"type": "ping"}))
+            assert json.loads(websocket.receive_text())["type"] == "pong"
+
+            # Events for the newly added feed now reach this client.
+            await hub.publish_feed_event(feed_b.id, {"value": 123})
+
+            data = json.loads(websocket.receive_text())
+            assert data["feed_id"] == str(feed_b.id)
+            assert data["payload"]["value"] == 123
+
+
 class TestWebSocketDisconnection:
     """Tests for WebSocket disconnection handling."""
 
