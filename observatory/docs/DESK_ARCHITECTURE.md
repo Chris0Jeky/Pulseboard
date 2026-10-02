@@ -51,7 +51,10 @@ configuration. `public/desk-demo.mjs` creates deterministic invented snapshots.
 
 The Desk UI reads each site through closed contracts it checks before rendering: `public/desk-usage.mjs`
 accepts `pulseboard.statistics/4` (twelve dimensions, each summing to the total) and still reads schema 3
-until the collector serves 4; `public/desk-product.mjs` accepts `pulseboard.product/1` and the raw
+until the collector serves 4. Its UTC window ends on the generation date, and daily event rows must use
+the event vocabulary in the totals and reconcile both per day and per event. Generation and demo
+timestamps stay within non-negative integer milliseconds and four-digit UTC years.
+`public/desk-product.mjs` accepts `pulseboard.product/1` and the raw
 `pulseboard.product-events/1` read, and documents the exact shapes it assumes at the top of the module.
 Usage and Product share one site and one window (1, 7, 14, 30 or 90 days), separate from the portfolio
 window. Raw events load only on demand; the explorer's property breakdown and every product panel are
