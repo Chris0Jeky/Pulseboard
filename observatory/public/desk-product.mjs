@@ -29,6 +29,8 @@ export const PRODUCT_MAX_BYTES = 4 * 1048576;
 export const PRODUCT_EVENTS_MAX_BYTES = 12 * 1048576;
 export const PRODUCT_EVENTS_LIMIT = 5000;
 export const PRODUCT_WINDOWS = Object.freeze([1, 7, 14, 30, 90]);
+/** Generation timestamps are nonnegative integer milliseconds whose UTC dates have four year digits. */
+export const PRODUCT_MAX_TIMESTAMP = Date.parse('9999-12-31T23:59:59.999Z');
 export const VITAL_METRICS = Object.freeze(['LCP', 'INP', 'CLS', 'FCP', 'TTFB']);
 /** web.dev "good" and "poor" boundaries for the 75th percentile. INP from the SDK is an approximation. */
 export const VITAL_THRESHOLDS = Object.freeze({ LCP: [2500, 4000], INP: [200, 500], CLS: [0.1, 0.25], FCP: [1800, 3000], TTFB: [800, 1800] });
@@ -58,18 +60,18 @@ export function requestProductEvents(fetcher, { project, token, days, name, limi
   return productRequest(fetcher, `/v1/product/${project}/events?days=${days}&name=${encodeURIComponent(name)}&limit=${limit}`, token, signal);
 }
 
-function productWindow(w, days) {
+function productWindow(w, days, generatedDay) {
   exactKeys(w, ['startDay', 'endDay', 'days', 'timezone', 'partialToday']);
   requireValue(PRODUCT_WINDOWS.includes(days) && w.days === days && w.timezone === 'UTC' && w.partialToday === true, 'Invalid product window');
   utcDay(w.startDay); utcDay(w.endDay);
-  requireValue(Date.parse(w.endDay) - Date.parse(w.startDay) === (days - 1) * 86400000, 'Invalid product window');
+  requireValue(w.endDay === generatedDay && Date.parse(w.endDay) - Date.parse(w.startDay) === (days - 1) * 86400000, 'Invalid product window');
 }
 function productHeader(input, schema, days, project, keys) {
   requireValue(plain(input) && input.schema === schema && input.project === project, 'Unexpected product contract');
   // Closed: an unexpected field (a people-shaped one included) is refused, not ignored. Only the sandbox adds mode.
   exactKeys(input, [...keys, ...(input.mode === 'demo' ? ['mode'] : [])]);
-  whole(input.generatedAt);
-  productWindow(input.window, days);
+  const generatedDay = new Date(whole(input.generatedAt, 0, PRODUCT_MAX_TIMESTAMP)).toISOString().slice(0, 10);
+  productWindow(input.window, days, generatedDay);
 }
 
 export function assertProduct(input, days, project) {

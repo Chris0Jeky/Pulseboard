@@ -255,3 +255,54 @@ test('synthetic product data is deterministic, marked and passes both contracts'
   assert.equal(limited.events.length, 10); assert.equal(limited.truncated, true);
   assert.throws(() => makeProductDemo(3, now, 'alibi'), RangeError);
 });
+
+test('summary and raw-event windows end on their generation UTC date', () => {
+  const demo = makeProductDemo(7, now, 'alibi');
+  const events = makeProductEventsDemo(7, now, 'alibi', 'puzzle.started');
+  for (const shift of [-86400000, 86400000, 30 * 86400000]) {
+    const summary = structuredClone(demo); summary.generatedAt += shift;
+    const raw = structuredClone(events); raw.generatedAt += shift;
+    assert.throws(() => assertProduct(summary, 7, 'alibi'), TypeError);
+    assert.throws(() => assertProductEvents(raw, 7, 'alibi', 'puzzle.started'), TypeError);
+  }
+  // Calendar-day windows remain valid when the generation time changes within the same UTC date.
+  demo.generatedAt += 3600000; events.generatedAt += 3600000;
+  assert.equal(assertProduct(demo, 7, 'alibi'), demo);
+  assert.equal(assertProductEvents(events, 7, 'alibi', 'puzzle.started'), events);
+});
+
+test('Product generation timestamps reject nonrepresentable four-digit UTC dates with TypeError', () => {
+  for (const time of [Number.MAX_SAFE_INTEGER, Date.parse('9999-12-31T23:59:59.999Z') + 1,
+    8640000000000000, -1, 0.5, NaN, Infinity, '2026-09-25', null]) {
+    const demo = makeProductDemo(7, now, 'alibi'); demo.generatedAt = time;
+    const events = makeProductEventsDemo(7, now, 'alibi', 'puzzle.started'); events.generatedAt = time;
+    assert.throws(() => assertProduct(demo, 7, 'alibi'), TypeError, `summary ${time}`);
+    assert.throws(() => assertProductEvents(events, 7, 'alibi', 'puzzle.started'), TypeError, `events ${time}`);
+  }
+});
+
+test('invalid Product demo timestamps retain the intentional settings RangeError', () => {
+  for (const time of [Number.MAX_SAFE_INTEGER, Date.parse('9999-12-31T23:59:59.999Z') + 1,
+    8640000000000000, -1, 0.5, NaN, Infinity, '2026-09-25', null]) {
+    const error = { name: 'RangeError', message: 'Unknown demo setting' };
+    assert.throws(() => makeProductDemo(7, time, 'alibi'), error, `summary ${time}`);
+    assert.throws(() => makeProductEventsDemo(7, time, 'alibi', 'puzzle.started'), error, `events ${time}`);
+  }
+});
+
+test('Product demos remain self-valid at epoch, UTC midnight and year 9999 for every window', () => {
+  for (const time of [0, 1, 86399999, 86400000, Date.parse('2026-09-25T00:00:00Z'), Date.parse('9999-12-31T23:59:59.999Z')]) {
+    for (const days of [1, 7, 14, 30, 90]) for (const project of ['alibi', 'mdviewer']) {
+      const demo = makeProductDemo(days, time, project);
+      assert.equal(assertProduct(demo, days, project), demo);
+      assert.equal(demo.window.endDay, new Date(time).toISOString().slice(0, 10));
+      assert.equal(Date.parse(demo.window.endDay) - Date.parse(demo.window.startDay), (days - 1) * 86400000);
+      const name = demo.totals.names[0].name;
+      const events = makeProductEventsDemo(days, time, project, name, 5000);
+      assert.equal(assertProductEvents(events, days, project, name), events);
+      assert.equal(events.events.length, demo.totals.names[0].n);
+      assert.ok(events.events.every(row => row.received >= 0 && row.received <= time));
+      assert.ok(demo.journeys.every(row => row.startedAt >= 0 && row.startedAt <= time));
+    }
+  }
+});

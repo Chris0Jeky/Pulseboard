@@ -1,6 +1,6 @@
 /** Deterministic invented scenarios. Never written to the collector or presented as production evidence. */
 import { DAY, fraction } from './desk-model.mjs';
-import { PRODUCT_SCHEMA, PRODUCT_EVENTS_SCHEMA, PRODUCT_WINDOWS, PRODUCT_EVENTS_LIMIT, rankQuantile } from './desk-product.mjs';
+import { PRODUCT_SCHEMA, PRODUCT_EVENTS_SCHEMA, PRODUCT_WINDOWS, PRODUCT_EVENTS_LIMIT, PRODUCT_MAX_TIMESTAMP, rankQuantile } from './desk-product.mjs';
 export const SCENARIOS = { release: 'Release wobble', quiet: 'Quiet portfolio', blind: 'Missing readings', pressure: 'Event pressure' };
 const catalog = [
   ['alibi', 'Alibi'], ['commitatlas', 'CommitAtlas'], ['taskdeck', 'Taskdeck'], ['developer-lens', 'Developer Lens'],
@@ -74,12 +74,14 @@ export function makeGithubDemo(snapshot, project) {
 /** SYNTHETIC product events: one seeded pool per (project, window, now), so the summary and every explorer read agree.
  *  Invented sessions, puzzles and errors; the pool lives in this tab and is never sent anywhere. */
 function productPool(project, days, now) {
-  if (!PRODUCT_WINDOWS.includes(days) || !/^[a-z0-9-]{1,64}$/.test(project) || !Number.isSafeInteger(now)) throw new RangeError('Unknown demo setting');
+  if (!PRODUCT_WINDOWS.includes(days) || !/^[a-z0-9-]{1,64}$/.test(project) || !Number.isSafeInteger(now)
+    || now < 0 || now > PRODUCT_MAX_TIMESTAMP) throw new RangeError('Unknown demo setting');
   let seed = [...`${project}|${days}`].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619), 2166136261) >>> 0;
   const rand = () => { seed = (seed + 0x6d2b79f5) >>> 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   const pick = xs => xs[Math.floor(rand() * xs.length)];
   const hex = k => Array.from({ length: k }, () => Math.floor(rand() * 16).toString(16)).join('');
-  const alibi = project === 'alibi', endDay = new Date(now).toISOString().slice(0, 10), start = Date.parse(endDay) - (days - 1) * DAY;
+  // Keep the declared calendar window; only synthetic receipts are clamped at the Unix epoch.
+  const alibi = project === 'alibi', endDay = new Date(now).toISOString().slice(0, 10), start = Math.max(0, Date.parse(endDay) - (days - 1) * DAY);
   const places = [['GB', 'GB-ENG'], ['GB', 'GB-SCT'], ['RO', 'RO-B'], ['MD', 'MD-CU'], ['US', 'US-CA'], ['unknown', 'unknown']];
   // Family and tier travel with each puzzle event as Alibi sends them (docs/VOICES.md section 4).
   const puzzles = [['castle-1', 0.9, 'bridges', 'gentle'], ['castle-2', 0.75, 'scene', 'steady'], ['castle-3', 0.45, 'binary', 'tricky'],
