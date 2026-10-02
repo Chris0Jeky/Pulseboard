@@ -10,12 +10,13 @@
  * CSSOM (element.style), which a strict `style-src` without 'unsafe-inline' does not block.
  */
 import { referrerDomain, referrerSource } from './referrers.mjs';
-export const SDK_VERSION = '3.3.0';
+export const SDK_VERSION = '3.3.1';
 const COUNT_BATCH = 20;
 const PRODUCT_BATCH = 20;
 const PRODUCT_BODY_LIMIT = 16384;
 const QUEUE_LIMIT = 100;
 const REQUEST_LIMIT = 120;
+const REQUEST_WINDOW_MS = 10 * 60 * 1000;
 const KEEPALIVE_BUDGET = 65536;
 const FLUSH_MS = 2000;
 const TIMEOUT_MS = 10000;
@@ -242,6 +243,8 @@ export function createPulseboard(config, runtime = globalThis) {
   let early = []; // Journeys and Diagnostics items held in memory while the region hint is pending.
   let visitAnswer = null, sessionRecord = null, pageSeq = 0, errorsSent = 0, journeyViewPending = false;
   let requests = 0, keepaliveBytes = 0;
+  const requestTimes = [];
+  let regionInFlight = false;
   const stats = { sent: 0, dropped: 0, unknown: 0 };
   const lanes = { counts: lane('/v1/collect-stat/' + cfg.id, COUNT_BATCH), product: lane('/v1/product/' + cfg.id, PRODUCT_BATCH) };
   const context = (() => {
@@ -253,7 +256,7 @@ export function createPulseboard(config, runtime = globalThis) {
   current = effective();
 
   function lane(path, batch) {
-    return { url: cfg.collector + path, batch, queue: [], failures: 0, open: false, timer: null, flights: new Set() };
+    return { url: cfg.collector + path, batch, queue: [], failures: 0, retryAt: 0, open: false, timer: null, flights: new Set() };
   }
 
   function readChoice() {
@@ -400,6 +403,19 @@ export function createPulseboard(config, runtime = globalThis) {
 
   function queued() { return lanes.counts.queue.length + lanes.product.queue.length; }
 
+  function pruneRequests() {
+    const cutoff = now() - REQUEST_WINDOW_MS;
+    while (requestTimes.length && requestTimes[0] <= cutoff) requestTimes.shift();
+  }
+
+  const inFlight = () => lanes.counts.flights.size + lanes.product.flights.size + Number(regionInFlight);
+  function requestRoom() {
+    pruneRequests();
+    return requestTimes.length < REQUEST_LIMIT && inFlight() < REQUEST_LIMIT;
+  }
+
+  function recordRequest() { requests += 1; requestTimes.push(now()); }
+
   function admit(category) {
     if (disposed) return false;
     if (blocked()) { if (CATEGORIES.some(c => current[c])) refresh(); return false; }
@@ -409,7 +425,7 @@ export function createPulseboard(config, runtime = globalThis) {
   function enqueue(name, category, item, sid = null) {
     try {
       const l = lanes[name];
-      if (!admit(category) || l.open || requests >= REQUEST_LIMIT || queued() >= QUEUE_LIMIT) { stats.dropped += 1; return false; }
+      if (!admit(category) || l.open || !requestRoom() || queued() >= QUEUE_LIMIT) { stats.dropped += 1; return false; }
       l.queue.push({ category, item, sid });
       if (mounted && l.queue.length >= l.batch) flushLane(l, false);
       else schedule(l);
@@ -418,8 +434,11 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   function schedule(l) {
-    if (!mounted || disposed || l.timer !== null || !l.queue.length) return;
-    l.timer = timer(() => { l.timer = null; flushLane(l, false); }, FLUSH_MS);
+    if (!mounted || disposed || l.open || l.timer !== null || !l.queue.length || inFlight() >= REQUEST_LIMIT) return;
+    pruneRequests();
+    const budgetWait = requestTimes.length >= REQUEST_LIMIT ? requestTimes[0] + REQUEST_WINDOW_MS - now() : 0;
+    const delay = Math.max(FLUSH_MS, l.retryAt - now(), budgetWait);
+    l.timer = timer(() => { l.timer = null; flushLane(l, false); }, delay);
   }
 
   function takeBatch(l) {
@@ -450,7 +469,7 @@ export function createPulseboard(config, runtime = globalThis) {
       if (!mounted || disposed) return 0;
       if (blocked()) { refresh(); return 0; }
       clear(l.timer); l.timer = null;
-      while (l.queue.length && !l.open && requests < REQUEST_LIMIT) {
+      while (l.queue.length && !l.open && now() >= l.retryAt && requestRoom()) {
         const batch = takeBatch(l);
         if (!batch) continue;
         const bytes = byteLength(batch.body, runtime);
@@ -461,12 +480,13 @@ export function createPulseboard(config, runtime = globalThis) {
         send(l, batch, bytes, keepalive, hide);
         handed += batch.items.length;
       }
+      schedule(l);
     } catch { /* Never throws into the host. */ }
     return handed;
   }
 
   function send(l, batch, bytes, keepalive, hide) {
-    requests += 1;
+    recordRequest();
     let controller = null;
     try { const AC = runtime.AbortController ?? globalThis.AbortController; if (typeof AC === 'function') controller = new AC(); } catch { controller = null; }
     const categories = new Set(batch.items.map(entry => entry.category));
@@ -482,13 +502,18 @@ export function createPulseboard(config, runtime = globalThis) {
       clear(flight.timer);
       l.flights.delete(flight);
       keepaliveBytes -= flight.bytes;
-      if (flight.cancelled) return;
-      if (ok) { stats.sent += batch.items.length; return; }
-      // A timeout is an unknown outcome (the collector may have admitted the batch; ENGINEERING.md), not a failure.
-      if (flight.timedOut) { stats.unknown += batch.items.length; return; }
-      stats.dropped += batch.items.length;
-      l.failures += 1;
-      if (l.failures >= CIRCUIT_FAILURES) { l.open = true; stats.dropped += l.queue.length; l.queue = []; clear(l.timer); l.timer = null; }
+      if (!flight.cancelled) {
+        // A timeout is an unknown outcome, even if an abort-ignoring transport eventually answers.
+        if (flight.timedOut) stats.unknown += batch.items.length;
+        else if (ok) { stats.sent += batch.items.length; l.failures = 0; l.retryAt = 0; }
+        else {
+          stats.dropped += batch.items.length;
+          l.failures += 1;
+          l.retryAt = now() + FLUSH_MS * 2 ** (l.failures - 1);
+          if (l.failures >= CIRCUIT_FAILURES) { l.open = true; stats.dropped += l.queue.length; l.queue = []; clear(l.timer); l.timer = null; }
+        }
+      }
+      for (const pending of Object.values(lanes)) schedule(pending);
     };
     try {
       const init = { method: 'POST', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
@@ -505,14 +530,15 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   function fetchRegion() {
-    if (region || regionFailed || decided() || blocked()) return;
-    if (requests >= REQUEST_LIMIT) { regionFailed = true; releaseEarly(); return; }
-    requests += 1;
+    if (region || regionFailed || regionInFlight || decided() || blocked()) return;
+    if (!requestRoom()) { regionFailed = true; releaseEarly(); return; }
+    recordRequest();
+    regionInFlight = true;
     let controller = null;
     try { const AC = runtime.AbortController ?? globalThis.AbortController; if (typeof AC === 'function') controller = new AC(); } catch { controller = null; }
     const id = controller ? timer(() => { try { controller.abort(); } catch { /* Failure below. */ } }, 5000) : null;
     // A failed, slow or malformed hint means EEA for this page, and is not cached.
-    const fail = () => { clear(id); regionFailed = true; releaseEarly(); };
+    const fail = () => { clear(id); regionInFlight = false; regionFailed = true; releaseEarly(); for (const l of Object.values(lanes)) schedule(l); };
     try {
       const init = { method: 'GET', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', cache: 'default' };
       if (controller) init.signal = controller.signal;
@@ -525,6 +551,7 @@ export function createPulseboard(config, runtime = globalThis) {
           clear(id);
           if (disposed || !isPlain(body) || body.v !== 1 || (body.region !== 'eea' && body.region !== 'other')) return fail();
           region = body.region;
+          regionInFlight = false;
           tab.set(KEYS.region, region);
           refresh();
         } catch { fail(); }
@@ -1012,7 +1039,8 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   function status() {
-    return { active: mounted && !disposed, mounted, consent: get(), requests, keepaliveBytes, sent: stats.sent, dropped: stats.dropped, unknown: stats.unknown,
+    pruneRequests();
+    return { active: mounted && !disposed, mounted, consent: get(), requests, requestsInWindow: requestTimes.length, keepaliveBytes, sent: stats.sent, dropped: stats.dropped, unknown: stats.unknown,
       queued: { counts: lanes.counts.queue.length, product: lanes.product.queue.length },
       open: { counts: lanes.counts.open, product: lanes.product.open } };
   }
