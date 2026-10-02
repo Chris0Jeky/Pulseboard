@@ -28,6 +28,12 @@ const dimensionValue = (name, value) => value === 'unknown' || (PATTERNS[name] ?
 export const VOCABULARY = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const DAY_TEXT = /^\d{4}-\d\d-\d\d$/;
 const PROJECT = /^[a-z0-9-]{1,64}$/;
+// UTC day fields have exactly four year digits. Validate before Date construction so failures are TypeErrors.
+const MAX_TIMESTAMP = Date.parse('9999-12-31T23:59:59.999Z');
+const timestampDay = value => {
+  requireValue(Number.isSafeInteger(value) && value >= 0 && value <= MAX_TIMESTAMP, 'Invalid timestamp');
+  return new Date(value).toISOString().slice(0, 10);
+};
 const nonNegative = value => { requireValue(Number.isSafeInteger(value) && value >= 0, 'Invalid count'); return value; };
 const word = value => { requireValue(typeof value === 'string' && VOCABULARY.test(value), 'Invalid vocabulary'); return value; };
 const day = value => { requireValue(typeof value === 'string' && DAY_TEXT.test(value) && new Date(value + 'T00:00:00Z').toISOString().startsWith(value), 'Invalid UTC day'); return value; };
@@ -45,13 +51,13 @@ export function assertStatistics(input, days, project = 'alibi') {
   requireValue(plain(input) && [STATISTICS_SCHEMA, STATISTICS_LEGACY_SCHEMA].includes(input.schema) && input.project === project, 'Unexpected statistics contract');
   // Closed: a field the reader does not emit today (a people-shaped one included) is refused, not ignored. Only the sandbox adds mode.
   exactKeys(input, [...TOP_KEYS, ...(input.mode === 'demo' ? ['mode'] : [])]);
-  requireValue(Number.isSafeInteger(input.generatedAt) && input.generatedAt >= 0, 'Invalid timestamp');
+  const generatedDay = timestampDay(input.generatedAt);
   requireValue(typeof input.collectionAdmitted === 'boolean' && ['observed', 'no-admitted-counts'].includes(input.observationStatus), 'Invalid observation status');
   const w = input.window;
   exactKeys(w, ['startDay', 'endDay', 'days', 'timezone', 'partialToday']);
   requireValue(USAGE_WINDOWS.includes(days) && w.days === days && w.timezone === 'UTC' && w.partialToday === true, 'Invalid statistics window');
   day(w.startDay); day(w.endDay);
-  requireValue(Date.parse(w.endDay) - Date.parse(w.startDay) === (days - 1) * 86400000, 'Invalid statistics window');
+  requireValue(w.endDay === generatedDay && Date.parse(w.endDay) - Date.parse(w.startDay) === (days - 1) * 86400000, 'Invalid statistics window');
   list(input.limitations, 16).forEach(text => boundedString(text, 500));
   boundedString(input.population, 120);
   nonNegative(input.total);
@@ -59,13 +65,17 @@ export function assertStatistics(input, days, project = 'alibi') {
   const rows = (value, max, keys, check) => { list(value, max).forEach(r => { exactKeys(r, [...keys, 'n']); check(r); nonNegative(r.n); });
     unique(value.map(r => keys.map(k => r[k]).join('|'))); };
   rows(input.events, 64, ['event'], r => word(r.event));
+  const eventTotals = new Map(input.events.map(row => [row.event, row.n]));
   rows(input.routes, 64, ['route'], r => word(r.route));
   rows(input.releases, 64, ['release'], r => word(r.release));
   rows(input.daily, days, ['day'], r => inWindow(r.day));
-  rows(input.eventDaily, days * 64, ['day', 'event'], r => { inWindow(r.day); word(r.event); });
+  rows(input.eventDaily, days * 64, ['day', 'event'], r => {
+    inWindow(r.day); word(r.event); requireValue(eventTotals.has(r.event), 'Unknown daily event');
+  });
   const total = rows => rows.reduce((n, r) => n + r.n, 0);
   requireValue([input.events, input.routes, input.releases, input.daily, input.eventDaily].every(xs => total(xs) === input.total), 'Statistics totals disagree');
   requireValue(input.daily.every(d => total(input.eventDaily.filter(r => r.day === d.day)) === d.n), 'Daily statistics disagree');
+  requireValue(input.events.every(e => total(input.eventDaily.filter(r => r.event === e.event)) === e.n), 'Event statistics disagree');
   exactKeys(input.dimensions, input.schema === STATISTICS_SCHEMA ? USAGE_DIMENSIONS : LEGACY_DIMENSIONS);
   for (const [name, list] of Object.entries(input.dimensions)) {
     rows(list, ROW_LIMITS[name] ?? 16, ['value'], r => requireValue(typeof r.value === 'string' && dimensionValue(name, r.value), 'Invalid dimension value'));
@@ -128,7 +138,7 @@ export function usageQuestions(stats, reading = usageReading(stats)) {
 export function makeStatisticsDemo(days = 7, now = Date.now(), project = 'alibi') {
   requireValue(USAGE_WINDOWS.includes(days) && PROJECT.test(project), 'Unknown window');
   const alibi = project === 'alibi';
-  const endDay = new Date(now).toISOString().slice(0, 10);
+  const endDay = timestampDay(now);
   const dayList = Array.from({ length: days }, (_, i) => new Date(Date.parse(endDay) - (days - 1 - i) * 86400000).toISOString().slice(0, 10));
   const shape = alibi ? { 'page.view': 38, 'app.ready': 30, 'puzzle.started': 14, 'puzzle.completed': 8, 'puzzle.failed': 3, 'hint.requested': 11, 'app.error': 1 }
     : { 'page.view': 21, 'app.ready': 18, 'action.requested': 9, 'action.completed': 7, 'action.failed': 1, 'app.error': 1 };

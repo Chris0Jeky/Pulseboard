@@ -74,6 +74,61 @@ test('empty and unadmitted readings say what a zero cannot mean', async t => {
   assert.equal(r.busiest, null);
 });
 
+test('statistics window ends on the generation date, including UTC midnight', () => {
+  const stats = makeStatisticsDemo(7, now);
+  for (const shift of [-86400000, 86400000, 30 * 86400000]) {
+    const copy = structuredClone(stats); copy.generatedAt += shift;
+    assert.throws(() => assertStatistics(copy, 7), TypeError, `timestamp shift ${shift}`);
+  }
+  for (const time of ['2026-09-25T00:00:00.000Z', '2026-09-25T23:59:59.999Z', '2026-09-26T00:00:00.000Z']) {
+    const demo = makeStatisticsDemo(7, Date.parse(time));
+    assert.equal(demo.window.endDay, time.slice(0, 10));
+    assert.equal(assertStatistics(demo, 7), demo);
+  }
+});
+
+test('daily event names must exist in the event totals, even for zero-count rows', () => {
+  for (const zero of [false, true]) {
+    const stats = makeStatisticsDemo(7, now);
+    if (zero) stats.eventDaily.push({ day: stats.window.endDay, event: 'ghost.event', n: 0 });
+    else for (const row of stats.eventDaily) if (row.event === 'page.view') row.event = 'ghost.event';
+    assert.throws(() => assertStatistics(stats, 7), TypeError);
+  }
+});
+
+test('daily event counts must reconcile per event as well as per day', () => {
+  for (const legacy of [false, true]) {
+    const stats = makeStatisticsDemo(7, now);
+    if (legacy) {
+      stats.schema = STATISTICS_LEGACY_SCHEMA;
+      stats.dimensions = Object.fromEntries(['country', 'device', 'source', 'visit'].map(key => [key, stats.dimensions[key]]));
+    }
+    assert.equal(assertStatistics(stats, 7), stats);
+    const views = stats.eventDaily.find(row => row.event === 'page.view');
+    const ready = stats.eventDaily.find(row => row.day === views.day && row.event === 'app.ready');
+    views.n -= 1; ready.n += 1;
+    assert.throws(() => assertStatistics(stats, 7), TypeError);
+  }
+});
+
+test('invalid generation and demo timestamps fail with the contract error type', () => {
+  for (const invalid of [-1, 0.5, NaN, Infinity, '2026-09-25', null, Number.MAX_SAFE_INTEGER,
+    Date.parse('9999-12-31T23:59:59.999Z') + 1, 8640000000000000]) {
+    assert.throws(() => makeStatisticsDemo(7, invalid), TypeError, `demo timestamp ${invalid}`);
+    const stats = makeStatisticsDemo(7, now); stats.generatedAt = invalid;
+    assert.throws(() => assertStatistics(stats, 7), TypeError, `read timestamp ${invalid}`);
+  }
+});
+
+test('demo timestamp boundaries produce statistics the Desk accepts for every window', () => {
+  for (const time of [0, Date.parse('9999-12-31T23:59:59.999Z')]) {
+    for (const days of [1, 7, 14, 30, 90]) {
+      const demo = makeStatisticsDemo(days, time);
+      assert.equal(assertStatistics(demo, days), demo);
+    }
+  }
+});
+
 test('synthetic usage passes the same contract and is marked', () => {
   for (const project of ['alibi', 'mdviewer']) for (const days of [1, 7, 14, 30, 90]) {
     const demo = makeStatisticsDemo(days, now, project);
