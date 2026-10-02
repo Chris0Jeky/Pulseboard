@@ -214,8 +214,13 @@ One queue per endpoint; a batch leaves at 20 items or after 2 seconds, capped at
 batches. Requests use `fetch` with `mode: 'cors'`, `credentials: 'omit'`, `referrerPolicy: 'no-referrer'`,
 `Content-Type: application/json`, an `AbortController` and a 10-second timeout. `keepalive` is used while the
 page's in-flight keepalive bytes stay within 64 KiB; when the page hides, only keepalive requests are made
-and the rest is dropped with the page. Per page: at most 100 queued items and 120 requests. An endpoint that
-fails three times (an error status or a network error; a timeout is an unknown outcome and does not count) stops sending for the rest of the page. Nothing is persisted offline. A bfcache restore
+and the rest is dropped with the page. Per page: at most 100 queued items, 120 requests in any rolling
+10 minutes (shared by both endpoints and the region hint), and 120 unresolved requests. The SDK's
+`status().requests` stays cumulative; `requestsInWindow` reports the rolling count. Each endpoint counts
+consecutive error statuses or network errors; success resets its counter. After the first and second
+failure, future batches wait 2 and 4 seconds respectively. Failed batches are dropped, never retried.
+Three consecutive failures stop that endpoint for the rest of the page. A timeout is an unknown
+outcome and does not count toward the circuit. Nothing is persisted offline. A bfcache restore
 keeps the instance; an ordinary exit disposes it but lets keepalive requests finish.
 
 ## How to test

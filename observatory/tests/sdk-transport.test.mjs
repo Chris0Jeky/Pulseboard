@@ -171,7 +171,7 @@ test('a full queue flushes immediately at 20; otherwise the 2 s timer flushes', 
   assert.equal(h.counts()[0].init.keepalive, true, 'small batches ride keepalive within the budget');
 });
 
-test('hard caps: 100 queued items and 120 requests per page', async () => {
+test('hard caps: 100 queued items and 120 requests in ten minutes', async () => {
   const h = start({ local: storage({ 'pulseboard:consent:v3:demo': JSON.stringify({ counts: true, diagnostics: false, journeys: false, decided: true, month: '2026-09' }) }) });
   h.runtime.hold = true;
   let accepted = 0;
@@ -190,9 +190,9 @@ test('hard caps: 100 queued items and 120 requests per page', async () => {
   assert.equal(idle.status().queued.product, 100);
 });
 
-test('the circuit opens per endpoint after three failures and drops that queue', async () => {
+test('the circuit opens per endpoint after three consecutive failures and drops that queue', async () => {
   const h = start({ status: 403, local: storage({ 'pulseboard:consent:v3:demo': JSON.stringify({ counts: true, diagnostics: false, journeys: true, decided: true, month: '2026-09' }) }) });
-  for (let round = 0; round < 3; round++) { h.sdk.count('app.ready'); h.sdk.track('step.done'); h.fire(); await settle(); }
+  for (let round = 0; round < 3; round++) { h.tick(10000); h.sdk.count('app.ready'); h.sdk.track('step.done'); h.sdk.flush(); await settle(); }
   assert.equal(h.sdk.status().open.counts, true);
   assert.equal(h.sdk.status().open.product, true);
   const before = h.counts().length;
