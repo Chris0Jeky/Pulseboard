@@ -162,3 +162,28 @@ test('a fetch that ignores abort and succeeds after timeout remains unknown', as
   assert.equal(h.sdk.status().sent, 0);
   assert.equal(h.sdk.status().open.counts, false);
 });
+
+test('a successful region hint releases capacity and restarts a waiting lane', async () => {
+  const h = makeRuntime();
+  const fetch = h.runtime.fetch;
+  let completeRegion;
+  h.runtime.fetch = (url, init) => url.includes('/v1/consent/')
+    ? new Promise(resolve => { completeRegion = resolve; }) : fetch(url, init);
+  const sdk = createPulseboard(config(), h.runtime);
+  sdk.mount();
+  sdk.consent.set({ counts: true, diagnostics: false, journeys: true });
+  h.runtime.hold = true;
+  sdk.flush();
+  for (let i = 0; i < 116; i++) { sdk.count('app.ready'); sdk.flush(); }
+  sdk.count('app.ready'); sdk.track('step.done'); sdk.flush();
+  assert.equal(sdk.status().requests, 120);
+  assert.equal(sdk.status().queued.product, 1);
+  h.tick(WINDOW);
+  sdk.flush(); // Rate credit is available, but all 120 flights are still unresolved.
+  const before = h.products().length;
+  completeRegion({ ok: true, json: async () => ({ v: 1, region: 'eea' }) });
+  await settle();
+  h.fire();
+  assert.equal(h.products().length, before + 1);
+  assert.equal(sdk.status().queued.product, 0);
+});

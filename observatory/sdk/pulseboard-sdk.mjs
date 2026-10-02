@@ -556,6 +556,7 @@ export function createPulseboard(config, runtime = globalThis) {
           regionInFlight = false;
           tab.set(KEYS.region, region);
           refresh();
+          for (const l of Object.values(lanes)) schedule(l);
         } catch { fail(); }
       }, fail);
     } catch { fail(); }
