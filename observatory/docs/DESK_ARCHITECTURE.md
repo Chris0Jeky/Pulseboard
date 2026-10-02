@@ -63,6 +63,11 @@ computed in the tab. Product panels are plain modules registered by project id i
 as text nodes, never markup. Demo mode builds the statistics, product summary and raw events from one
 seeded pool in the tab and never sends them anywhere.
 
+Product summary and raw-event windows end on the generation UTC date. Their generation timestamps
+are nonnegative integer milliseconds within four-digit UTC years. Invalid read timestamps fail with
+the contract's `TypeError`; invalid Product demo settings retain `RangeError`. Epoch-adjacent demos
+keep the requested calendar window while sampling synthetic receipts from the Unix epoch onward.
+
 ## API
 
 `GET /v1/portfolio?days=7` requires the existing `Authorization: Bearer <READ_TOKEN>`
