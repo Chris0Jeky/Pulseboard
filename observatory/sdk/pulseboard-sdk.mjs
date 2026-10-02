@@ -245,6 +245,7 @@ export function createPulseboard(config, runtime = globalThis) {
   let requests = 0, keepaliveBytes = 0;
   const requestTimes = [];
   let regionInFlight = false;
+  let hiding = false;
   const stats = { sent: 0, dropped: 0, unknown: 0 };
   const lanes = { counts: lane('/v1/collect-stat/' + cfg.id, COUNT_BATCH), product: lane('/v1/product/' + cfg.id, PRODUCT_BATCH) };
   const context = (() => {
@@ -434,7 +435,7 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   function schedule(l) {
-    if (!mounted || disposed || l.open || l.timer !== null || !l.queue.length || inFlight() >= REQUEST_LIMIT) return;
+    if (!mounted || disposed || hiding || !visible() || l.open || l.timer !== null || !l.queue.length || inFlight() >= REQUEST_LIMIT) return;
     pruneRequests();
     const budgetWait = requestTimes.length >= REQUEST_LIMIT ? requestTimes[0] + REQUEST_WINDOW_MS - now() : 0;
     const delay = Math.max(FLUSH_MS, l.retryAt - now(), budgetWait);
@@ -468,6 +469,7 @@ export function createPulseboard(config, runtime = globalThis) {
     try {
       if (!mounted || disposed) return 0;
       if (blocked()) { refresh(); return 0; }
+      hide = hide || hiding || !visible();
       clear(l.timer); l.timer = null;
       while (l.queue.length && !l.open && now() >= l.retryAt && requestRoom()) {
         const batch = takeBatch(l);
@@ -963,11 +965,11 @@ export function createPulseboard(config, runtime = globalThis) {
   }
 
   function onHide() {
-    try { finalizeDiagnostics(); flushAll(true); } catch { /* Never throws. */ }
+    try { hiding = true; finalizeDiagnostics(); flushAll(true); } catch { /* Never throws. */ }
   }
   function onVisibility() {
     try {
-      if (visible()) { if (visibleSince === null) visibleSince = now(); }
+      if (visible()) { hiding = false; if (visibleSince === null) visibleSince = now(); for (const l of Object.values(lanes)) schedule(l); }
       else onHide();
     } catch { /* Never throws. */ }
   }
@@ -1020,7 +1022,12 @@ export function createPulseboard(config, runtime = globalThis) {
     } catch { return false; }
   }
 
-  function resume() { return mounted && !disposed; }
+  function resume() {
+    if (!mounted || disposed) return false;
+    hiding = false;
+    for (const l of Object.values(lanes)) schedule(l);
+    return true;
+  }
 
   function dispose({ preserveHandoffs = false } = {}) {
     try {

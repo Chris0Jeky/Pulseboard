@@ -119,3 +119,46 @@ test('expired request timestamps cannot allow more than 120 unresolved requests'
   assert.equal(h.sdk.flush(), 1);
   assert.equal(h.counts().length, 121);
 });
+
+test('hidden keepalive overflow stays queued until visibility or bfcache resume', async () => {
+  for (const mode of ['visibility', 'bfcache']) {
+    const h = start(true);
+    h.runtime.hold = true;
+    const big = Object.fromEntries(Array.from({ length: 7 }, (_, i) => ['k' + i, 'x'.repeat(250)]));
+    for (let i = 0; i < 60; i++) h.sdk.track('step.done', big);
+    for (let i = 0; i < 15; i++) h.sdk.track('step.done', big);
+    if (mode === 'visibility') {
+      h.document.visibilityState = 'hidden';
+      h.document.emit('visibilitychange');
+    } else h.runtime.emit('pagehide', { persisted: true });
+    const before = h.products().length;
+    const queued = h.sdk.status().queued.product;
+    assert.ok(queued > 0);
+    h.tick(2000); h.fire();
+    assert.equal(h.products().length, before, mode);
+    assert.equal(h.sdk.status().queued.product, queued, mode);
+    // Settling a normal flight must not schedule an ordinary send while hidden either.
+    h.products().find(call => !call.init.keepalive).release({ ok: true }); await settle();
+    h.tick(2000); h.fire();
+    assert.equal(h.products().length, before, mode + ' after settlement');
+    if (mode === 'visibility') {
+      h.document.visibilityState = 'visible';
+      h.document.emit('visibilitychange');
+    } else assert.equal(h.sdk.resume(), true);
+    h.fire();
+    assert.ok(h.products().length > before, mode + ' resumed');
+    assert.equal(h.sdk.status().queued.product, 0);
+  }
+});
+
+test('a fetch that ignores abort and succeeds after timeout remains unknown', async () => {
+  const h = start();
+  let complete;
+  h.runtime.fetch = () => new Promise(resolve => { complete = resolve; });
+  h.sdk.flush();
+  h.fire(10000);
+  complete({ ok: true }); await settle();
+  assert.equal(h.sdk.status().unknown, 1);
+  assert.equal(h.sdk.status().sent, 0);
+  assert.equal(h.sdk.status().open.counts, false);
+});
