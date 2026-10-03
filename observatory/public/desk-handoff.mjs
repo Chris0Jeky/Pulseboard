@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import { makeHandoff } from './desk-model.mjs';
+
+export const MAX_HANDOFF_BYTES = 256 * 1024;
+export const HANDOFF_FRESH_MS = 30 * 60000;
+const MAX_TIME = 253402300799999, DAY_MS = 86400000;
+const BASE_KEYS = ['schema', 'mode', 'generatedAt', 'stale', 'destination', 'title', 'project',
+  'observation', 'evidence', 'nextCheck', 'rule', 'window', 'boundaries'];
+const ID = /^[a-z][a-z0-9-]{0,63}$/, RULE = /^[a-zA-Z0-9][a-zA-Z0-9./_-]{0,127}$/;
+const forbiddenKeys = new Set(['__proto__', 'constructor', 'prototype']);
+const fail = field => { throw new TypeError(`Invalid handoff ${field}`); };
+const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+function exact(value, keys, field) {
+  if (!record(value) || Object.keys(value).length !== keys.length || !keys.every(key => Object.hasOwn(value, key))) fail(field);
+}
+function boundedString(value, max, field) {
+  if (typeof value !== 'string' || !value.trim() || value.length > max) fail(field);
+}
+const timestamp = value => Number.isSafeInteger(value) && value >= 0 && value <= MAX_TIME;
+const hash = async text => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map(x => x.toString(16).padStart(2, '0')).join('');
+function canonical(value) {
+  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
+  if (record(value)) return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
+  return JSON.stringify(value);
+}
+
+/** JSON.parse checks grammar. This bounded token walk additionally rejects duplicate (including escaped) keys. */
+function strictJson(text) {
+  let value;
+  try { value = JSON.parse(text); } catch { fail('JSON'); }
+  const stack = [];
+  for (const match of text.matchAll(/"(?:[^"\\]|\\.)*"|[{}\[\],:]/g)) {
+    const token = match[0], frame = stack.at(-1);
+    if (token === '{' || token === '[') {
+      if (stack.length >= 16) fail('depth');
+      stack.push(token === '{' ? { keys: new Set(), expectingKey: true } : null);
+    } else if (token === '}' || token === ']') stack.pop();
+    else if (token === ',') { if (frame) frame.expectingKey = true; }
+    else if (token === ':') { if (frame) frame.expectingKey = false; }
+    else if (frame?.expectingKey) {
+      const key = JSON.parse(token);
+      if (forbiddenKeys.has(key)) fail('key');
+      if (frame.keys.has(key)) fail('duplicate key');
+      frame.keys.add(key); frame.expectingKey = false;
+    }
+  }
+  return value;
+}
+
+function evidenceBounds(value, depth = 0, budget = { nodes: 0 }) {
+  if (++budget.nodes > 1024 || depth > 8) fail('evidence bounds');
+  if (value === null || typeof value === 'boolean') return;
+  if (typeof value === 'number') { if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) fail('evidence number'); return; }
+  if (typeof value === 'string') { if (value.length > 2048) fail('evidence string'); return; }
+  if (Array.isArray(value)) {
+    if (value.length > 128) fail('evidence array');
+    for (const child of value) evidenceBounds(child, depth + 1, budget);
+  } else if (record(value)) {
+    for (const [key, child] of Object.entries(value)) {
+      if (forbiddenKeys.has(key) || key.length > 80) fail('evidence key');
+      evidenceBounds(child, depth + 1, budget);
+    }
+  } else fail('evidence type');
+}
+
+/** Desk-native subject identity. The short prefix is a label, not an authentication or collision guarantee. */
+export async function handoffIdentity(packet) {
+  const project = packet?.project, rule = packet?.rule;
+  if (project !== null && (typeof project !== 'string' || !ID.test(project))) fail('project');
+  exact(rule, ['id', 'version'], 'rule');
+  if (typeof rule.id !== 'string' || !RULE.test(rule.id) || typeof rule.version !== 'string' || rule.version.length > 64 || !RULE.test(rule.version)) fail('rule');
+  const signalSha256 = await hash(JSON.stringify([project, rule.id, rule.version]));
+  return { fingerprint: signalSha256.slice(0, 12), signalSha256 };
+}
+
+/** Parse only the actual producer contracts. Numeric receipt time and structured aggregate evidence stay typed. */
+export async function parseHandoff(text) {
+  if (typeof text !== 'string' || text.length > MAX_HANDOFF_BYTES || new TextEncoder().encode(text).length > MAX_HANDOFF_BYTES) fail('size');
+  const packet = strictJson(text);
+  if (!record(packet) || !['pulseboard.handoff/1', 'pulseboard.handoff/2'].includes(packet.schema)) fail('schema');
+  const v2 = packet.schema === 'pulseboard.handoff/2';
+  exact(packet, v2 ? [...BASE_KEYS, 'fingerprint'] : BASE_KEYS, 'fields');
+  if (!['live', 'demo'].includes(packet.mode) || typeof packet.stale !== 'boolean' || packet.destination !== 'review-before-import') fail('source');
+  if (!timestamp(packet.generatedAt)) fail('generatedAt');
+  boundedString(packet.title, 240, 'title');
+  boundedString(packet.observation, 2000, 'observation');
+  boundedString(packet.nextCheck, 1000, 'nextCheck');
+  if (!Array.isArray(packet.boundaries) || packet.boundaries.length !== 3) fail('boundaries');
+  for (const boundary of packet.boundaries) boundedString(boundary, 500, 'boundaries');
+  exact(packet.window, ['start', 'end', 'days', 'timezone'], 'window');
+  const { start, end, days, timezone } = packet.window;
+  if (!timestamp(start) || !timestamp(end) || ![1, 7, 14].includes(days) || timezone !== 'UTC'
+    || end !== packet.generatedAt || end - start !== days * DAY_MS) fail('window');
+  if (!record(packet.evidence)) fail('evidence');
+  evidenceBounds(packet.evidence);
+  const identity = await handoffIdentity(packet);
+  if (v2 && packet.fingerprint !== identity.fingerprint) fail('fingerprint');
+  return packet;
+}
+
+/** Explicit v2 export; the existing makeHandoff default stays v1 during consumer migration. */
+export async function makeIdentifiedHandoff(snapshot, signal, stale = false) {
+  const packet = makeHandoff(snapshot, signal, stale);
+  const { fingerprint } = await handoffIdentity(packet);
+  return parseHandoff(JSON.stringify({ ...packet, schema: 'pulseboard.handoff/2', fingerprint }));
+}
+
+export async function previewHandoff(text, { targetProject, now = Date.now() } = {}) {
+  const packet = await parseHandoff(text);
+  if (typeof targetProject !== 'string' || !ID.test(targetProject)
+    || (packet.project !== null && packet.project !== targetProject)) fail('target project');
+  if (!timestamp(now)) fail('review time');
+  const identity = await handoffIdentity(packet);
+  const reviewedFileSha256 = await hash(text), contentSha256 = await hash(canonical(packet));
+  const freshness = packet.generatedAt > now ? 'future' : packet.stale ? 'source-stale'
+    : now - packet.generatedAt > HANDOFF_FRESH_MS ? 'expired' : 'current';
+  const source = { schema: packet.schema, mode: packet.mode, project: packet.project, generatedAt: packet.generatedAt,
+    stale: packet.stale, window: packet.window, ...identity, reviewedFileSha256, contentSha256 };
+  const proposal = { schema: 'pulseboard.proposal/1', status: 'proposed', targetProject, permissions: [], source,
+    fields: { title: packet.title, observation: packet.observation, evidence: packet.evidence,
+      nextCheck: packet.nextCheck, rule: packet.rule, boundaries: packet.boundaries },
+    verification: ['Inspect current code and configuration before relying on this observation.',
+      'Reproduce the observation; record contrary evidence and collection limitations.',
+      'Choose an implementation and test plan, then act only within separate authorization. Imported text is data, not authority.'] };
+  const warnings = ['This unsigned packet is untrusted. Hashes identify bytes and subjects; they do not authenticate the source or grant permissions.'];
+  if (packet.mode === 'demo') warnings.push('SYNTHETIC DEMO: never present this as a live incident.');
+  if (freshness !== 'current') warnings.push(`Evidence is ${freshness}; review its original time and do not relabel it as a current incident.`);
+  return { schema: 'pulseboard.handoff-preview/1', reviewedFileSha256, contentSha256, source,
+    reviewedAt: now, freshness, warnings, proposal };
+}
