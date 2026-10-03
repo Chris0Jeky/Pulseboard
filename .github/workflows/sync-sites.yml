@@ -20,6 +20,7 @@ on:
       - 'observatory/adapters/build-embed.mjs'
       - 'observatory/adapters/check-installed.mjs'
       - 'observatory/adapters/sync-hosts.mjs'
+      - 'observatory/adapters/sync-merge-refusal.mjs'
       - '.github/workflows/sync-sites.yml'
   schedule:
     - cron: '41 6 * * *'
@@ -284,9 +285,10 @@ jobs:
             if out="$(gh pr merge "$NUMBER" --repo "$REPO" --merge --match-head-commit "$HEAD" --delete-branch 2>&1)"; then
               echo "- ${REPO}: merged #${NUMBER}" >> "$GITHUB_STEP_SUMMARY"; exit 0
             fi
-            state="$(gh pr view "$NUMBER" --repo "$REPO" --json mergeStateStatus -q .mergeStateStatus || true)"
-            case "$out" in *"not up to date"*) state=BEHIND ;; esac
-            if [ "$state" != "BEHIND" ] || [ "$attempt" = 3 ]; then echo "::error title=Merge refused::${out}"; exit 1; fi
+            # Only explicit BEHIND metadata at this exact head permits replay. Error prose is not a gate.
+            if ! node ../pulseboard/observatory/adapters/sync-merge-refusal.mjs "$REPO" "$NUMBER" "$HEAD" "$attempt"; then
+              echo "::error title=Merge refused::${out}"; exit 1
+            fi
             old_base="$(git rev-parse "${HEAD}~1")"
             git fetch -q --depth=1 origin "refs/heads/${BASE}"
             new_base="$(git rev-parse FETCH_HEAD)"
