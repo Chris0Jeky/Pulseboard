@@ -1,0 +1,57 @@
+name: Handoff native
+on:
+  pull_request:
+    paths: ['observatory/public/desk-handoff*.mjs', 'observatory/public/desk-model.mjs', 'observatory/public/desk-demo.mjs', 'observatory/adapters/handoff-fixtures.mjs', 'observatory/examples/handoff-fixtures.synthetic.json', 'observatory/examples/.gitattributes', 'observatory/tests/handoff*', '.github/workflows/handoff-native.yml']
+  push:
+    branches: [main]
+    paths: ['observatory/public/desk-handoff*.mjs', 'observatory/public/desk-model.mjs', 'observatory/public/desk-demo.mjs', 'observatory/adapters/handoff-fixtures.mjs', 'observatory/examples/handoff-fixtures.synthetic.json', 'observatory/examples/.gitattributes', 'observatory/tests/handoff*', '.github/workflows/handoff-native.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: handoff-native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  conformance:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: pulseboard
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: Chris0Jeky/agent-hq
+          # Already merged consumer including #148; change this pin only with reviewed conformance evidence.
+          ref: 8fe4a86fb14d0177de9b162478dd4ec94836d838
+          path: agent-hq
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify actual producer vectors and byte-preserving checkout
+        working-directory: pulseboard/observatory
+        run: node --test tests/handoff-fixtures.test.mjs tests/handoff.test.mjs tests/handoff-export.test.mjs
+      - name: Verify native consumer preview, proposed writes and duplicates
+        run: python pulseboard/observatory/tests/handoff-native.py --consumer agent-hq --consumer-sha 8fe4a86fb14d0177de9b162478dd4ec94836d838 --receipt native-conformance.json
+      - name: Check neither checkout was changed
+        shell: bash
+        run: |
+          test -z "$(git -C pulseboard status --porcelain)"
+          test -z "$(git -C agent-hq status --porcelain)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-handoff-${{ matrix.os }}
+          path: native-conformance.json
+          if-no-files-found: error
+          retention-days: 7
