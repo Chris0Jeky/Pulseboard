@@ -187,7 +187,21 @@ async def check_usage(page, offline):
     await expect(page.locator('#usage-window')).to_have_value('90')
     await expect(page.locator('#view')).to_contain_text(samples['90']['window']['startDay'])
     assert await page.evaluate('window.usageReads') == ['7', '1', '90']
-    # A statistics 401, not the portfolio 401 covered by desk-browser.py, clears every private view.
+    # Positive control for cross-view cleanup: import actual context through the reviewed file UI.
+    # An empty Product/Voices/import state cannot prove that a Usage 401 clears unrelated private data.
+    await page.locator('[data-view=connections]').click()
+    catalog = {'version': 2, 'generator': 'CommitAtlas', 'source': 'github-public-rest', 'user': 'example-builder',
+               'generatedAt': '2026-09-10T12:00:00Z', 'projects': [{'repo': 'private-401-context', 'label': 'Private fixture',
+               'lifecycle': 'active', 'ci': {'state': 'passing', 'workflow': 'private-check'},
+               'stars': 0, 'forks': 0, 'openIssuesAndPullRequests': 1}]}
+    await page.locator('#import-commitatlas').set_input_files({'name': 'projects.json', 'mimeType': 'application/json',
+                                                           'buffer': json.dumps(catalog).encode()})
+    await expect(page.locator('#import-dialog')).to_be_visible()
+    await page.locator('#accept-import').click()
+    await expect(page.locator('#view')).to_contain_text('example-builder/private-401-context')
+    await page.locator('[data-view=usage]').click()
+    await expect(page.get_by_role('region', name='Alibi usage summary')).to_be_visible()
+    # Statistics-specific 401 clears the usage view, token and independently populated imported context.
     await page.evaluate('window.usageStatus = 401')
     await page.locator('#usage-window').select_option('7')
     await expect(page.locator('#mode')).to_have_text('NOT CONNECTED')
@@ -196,6 +210,10 @@ async def check_usage(page, offline):
     if not offline:
         assert await page.evaluate("localStorage.getItem('pulseboard.desk.token')") is None
     await expect(page.locator('#toast')).to_contain_text('Read token rejected')
+    await page.locator('[data-view=connections]').click()
+    await expect(page.locator('#page-title')).to_have_text('Connections')
+    await expect(page.locator('#view')).not_to_contain_text('example-builder/private-401-context')
+    await expect(page.locator('#import-preview')).to_have_text('')
 
 
 async def run(args):
