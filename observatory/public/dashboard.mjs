@@ -1,4 +1,4 @@
-import { DAY, sum, count, percent, fraction, monitorState, monitorDisplay, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff } from './desk-model.mjs';
+import { DAY, sum, count, percent, fraction, monitorState, monitorDisplay, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff, releaseLabel } from './desk-model.mjs';
 import { makeDemo, makeGithubDemo, makeProductDemo, makeProductEventsDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
 import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
@@ -221,7 +221,7 @@ function projectDetail(p) {
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Started and finished'), e('p', {}, `${p.flow.numerator} of ${p.flow.denominator} groups that started something also finished it (${percent(p.flow.value)}). A group is one session on one page and version.`),
       e('p', { class: 'muted' }, 'A finish only counts when a later event matches the same session, page and version. This is not retention or a conversion funnel.')),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Events by page'), e('div', { class: 'table-shell' }, table(['Page (route)', 'Events'], p.routes.map(r => [r.route, count(r.n)])))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Finished or failed', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [r.release === 'other' ? 'other (smaller versions combined)' : r.release, count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Finished or failed', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [releaseLabel(r.release), count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
       button('Compare versions →', () => { state.releaseProject = p.id; state.baseline = ''; state.candidate = ''; $('#detail-dialog').close(); navigate('releases'); })),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Builds, deploys and releases (GitHub)'), e('div', { id: 'github-evidence', 'data-project': p.id }, githubView(p.id))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Limits of these numbers'), e('ul', {}, state.snapshot.limitations.map(text => e('li', {}, text)))));
@@ -466,7 +466,10 @@ function share(rows, key, total, heading = key[0].toUpperCase() + key.slice(1), 
   const shown = fold ? foldTop(rows) : { rows, other: null };
   const meter = (label, n) => e('div', { class: 'share-cell' }, e('meter', { class: 'share-meter', min: 0, max: Math.max(1, total), value: n, 'aria-label': `${label}: ${n} of ${total}` }),
     e('span', { class: 'share-pct' }, total > 0 ? `${Math.round(n / total * 100)}%` : '—'));
-  return e('div', { class: 'table-shell' }, table([heading, 'Counts', 'Share'], [...shown.rows.map(r => [r[key], count(r.n), meter(r[key], r.n)]),
+  return e('div', { class: 'table-shell' }, table([heading, 'Counts', 'Share'], [...shown.rows.map(r => {
+    const label = key === 'release' ? releaseLabel(r[key]) : r[key];
+    return [label, count(r.n), meter(label, r.n)];
+  }),
     ...(shown.other ? [[`All others (${count(shown.other.values)} values)`, count(shown.other.n), meter('All others', shown.other.n)]] : [])]));
 }
 function coverage() {

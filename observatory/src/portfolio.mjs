@@ -106,7 +106,8 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
       // Bounded for the Desk (q-28 lets Alibi mint labels): the folded row sums counts and never merges timings.
       const shownReleases = foldReleaseRows(releases, row => row.events, rest => ({ events: sumOf(rest, 'events'),
         completed: sumOf(rest, 'completed'), failed: sumOf(rest, 'failed'), errors: sumOf(rest, 'errors'),
-        last: Math.max(...rest.map(row => row.last)), duration: null }));
+        last: Math.max(...rest.map(row => row.last)), duration: null }))
+        .sort((a, b) => b.last - a.last || a.release.localeCompare(b.release));
       const operations = operationEvidence.filter(operation => operation.project === id).map(operation => {
         const operationReleases = foldReleaseRows(operation.rows.map(row => ({
           release: row.release,

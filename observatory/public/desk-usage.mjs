@@ -129,7 +129,10 @@ export function usageQuestions(stats, reading = usageReading(stats)) {
   if (reading.started >= 10 && reading.hintsPerStart !== null && reading.hintsPerStart > 1)
     out.push({ kind: 'question', text: `${reading.hints} hint requests against ${reading.started} starts. Is one puzzle's difficulty out of line with the rest?` });
   if (reading.errors > 0) out.push({ kind: 'question', text: `${reading.errors} app errors reported in this window. Which release carries them? Compare the release mix below.` });
-  if (stats.releases.length > 1) out.push({ kind: 'note', text: `Counts arrived under ${stats.releases.length} release labels. Check which are current: a non-current label can be a cached client or a QA count.` });
+  const shownLabels = stats.releases.filter(row => row.release !== 'other').length;
+  const combined = stats.releases.some(row => row.release === 'other');
+  if (combined) out.push({ kind: 'note', text: `Counts include ${shownLabels} individually shown release labels; additional labels are combined in other. The total number of labels is not available. A non-current label can be a cached client or a QA count.` });
+  else if (shownLabels > 1) out.push({ kind: 'note', text: `Counts arrived under ${shownLabels} release labels. Check which are current: a non-current label can be a cached client or a QA count.` });
   if (reading.views && !reading.started) out.push({ kind: 'question', text: `Pages are viewed but no ${reading.journey} was started. Is the start path obvious from the landing page?` });
   return out;
 }
