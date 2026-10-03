@@ -1,0 +1,39 @@
+name: Handoff producer
+on:
+  pull_request:
+    paths: ['observatory/public/desk-handoff*.mjs', 'observatory/public/desk-model.mjs', 'observatory/public/desk-demo.mjs', 'observatory/adapters/handoff-fixtures.mjs', 'observatory/examples/handoff-fixtures.synthetic.json', 'observatory/examples/.gitattributes', 'observatory/tests/handoff*', '.github/workflows/handoff-producer.yml']
+  push:
+    branches: [main]
+    paths: ['observatory/public/desk-handoff*.mjs', 'observatory/public/desk-model.mjs', 'observatory/public/desk-demo.mjs', 'observatory/adapters/handoff-fixtures.mjs', 'observatory/examples/handoff-fixtures.synthetic.json', 'observatory/examples/.gitattributes', 'observatory/tests/handoff*', '.github/workflows/handoff-producer.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: handoff-producer-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  producer:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify actual producer vectors and byte-preserving checkout
+        working-directory: observatory
+        run: node --test tests/handoff-fixtures.test.mjs tests/handoff.test.mjs tests/handoff-export.test.mjs
+      - name: Check native runner syntax without importing a consumer
+        run: python -c "import ast,pathlib; ast.parse(pathlib.Path('observatory/tests/handoff-native.py').read_text(encoding='utf-8'))"
+      - name: Check the checkout was not changed
+        shell: bash
+        run: test -z "$(git status --porcelain)"
