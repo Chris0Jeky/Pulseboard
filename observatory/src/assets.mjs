@@ -5,6 +5,7 @@ export const assets = new Map([
   ['/dashboard.mjs', ['dashboard.mjs', 'text/javascript; charset=utf-8']],
   ['/dashboard.css', ['dashboard.css', 'text/css; charset=utf-8']],
   ['/desk-dialog.mjs', ['desk-dialog.mjs', 'text/javascript; charset=utf-8']],
+  ['/desk-handoff-export.mjs', ['desk-handoff-export.mjs', 'text/javascript; charset=utf-8']],
   ['/desk-model.mjs', ['desk-model.mjs', 'text/javascript; charset=utf-8']],
   ['/desk-network.mjs', ['desk-network.mjs', 'text/javascript; charset=utf-8']],
   ['/desk-demo.mjs', ['desk-demo.mjs', 'text/javascript; charset=utf-8']],

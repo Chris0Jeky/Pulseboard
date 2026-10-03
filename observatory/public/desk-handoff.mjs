@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { makeHandoff } from './desk-model.mjs';
+import { handoffIdentity, makeIdentifiedHandoff as buildIdentifiedHandoff } from './desk-handoff-export.mjs';
+export { handoffIdentity };
 
 export const MAX_HANDOFF_BYTES = 256 * 1024;
 export const HANDOFF_FRESH_MS = 30 * 60000;
 const MAX_TIME = 253402300799999, DAY_MS = 86400000;
 const BASE_KEYS = ['schema', 'mode', 'generatedAt', 'stale', 'destination', 'title', 'project',
   'observation', 'evidence', 'nextCheck', 'rule', 'window', 'boundaries'];
-const ID = /^[a-z][a-z0-9-]{0,63}$/, RULE = /^[a-zA-Z0-9][a-zA-Z0-9./_-]{0,127}$/;
+const ID = /^[a-z][a-z0-9-]{0,63}$/;
 const forbiddenKeys = new Set(['__proto__', 'constructor', 'prototype']);
 const fail = field => { throw new TypeError(`Invalid handoff ${field}`); };
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -63,16 +64,6 @@ function evidenceBounds(value, depth = 0, budget = { nodes: 0 }) {
   } else fail('evidence type');
 }
 
-/** Desk-native subject identity. The short prefix is a label, not an authentication or collision guarantee. */
-export async function handoffIdentity(packet) {
-  const project = packet?.project, rule = packet?.rule;
-  if (project !== null && (typeof project !== 'string' || !ID.test(project))) fail('project');
-  exact(rule, ['id', 'version'], 'rule');
-  if (typeof rule.id !== 'string' || !RULE.test(rule.id) || typeof rule.version !== 'string' || rule.version.length > 64 || !RULE.test(rule.version)) fail('rule');
-  const signalSha256 = await hash(JSON.stringify([project, rule.id, rule.version]));
-  return { fingerprint: signalSha256.slice(0, 12), signalSha256 };
-}
-
 /** Parse only the actual producer contracts. Numeric receipt time and structured aggregate evidence stay typed. */
 export async function parseHandoff(text) {
   if (typeof text !== 'string' || text.length > MAX_HANDOFF_BYTES || new TextEncoder().encode(text).length > MAX_HANDOFF_BYTES) fail('size');
@@ -100,9 +91,7 @@ export async function parseHandoff(text) {
 
 /** Explicit v2 export; the existing makeHandoff default stays v1 during consumer migration. */
 export async function makeIdentifiedHandoff(snapshot, signal, stale = false) {
-  const packet = makeHandoff(snapshot, signal, stale);
-  const { fingerprint } = await handoffIdentity(packet);
-  return parseHandoff(JSON.stringify({ ...packet, schema: 'pulseboard.handoff/2', fingerprint }));
+  return parseHandoff(JSON.stringify(await buildIdentifiedHandoff(snapshot, signal, stale)));
 }
 
 export async function previewHandoff(text, { targetProject, now = Date.now() } = {}) {

@@ -9,7 +9,7 @@
 | Developer Lens -> Desk | Strict reader for `pulseboard.lens-projection/1` | Native Lens exporter for this new contract |
 | GitHub -> Desk | Server-side connector for a reviewed numeric-id mapping, `pulseboard.github-evidence/1`, release notebook | An owner-approved mapping (q-9: Alibi) and a server-side token |
 | Desk -> CommitAtlas / status card | Selected, expiring `pulseboard.public-pulse/1` export | Upstream renderer / consumer |
-| Desk -> Taskdeck / agent | Reviewed `pulseboard.handoff/1` JSON | Native task importer with preview, deduplication and approval |
+| Desk -> Taskdeck / agent | Reviewed v1 and explicit identified v2 JSON; review-gated local proposal receiver | Native Taskdeck/Agent-HQ integration and consumer migration |
 | Legacy feeds / OTel -> Desk | Architecture seam only | Bounded adapter implementation |
 
 These are not automatic account connections. Selecting a file does not follow its
@@ -28,8 +28,9 @@ therefore counted before anyone registers it. `observatory/src/alibi-releases.mj
 remains the known release history; `projects.mjs` sets `releasePattern` for Alibi
 only, so every other project keeps its closed list and malformed labels still
 fail closed. Because a sender can now mint distinct labels, the statistics and
-portfolio readers return at most 64 release rows: the 63 heaviest, then one `other`
-row summing the rest, with no merged timings. The Release lab never offers `other`
+portfolio readers return at most 64 release rows: the 63 heaviest, plus one `other`
+row summing the rest, with no merged timings. Portfolio rows, including that combined
+row, are ordered by latest receipt after folding; see RELEASE_FOLDING.md. The Release lab never offers `other`
 as a cohort. The generated Alibi host checker compares the app version with the
 installed artifact and prints the version, known releases and artifact hash.
 
@@ -168,3 +169,31 @@ failed (`stale`, always present). It is deliberately tool-neutral.
 Taskdeck could create a proposal card with an evidence attachment; an in-repo
 agent could first verify that the observation still holds. Neither destination
 should treat the packet as approval to edit, merge, deploy or contact users.
+
+## Identified handoffs (explicit v2 export)
+
+An alert's evidence drawer offers **Prepare identified handoff (v2)** beside the
+original v1 task handoff. The v2 path preserves all v1 fields and adds the stable
+subject fingerprint defined in [HANDOFF_RECEIVER.md](HANDOFF_RECEIVER.md). It is
+explicitly selected: the original button and synchronous `makeHandoff` remain v1
+until downstream consumers are reconciled. Do not simply change schema strings
+in a legacy consumer or treat the fingerprint as authentication.
+
+The identified file goes through the same exact-file preview and review checkbox
+as every other Desk export. Hash preparation is asynchronous: closing/replacing
+the evidence drawer, opening another dialog, or disconnecting invalidates the
+pending preparation. A late hash cannot reopen a cancelled export or revive a
+private snapshot. Source time, rule version, stale marker and synthetic mode are
+copied from the evidence drawer's captured snapshot, not from a later refresh.
+
+The complete supported local path is Desk evidence -> review exact export ->
+download -> `receive-handoff.mjs` preview -> explicit exact-file acceptance ->
+local proposed JSON. It is not native Taskdeck or Agent-HQ task creation and grants
+no execution permission. Current downstream migration limitations are documented
+in HANDOFF_RECEIVER.md; #22 remains open for native integration and reviewed updates.
+
+`tests/handoff-browser.py` exercises real HTTP assets and native WebCrypto, compares
+the downloaded bytes with the preview, then invokes the real local CLI to prove
+no-write preview, synthetic gating, exact proposed fields and duplicate import.
+It also holds native hashing to prove late-result cancellation. Its `--offline`
+mode only checks the control and legacy export, not the identified-file roundtrip.
