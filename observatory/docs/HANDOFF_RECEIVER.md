@@ -53,6 +53,12 @@ not proof of source authenticity, freshness, human approval outside this local i
 
 Repeated canonical content returns `duplicate`; new evidence for an existing subject returns
 `repeat-observation`. Both leave the original reviewed proposal untouched and name its file.
+Before classifying an existing file, the receiver validates its complete closed proposal shape,
+reconstructs the handoff, recomputes its content and subject digests, and verifies source fields,
+review flags and verification guidance. Truncated or edited records fail closed without overwrite.
+The original file bytes are not stored, so their hash is a format-checked unsigned receipt, not
+an independently revalidated claim of authenticity.
+
 They do not imply that the new evidence was attached to it. A later native integration must offer
 an explicit reviewed update, not silently replace accepted evidence.
 

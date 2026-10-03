@@ -6,7 +6,7 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { projects } from '../src/projects.mjs';
-import { previewHandoff, MAX_HANDOFF_BYTES } from '../public/desk-handoff.mjs';
+import { previewHandoff, parseReviewedProposal, MAX_HANDOFF_BYTES } from '../public/desk-handoff.mjs';
 
 const refuse = reason => { throw new Error(`Handoff receiver: ${reason}`); };
 
@@ -48,7 +48,7 @@ async function outputDirectory(path) {
 
 async function existingResult(path, proposal) {
   let existing;
-  try { existing = JSON.parse(await readBoundedFile(path, 2 * MAX_HANDOFF_BYTES)); }
+  try { existing = await parseReviewedProposal(await readBoundedFile(path, 2 * MAX_HANDOFF_BYTES)); }
   catch { refuse('existing proposal is unreadable or invalid; not overwritten'); }
   if (existing?.schema !== 'pulseboard.proposal/1' || existing.status !== 'proposed'
     || existing.targetProject !== proposal.targetProject || !Array.isArray(existing.permissions) || existing.permissions.length

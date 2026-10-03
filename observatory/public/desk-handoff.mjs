@@ -128,3 +128,29 @@ export async function previewHandoff(text, { targetProject, now = Date.now() } =
   return { schema: 'pulseboard.handoff-preview/1', reviewedFileSha256, contentSha256, source,
     reviewedAt: now, freshness, warnings, proposal };
 }
+
+/** Reconstruct and validate all retained data before treating an on-disk proposal as a reviewed repeat.
+ * The exact original file is not stored: its hash remains an unsigned receipt, checked for shape only.
+ */
+export async function parseReviewedProposal(text) {
+  if (typeof text !== 'string' || text.length > 2 * MAX_HANDOFF_BYTES || new TextEncoder().encode(text).length > 2 * MAX_HANDOFF_BYTES) fail('proposal size');
+  const stored = strictJson(text);
+  exact(stored, ['schema', 'status', 'targetProject', 'permissions', 'source', 'fields', 'verification', 'review'], 'proposal fields');
+  exact(stored.fields, ['title', 'observation', 'evidence', 'nextCheck', 'rule', 'boundaries'], 'proposal content');
+  exact(stored.source, ['schema', 'mode', 'project', 'generatedAt', 'stale', 'window', 'fingerprint', 'signalSha256', 'reviewedFileSha256', 'contentSha256'], 'proposal source');
+  exact(stored.review, ['reviewedAt', 'freshness', 'syntheticAccepted', 'staleAccepted'], 'proposal review');
+  if (typeof stored.source.reviewedFileSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(stored.source.reviewedFileSha256)) fail('proposal file receipt');
+  const source = stored.source;
+  const packet = { schema: source.schema, mode: source.mode, generatedAt: source.generatedAt, stale: source.stale,
+    destination: 'review-before-import', project: source.project, window: source.window, ...stored.fields,
+    ...(source.schema === 'pulseboard.handoff/2' ? { fingerprint: source.fingerprint } : {}) };
+  const preview = await previewHandoff(JSON.stringify(packet), { targetProject: stored.targetProject, now: stored.review.reviewedAt });
+  if (preview.freshness === 'future') fail('proposal review time');
+  const expected = { ...preview.proposal,
+    source: { ...preview.source, reviewedFileSha256: source.reviewedFileSha256 },
+    review: { reviewedAt: preview.reviewedAt, freshness: preview.freshness,
+      syntheticAccepted: source.mode === 'demo', staleAccepted: preview.freshness !== 'current' } };
+  // This compares closed shape, every source/field, canonical digest, full subject hash and fixed guidance.
+  if (canonical(stored) !== canonical(expected)) fail('proposal integrity');
+  return stored;
+}
