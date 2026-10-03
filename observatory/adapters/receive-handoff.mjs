@@ -46,7 +46,7 @@ async function outputDirectory(path) {
   } catch { refuse('an existing owner-controlled output directory is required'); }
 }
 
-async function existingResult(path, proposal) {
+async function existingResult(path, proposal, exactContent = false) {
   let existing;
   try { existing = await parseReviewedProposal(await readBoundedFile(path, 2 * MAX_HANDOFF_BYTES)); }
   catch { refuse('existing proposal is unreadable or invalid; not overwritten'); }
@@ -56,13 +56,17 @@ async function existingResult(path, proposal) {
     || existing.source?.fingerprint !== proposal.source.fingerprint || !/^[a-f0-9]{64}$/.test(existing.source?.contentSha256 || '')) {
     refuse('existing proposal identity conflicts; not overwritten');
   }
+  if (exactContent && existing.source.contentSha256 !== proposal.source.contentSha256) {
+    refuse('existing observation content conflicts; not overwritten');
+  }
   return { status: existing.source.contentSha256 === proposal.source.contentSha256 ? 'duplicate' : 'repeat-observation',
     path, unchanged: true, message: 'Existing reviewed proposal retained. Review changed evidence separately; nothing was executed.' };
 }
 
-async function publishOnce(directory, proposal) {
+async function publishOnce(directory, proposal, observation = false) {
   // Every filename component is a validated registry id, a closed mode, or a computed digest; never imported free text.
-  const path = join(directory, `pulseboard-${proposal.source.mode}-${proposal.targetProject}-${proposal.source.fingerprint}.json`);
+  const suffix = observation ? `.observation-${proposal.source.contentSha256}` : '';
+  const path = join(directory, `pulseboard-${proposal.source.mode}-${proposal.targetProject}-${proposal.source.fingerprint}${suffix}.json`);
   const temp = join(directory, `.pulseboard-${randomUUID()}.tmp`);
   let handle, ownedTemp = false;
   try {
@@ -73,10 +77,12 @@ async function publishOnce(directory, proposal) {
     await handle.close(); handle = null;
     try { await link(temp, path); }
     catch (error) {
-      if (error?.code === 'EEXIST') return await existingResult(path, proposal);
+      if (error?.code === 'EEXIST') return await existingResult(path, proposal, observation);
       refuse('atomic proposal publication unavailable; no existing proposal was replaced');
     }
-    return { status: 'created', path, unchanged: false, message: 'Local proposal created. No Taskdeck task, network request or execution was performed.' };
+    return { status: 'created', path, unchanged: false, message: observation
+      ? 'Separately reviewed observation retained as inert history. Nothing was executed.'
+      : 'Local proposal created. No Taskdeck task, network request or execution was performed.' };
   } finally {
     await handle?.close();
     if (ownedTemp) await unlink(temp).catch(error => { if (error?.code !== 'ENOENT') throw error; });
@@ -84,9 +90,9 @@ async function publishOnce(directory, proposal) {
 }
 
 export async function receiveHandoff({ input, targetProject, accept = false, reviewedSha256, outputDir,
-  allowSynthetic = false, allowStale = false, now } = {}) {
+  allowSynthetic = false, allowStale = false, retainObservation = false, now } = {}) {
   if (typeof targetProject !== 'string' || !Object.hasOwn(projects, targetProject)) refuse('target project must be a registered Pulseboard id');
-  if (![accept, allowSynthetic, allowStale].every(value => typeof value === 'boolean')) refuse('acceptance switches must be booleans');
+  if (![accept, allowSynthetic, allowStale, retainObservation].every(value => typeof value === 'boolean')) refuse('acceptance switches must be booleans');
   const text = await readBoundedFile(input);
   const preview = await previewHandoff(text, { targetProject, now: now ?? Date.now() });
   if (!accept) return { status: 'preview', preview };
@@ -98,13 +104,18 @@ export async function receiveHandoff({ input, targetProject, accept = false, rev
   const directory = await outputDirectory(outputDir);
   const proposal = { ...preview.proposal, review: { reviewedAt: preview.reviewedAt, freshness: preview.freshness,
     syntheticAccepted: preview.source.mode === 'demo' && allowSynthetic, staleAccepted: stale && allowStale } };
-  return publishOnce(directory, proposal);
+  const result = await publishOnce(directory, proposal);
+  if (!retainObservation || result.status !== 'repeat-observation') return result;
+  // The original is validated first and remains immutable. No append log or mutable index races.
+  const observation = await publishOnce(directory, proposal, true);
+  return { ...result, observation: { status: observation.status, path: observation.path, unchanged: observation.unchanged },
+    message: 'Original proposal retained. Changed evidence was separately reviewed and retained as inert history; nothing was executed.' };
 }
 
 function optionsFrom(argv) {
   const options = {}, seen = new Set();
   const values = { '--input': 'input', '--project': 'targetProject', '--output-dir': 'outputDir', '--reviewed-sha256': 'reviewedSha256' };
-  const flags = { '--accept': 'accept', '--allow-synthetic': 'allowSynthetic', '--allow-stale': 'allowStale' };
+  const flags = { '--accept': 'accept', '--allow-synthetic': 'allowSynthetic', '--allow-stale': 'allowStale', '--retain-observation': 'retainObservation' };
   for (let i = 0; i < argv.length; i++) {
     const option = argv[i];
     if (seen.has(option)) refuse('duplicate command option');
@@ -123,6 +134,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (process.argv.slice(2).join(' ') === '--help') {
     console.log('Preview: node adapters/receive-handoff.mjs --input handoff.json --project alibi\n'
       + 'Accept: add --accept --reviewed-sha256 <preview hash> --output-dir <existing directory>\n'
+      + 'Retain separately reviewed changed evidence: additionally pass --retain-observation; the original proposal stays unchanged.\n'
       + 'Synthetic/stale acceptance additionally requires --allow-synthetic / --allow-stale. Creates proposed data only.');
   } else {
     Promise.resolve().then(() => receiveHandoff(optionsFrom(process.argv.slice(2)))).then(result => {
