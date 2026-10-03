@@ -149,10 +149,21 @@ async def check_usage(page, offline):
             await page.locator('[data-view=usage]').click()
         reading = await response.value
         assert reading.status == 200
-        data = await reading.json()
+        await expect(page.get_by_role('region', name='Alibi usage summary')).to_contain_text('No counts in this window')
+        # The UI above consumes its real response through readLimitedJson. A streamed no-store
+        # body can be unavailable to CDP's Network.getResponseBody even after the UI renders it.
+        # Inspect the contract with one separate real, bounded in-page read, not a retry of
+        # reading.json(), a mocked response or a change to the collector's cache policy.
+        data = await page.evaluate('''async token => {
+          const {requestStatistics, assertStatistics, STATISTICS_MAX_BYTES} = await import('/desk-usage.mjs');
+          const {readLimitedJson} = await import('/desk-bridge.mjs');
+          const response = await requestStatistics(fetch, {project: 'alibi', token, days: 7,
+            signal: AbortSignal.timeout(10000)});
+          if (response.status !== 200) throw new Error('Real statistics contract read failed');
+          return assertStatistics(await readLimitedJson(response, STATISTICS_MAX_BYTES), 7, 'alibi');
+        }''', DESK.TOKEN)
         assert data['schema'] == 'pulseboard.statistics/4' and data['project'] == 'alibi'
         assert data['window']['days'] == 7 and data['total'] == 0
-        await expect(page.get_by_role('region', name='Alibi usage summary')).to_contain_text('No counts in this window')
         assert await page.evaluate("localStorage.getItem('pulseboard.desk.token')") == DESK.TOKEN
         await page.locator('[data-view=overview]').click()
         await page.locator('#disconnect').click()

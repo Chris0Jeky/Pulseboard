@@ -1,0 +1,91 @@
+{
+  "schema": "pulseboard.handoff-fixtures/1",
+  "synthetic": true,
+  "description": "Invented producer conformance vectors. Never treat these files as live evidence.",
+  "cases": [
+    {
+      "id": "project-1d-v1",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/1\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": false,\n  \"destination\": \"review-before-import\",\n  \"title\": \"Alibi is failing its site check\",\n  \"project\": \"alibi\",\n  \"observation\": \"The scheduled site check failed 3 times in a row (the page errored, timed out or lacked its expected content) and has not passed twice since. Other pages may still work.\",\n  \"evidence\": {\n    \"state\": \"down\",\n    \"freshness\": \"down\",\n    \"checked\": 1791028620000,\n    \"failures\": 4,\n    \"status\": 503\n  },\n  \"nextCheck\": \"Open the site yourself, then look at its latest deployment.\",\n  \"rule\": {\n    \"id\": \"monitor.down\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1790942400000,\n    \"end\": 1791028800000,\n    \"days\": 1,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ]\n}\n",
+      "fileSha256": "199c237f05da1ba761d44346912a19f6b6808dd084a098863bb90c349b64567a",
+      "fingerprint": "9764e0fa7000",
+      "signalSha256": "9764e0fa7000437b052ede9ec69c1813e9d669244e41a300e2320279bb7d1643"
+    },
+    {
+      "id": "project-1d-v2",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/2\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": false,\n  \"destination\": \"review-before-import\",\n  \"title\": \"Alibi is failing its site check\",\n  \"project\": \"alibi\",\n  \"observation\": \"The scheduled site check failed 3 times in a row (the page errored, timed out or lacked its expected content) and has not passed twice since. Other pages may still work.\",\n  \"evidence\": {\n    \"state\": \"down\",\n    \"freshness\": \"down\",\n    \"checked\": 1791028620000,\n    \"failures\": 4,\n    \"status\": 503\n  },\n  \"nextCheck\": \"Open the site yourself, then look at its latest deployment.\",\n  \"rule\": {\n    \"id\": \"monitor.down\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1790942400000,\n    \"end\": 1791028800000,\n    \"days\": 1,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ],\n  \"fingerprint\": \"9764e0fa7000\"\n}\n",
+      "fileSha256": "68dd40f8f09170ee7b9151667b79725017a494fff5e51d29a42b9ebc64ea64a7",
+      "fingerprint": "9764e0fa7000",
+      "signalSha256": "9764e0fa7000437b052ede9ec69c1813e9d669244e41a300e2320279bb7d1643"
+    },
+    {
+      "id": "portfolio-1d-v1",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/1\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": true,\n  \"destination\": \"review-before-import\",\n  \"title\": \"The latest refresh failed\",\n  \"project\": null,\n  \"observation\": \"Current readings are unknown. Everything shown comes from the last reading that worked.\",\n  \"evidence\": {\n    \"generatedAt\": 1791028800000,\n    \"lastKnown\": true\n  },\n  \"nextCheck\": \"Reconnect before trusting any number as current.\",\n  \"rule\": {\n    \"id\": \"snapshot.refresh_failed\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1790942400000,\n    \"end\": 1791028800000,\n    \"days\": 1,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ]\n}\n",
+      "fileSha256": "d29b0a0993cf79a7bf26d8efa053d1519e4d497ae8ba199fc8a45838091e78f4",
+      "fingerprint": "ce3b3513f7b5",
+      "signalSha256": "ce3b3513f7b55a69bd64c087dba9231aaf6dd98d6e3e4cbccccf389de7b1e8f2"
+    },
+    {
+      "id": "portfolio-1d-v2",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/2\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": true,\n  \"destination\": \"review-before-import\",\n  \"title\": \"The latest refresh failed\",\n  \"project\": null,\n  \"observation\": \"Current readings are unknown. Everything shown comes from the last reading that worked.\",\n  \"evidence\": {\n    \"generatedAt\": 1791028800000,\n    \"lastKnown\": true\n  },\n  \"nextCheck\": \"Reconnect before trusting any number as current.\",\n  \"rule\": {\n    \"id\": \"snapshot.refresh_failed\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1790942400000,\n    \"end\": 1791028800000,\n    \"days\": 1,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ],\n  \"fingerprint\": \"ce3b3513f7b5\"\n}\n",
+      "fileSha256": "931daa417f7c9855500a8285770a37349180e23088ab5c95872eb40c07195c82",
+      "fingerprint": "ce3b3513f7b5",
+      "signalSha256": "ce3b3513f7b55a69bd64c087dba9231aaf6dd98d6e3e4cbccccf389de7b1e8f2"
+    },
+    {
+      "id": "project-7d-v1",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/1\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": false,\n  \"destination\": \"review-before-import\",\n  \"title\": \"Alibi is failing its site check\",\n  \"project\": \"alibi\",\n  \"observation\": \"The scheduled site check failed 3 times in a row (the page errored, timed out or lacked its expected content) and has not passed twice since. Other pages may still work.\",\n  \"evidence\": {\n    \"state\": \"down\",\n    \"freshness\": \"down\",\n    \"checked\": 1791028620000,\n    \"failures\": 4,\n    \"status\": 503\n  },\n  \"nextCheck\": \"Open the site yourself, then look at its latest deployment.\",\n  \"rule\": {\n    \"id\": \"monitor.down\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1790424000000,\n    \"end\": 1791028800000,\n    \"days\": 7,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ]\n}\n",
+      "fileSha256": "9466a9e3f2be97676ea7b0f05b1505bf72093d79e9430f2efb7f0eecb907c538",
+      "fingerprint": "9764e0fa7000",
+      "signalSha256": "9764e0fa7000437b052ede9ec69c1813e9d669244e41a300e2320279bb7d1643"
+    },
+    {
+      "id": "project-7d-v2",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/2\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": false,\n  \"destination\": \"review-before-import\",\n  \"title\": \"Alibi is failing its site check\",\n  \"project\": \"alibi\",\n  \"observation\": \"The scheduled site check failed 3 times in a row (the page errored, timed out or lacked its expected content) and has not passed twice since. Other pages may still work.\",\n  \"evidence\": {\n    \"state\": \"down\",\n    \"freshness\": \"down\",\n    \"checked\": 1791028620000,\n    \"failures\": 4,\n    \"status\": 503\n  },\n  \"nextCheck\": \"Open the site yourself, then look at its latest deployment.\",\n  \"rule\": {\n    \"id\": \"monitor.down\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1790424000000,\n    \"end\": 1791028800000,\n    \"days\": 7,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ],\n  \"fingerprint\": \"9764e0fa7000\"\n}\n",
+      "fileSha256": "00c05f08a03c630a6cc640a3b0a8a8f9dd0cb2736e8c0c5d27851ee9f789505a",
+      "fingerprint": "9764e0fa7000",
+      "signalSha256": "9764e0fa7000437b052ede9ec69c1813e9d669244e41a300e2320279bb7d1643"
+    },
+    {
+      "id": "portfolio-7d-v1",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/1\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": true,\n  \"destination\": \"review-before-import\",\n  \"title\": \"The latest refresh failed\",\n  \"project\": null,\n  \"observation\": \"Current readings are unknown. Everything shown comes from the last reading that worked.\",\n  \"evidence\": {\n    \"generatedAt\": 1791028800000,\n    \"lastKnown\": true\n  },\n  \"nextCheck\": \"Reconnect before trusting any number as current.\",\n  \"rule\": {\n    \"id\": \"snapshot.refresh_failed\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1790424000000,\n    \"end\": 1791028800000,\n    \"days\": 7,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ]\n}\n",
+      "fileSha256": "4fbd96eb6706cd39c965013f785aad640bc92945a85442969ab8942045452c09",
+      "fingerprint": "ce3b3513f7b5",
+      "signalSha256": "ce3b3513f7b55a69bd64c087dba9231aaf6dd98d6e3e4cbccccf389de7b1e8f2"
+    },
+    {
+      "id": "portfolio-7d-v2",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/2\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": true,\n  \"destination\": \"review-before-import\",\n  \"title\": \"The latest refresh failed\",\n  \"project\": null,\n  \"observation\": \"Current readings are unknown. Everything shown comes from the last reading that worked.\",\n  \"evidence\": {\n    \"generatedAt\": 1791028800000,\n    \"lastKnown\": true\n  },\n  \"nextCheck\": \"Reconnect before trusting any number as current.\",\n  \"rule\": {\n    \"id\": \"snapshot.refresh_failed\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1790424000000,\n    \"end\": 1791028800000,\n    \"days\": 7,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ],\n  \"fingerprint\": \"ce3b3513f7b5\"\n}\n",
+      "fileSha256": "1c3447bde1d545b731b6edf79063ad64ffb6e0710888ee44cee3595e16798610",
+      "fingerprint": "ce3b3513f7b5",
+      "signalSha256": "ce3b3513f7b55a69bd64c087dba9231aaf6dd98d6e3e4cbccccf389de7b1e8f2"
+    },
+    {
+      "id": "project-14d-v1",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/1\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": false,\n  \"destination\": \"review-before-import\",\n  \"title\": \"Alibi is failing its site check\",\n  \"project\": \"alibi\",\n  \"observation\": \"The scheduled site check failed 3 times in a row (the page errored, timed out or lacked its expected content) and has not passed twice since. Other pages may still work.\",\n  \"evidence\": {\n    \"state\": \"down\",\n    \"freshness\": \"down\",\n    \"checked\": 1791028620000,\n    \"failures\": 4,\n    \"status\": 503\n  },\n  \"nextCheck\": \"Open the site yourself, then look at its latest deployment.\",\n  \"rule\": {\n    \"id\": \"monitor.down\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1789819200000,\n    \"end\": 1791028800000,\n    \"days\": 14,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ]\n}\n",
+      "fileSha256": "939b319e5f541ff70cd3cd8023fb16dcfa0b80d61c92bda6105bc27cd1d19eca",
+      "fingerprint": "9764e0fa7000",
+      "signalSha256": "9764e0fa7000437b052ede9ec69c1813e9d669244e41a300e2320279bb7d1643"
+    },
+    {
+      "id": "project-14d-v2",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/2\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": false,\n  \"destination\": \"review-before-import\",\n  \"title\": \"Alibi is failing its site check\",\n  \"project\": \"alibi\",\n  \"observation\": \"The scheduled site check failed 3 times in a row (the page errored, timed out or lacked its expected content) and has not passed twice since. Other pages may still work.\",\n  \"evidence\": {\n    \"state\": \"down\",\n    \"freshness\": \"down\",\n    \"checked\": 1791028620000,\n    \"failures\": 4,\n    \"status\": 503\n  },\n  \"nextCheck\": \"Open the site yourself, then look at its latest deployment.\",\n  \"rule\": {\n    \"id\": \"monitor.down\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1789819200000,\n    \"end\": 1791028800000,\n    \"days\": 14,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ],\n  \"fingerprint\": \"9764e0fa7000\"\n}\n",
+      "fileSha256": "11c5ef1c84a099617e634dfa9c19cdd3d7c13491f80c0c89c41dfae34347f71e",
+      "fingerprint": "9764e0fa7000",
+      "signalSha256": "9764e0fa7000437b052ede9ec69c1813e9d669244e41a300e2320279bb7d1643"
+    },
+    {
+      "id": "portfolio-14d-v1",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/1\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": true,\n  \"destination\": \"review-before-import\",\n  \"title\": \"The latest refresh failed\",\n  \"project\": null,\n  \"observation\": \"Current readings are unknown. Everything shown comes from the last reading that worked.\",\n  \"evidence\": {\n    \"generatedAt\": 1791028800000,\n    \"lastKnown\": true\n  },\n  \"nextCheck\": \"Reconnect before trusting any number as current.\",\n  \"rule\": {\n    \"id\": \"snapshot.refresh_failed\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1789819200000,\n    \"end\": 1791028800000,\n    \"days\": 14,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ]\n}\n",
+      "fileSha256": "87e4010942e2ee3cab2870359460b52abda5d43053b18d78f9a78157d5ae77d6",
+      "fingerprint": "ce3b3513f7b5",
+      "signalSha256": "ce3b3513f7b55a69bd64c087dba9231aaf6dd98d6e3e4cbccccf389de7b1e8f2"
+    },
+    {
+      "id": "portfolio-14d-v2",
+      "text": "{\n  \"schema\": \"pulseboard.handoff/2\",\n  \"mode\": \"demo\",\n  \"generatedAt\": 1791028800000,\n  \"stale\": true,\n  \"destination\": \"review-before-import\",\n  \"title\": \"The latest refresh failed\",\n  \"project\": null,\n  \"observation\": \"Current readings are unknown. Everything shown comes from the last reading that worked.\",\n  \"evidence\": {\n    \"generatedAt\": 1791028800000,\n    \"lastKnown\": true\n  },\n  \"nextCheck\": \"Reconnect before trusting any number as current.\",\n  \"rule\": {\n    \"id\": \"snapshot.refresh_failed\",\n    \"version\": \"desk-rules/1\"\n  },\n  \"window\": {\n    \"start\": 1789819200000,\n    \"end\": 1791028800000,\n    \"days\": 14,\n    \"timezone\": \"UTC\"\n  },\n  \"boundaries\": [\n    \"No automatic task creation or execution.\",\n    \"Contains aggregates, not event rows.\",\n    \"Review before sharing.\"\n  ],\n  \"fingerprint\": \"ce3b3513f7b5\"\n}\n",
+      "fileSha256": "1fb530fa415d535efb475e95efd05426faaa782ce1e3325cff7e59e6c96e8ad8",
+      "fingerprint": "ce3b3513f7b5",
+      "signalSha256": "ce3b3513f7b55a69bd64c087dba9231aaf6dd98d6e3e4cbccccf389de7b1e8f2"
+    }
+  ]
+}
