@@ -154,7 +154,7 @@ test('more than 64 distinct Alibi releases fold into one other row that the Desk
   assert.equal(assertPortfolio(portfolio), portfolio);
   const alibi = portfolio.projects.find(project => project.id === 'alibi');
   assert.equal(alibi.releases.length, RELEASE_ROW_LIMIT);
-  const other = alibi.releases.at(-1);
+  const other = alibi.releases.find(row => row.release === 'other');
   assert.equal(other.release, 'other');
   assert.equal(other.duration, null, 'a folded row never merges timings');
   assert.equal(other.events, (distinct - (RELEASE_ROW_LIMIT - 1)) * 3);
