@@ -38,6 +38,8 @@ export function watchBanner({ token, supplied, enabled }) {
     supplied ? 'Watch read token: using WATCH_READ_TOKEN; it is not printed here.'
       : 'Watch read token (generated for this run; not persisted): ' + token,
     'Security receipt ingestion is ' + (enabled ? 'enabled.' : 'disabled.'),
+    ...(supplied && token.length < 32
+      ? ['WATCH_READ_TOKEN is shorter than 32 characters; every authenticated Watch read will be refused with 401.'] : []),
   ];
 }
 
