@@ -148,12 +148,12 @@ def run(args):
     assert hashlib.sha256(raw_corpus).hexdigest() == CORPUS_HASH, 'Conformance corpus bytes changed; review the compatibility baseline'
     corpus = json.loads(raw_corpus)
     assert corpus['synthetic'] is True and len(corpus['cases']) == 12
-    intake = load_module(consumer / 'scripts/intake.py', 'pulseboard_native_intake_proof')
     # Fail on accidental probe execution or egress. Git revision reads happened before installing this hook.
     def no_external_actions(event, _args):
         if event in ('subprocess.Popen', 'os.system', 'os.posix_spawn', 'socket.connect', 'socket.bind'):
             raise AssertionError('Native conformance attempted an external action: ' + event)
     sys.addaudithook(no_external_actions)
+    intake = load_module(consumer / 'scripts/intake.py', 'pulseboard_native_intake_proof')
     results = {**check_wire(intake.native, corpus), **check_intake(intake, corpus)}
     receipt = {'schema': 'pulseboard.native-conformance/1', 'result': 'passed',
                'producerRevision': producer_sha, 'consumerRevision': args.consumer_sha,
