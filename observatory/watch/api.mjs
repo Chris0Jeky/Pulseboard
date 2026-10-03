@@ -21,7 +21,9 @@ export async function handleWatch(request, env, now = Date.now()) {
     const match = /^\/v1\/watch\/events\/([a-z][a-z0-9-]{0,47})$/.exec(url.pathname);
     if (!match) return json({ error: 'not_found' }, 404);
     const source = sourcesFrom(env).find(s => s.id === match[1]);
-    if (!source || !await authorized(request, source.token)) return json({ error: 'unauthorized' }, 401);
+    // Unknown ids take the same bounded hash path. This public fallback never admits an unknown source.
+    const permitted = await authorized(request, source?.token ?? 'watch-unregistered-source-placeholder');
+    if (!source || !permitted) return json({ error: 'unauthorized' }, 401);
     if (request.method !== 'POST') return json({ error: 'method' }, 405, { Allow: 'POST' });
     if (url.search || request.headers.has('origin')) return json({ error: 'server_only' }, 403);
     if (env.WATCH_ENABLED !== 'true' || !source.enabled) return json({ error: 'disabled' }, 503);
@@ -41,7 +43,12 @@ export function withWatch(base) {
     async fetch(request, env, ctx) { return await handleWatch(request, env) ?? base.fetch(request, env, ctx); },
     async scheduled(controller, env, ctx, ...args) {
       // Retention does not depend on the collection switch; disabling ingestion must not retain old data forever.
-      try { await maintain(env.DB); } catch { console.error('Watch retention unavailable. Check the migration and protected Watch readiness endpoint.'); }
+      try {
+        // Core-only installs are valid. Partial installs or configured Watch still need an actionable warning.
+        const installed = env.WATCH_ENABLED === 'true' || sourcesFrom(env).length > 0
+          || await env.DB.prepare("SELECT name FROM sqlite_master WHERE name IN ('watch_schema','watch_events','watch_budget','watch_sensors') LIMIT 1").first();
+        if (installed) await maintain(env.DB);
+      } catch { console.error('Watch retention unavailable. Check the migration and protected Watch readiness endpoint.'); }
       return base.scheduled(controller, env, ctx, ...args);
     },
   };
