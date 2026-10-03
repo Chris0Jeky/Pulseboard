@@ -1,4 +1,5 @@
 import { DAY, sum, count, percent, fraction, monitorState, monitorDisplay, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff, releaseLabel } from './desk-model.mjs';
+import { makeIdentifiedHandoff } from './desk-handoff-export.mjs';
 import { makeDemo, makeGithubDemo, makeProductDemo, makeProductEventsDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
 import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
@@ -141,7 +142,21 @@ function signalCard(signal, compact = false) {
       status === 'open' ? button('Snooze 1h', () => review(signal, 'snoozed')) : null));
 }
 function signalDetail(signal) {
-  const evidenceSnapshot = state.snapshot, evidenceStale = state.stale;
+  const evidenceSnapshot = state.snapshot, evidenceStale = state.stale, evidenceEpoch = state.epoch;
+  const current = () => state.epoch === evidenceEpoch && identified.isConnected && $('#detail-dialog').open
+    && document.querySelectorAll('dialog[open]').length === 1;
+  const identified = button('Prepare identified handoff (v2)', async () => {
+    identified.disabled = true;
+    try {
+      const packet = await makeIdentifiedHandoff(evidenceSnapshot, signal, evidenceStale);
+      // Hashing is asynchronous. Closing/replacing the drawer or disconnecting invalidates this preparation.
+      if (!current()) return;
+      $('#detail-dialog').close();
+      preview(JSON.stringify(packet, null, 2), `pulseboard-${packet.mode}-handoff-v2.json`, 'application/json');
+    } catch {
+      if (current()) notify('Could not prepare the identified handoff. The original v1 export remains available.');
+    } finally { identified.disabled = false; }
+  });
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, signal.title), e('p', { class: 'muted' }, signal.detail),
     e('div', { class: 'subline' }, `${signal.severity.toUpperCase()} / ${signal.rule} / ${signal.version}`),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'The evidence'), e('pre', { class: 'code-evidence', tabindex: '0' }, JSON.stringify(signal.evidence, null, 2))),
@@ -149,7 +164,8 @@ function signalDetail(signal) {
       button('Prepare a task handoff ↗', () => {
         $('#detail-dialog').close();
         preview(JSON.stringify(makeHandoff(evidenceSnapshot, signal, evidenceStale), null, 2), `pulseboard-${evidenceSnapshot.mode}-handoff.json`, 'application/json');
-      }, 'primary')),
+      }, 'primary'), identified,
+      e('p', { class: 'tiny muted' }, 'V2 adds a stable observation identity for compatible receivers. The original task handoff remains v1. Neither file grants execution permission.')),
     e('p', { class: 'tiny muted' }, 'Rules are deterministic. A signal is an observation to inspect, not a diagnosis, productivity score, or instruction to deploy.'));
   showDialog('#detail-dialog');
 }
