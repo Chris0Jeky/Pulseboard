@@ -32,8 +32,15 @@ export function monitorDisplay(project, now, refreshFailed = false) {
   }
   return { state: freshness, freshness, lastKnown: false };
 }
+/** `other` is a combined bucket, never one version or a valid comparison cohort. */
+export const releaseLabel = release => release === 'other' ? 'other (smaller versions combined)' : release;
+/** Absence is not zero when low-volume release detail has been folded away. */
+export function unattributedEvents(releases) {
+  const exact = releases.find(row => row.release === 'unattributed');
+  return exact ? exact.events : releases.some(row => row.release === 'other') ? null : 0;
+}
 export function compareReleases(baseline, candidate) {
-  if (!baseline || !candidate || baseline.release === candidate.release || [baseline.release, candidate.release].includes('unattributed')) {
+  if (!baseline || !candidate || baseline.release === candidate.release || [baseline.release, candidate.release].some(release => ['unattributed', 'other'].includes(release))) {
     return { supported: false, reason: 'Choose two different, attributed release cohorts.', delta: null };
   }
   const a = fraction(baseline.failed, baseline.completed + baseline.failed);
@@ -122,8 +129,12 @@ export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) 
           'Try it yourself, compare versions on the Releases page, and check where the site reports failures.');
       }
     }
-    const unattributed = p.releases.find(r => r.release === 'unattributed')?.events || 0;
-    if (p.totals.events > 0 && unattributed / p.totals.events >= 0.5) add(p, 'release.unattributed', 'note', `${p.label} events are missing version labels`,
+    const unattributed = unattributedEvents(p.releases);
+    if (unattributed === null) add(p, 'release.attribution_unknown', 'note', `${p.label}: some version detail is combined`,
+      'Smaller release rows are combined. The exact number of events without a version label is not available in this window.',
+      { unattributed: null, foldedEvents: p.releases.find(row => row.release === 'other').events, total: p.totals.events },
+      'Try a shorter window to inspect individual labels. Do not treat missing attribution detail as zero.');
+    if (unattributed !== null && p.totals.events > 0 && unattributed / p.totals.events >= 0.5) add(p, 'release.unattributed', 'note', `${p.label} events are missing version labels`,
       'At least half of its events do not say which version of the site sent them, so Releases cannot compare them.', { unattributed, total: p.totals.events },
       'Register the version name in the collector and in the site’s Pulseboard setup.');
   }
