@@ -1,0 +1,2 @@
+# Exact conformance bytes must survive Windows checkout.
+handoff-fixtures.synthetic.json -text

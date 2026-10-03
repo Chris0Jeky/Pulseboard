@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, rm, unlink } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { buildHandoffFixtures } from '../adapters/handoff-fixtures.mjs';
 
@@ -40,4 +43,21 @@ test('committed fixture bytes are reproduced deterministically, without wall-clo
   const second = JSON.stringify(await buildHandoffFixtures(), null, 2) + '\n';
   assert.equal(first, second);
   assert.equal(await readFile(new URL('../examples/handoff-fixtures.synthetic.json', import.meta.url), 'utf8'), first);
+});
+
+test('the corpus keeps identical bytes in a CRLF-configured fresh checkout', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'handoff-corpus-checkout-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const bytes = await readFile(new URL('../examples/handoff-fixtures.synthetic.json', import.meta.url));
+  const attributes = await readFile(new URL('../examples/.gitattributes', import.meta.url));
+  await writeFile(join(directory, 'handoff-fixtures.synthetic.json'), bytes);
+  await writeFile(join(directory, '.gitattributes'), attributes);
+  const git = (...args) => execFileSync('git', ['-c', 'core.autocrlf=true', '-c', 'core.safecrlf=false',
+    '-c', 'core.hooksPath=' + join(directory, 'no-hooks'), '-c', 'commit.gpgsign=false',
+    '-c', 'user.name=Fixture test', '-c', 'user.email=fixture@invalid.test', ...args],
+    { cwd: directory, stdio: 'pipe' });
+  git('init'); git('add', '.'); git('commit', '-m', 'Synthetic corpus');
+  await unlink(join(directory, 'handoff-fixtures.synthetic.json'));
+  git('checkout', '--', 'handoff-fixtures.synthetic.json');
+  assert.deepEqual(await readFile(join(directory, 'handoff-fixtures.synthetic.json')), bytes);
 });

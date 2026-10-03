@@ -23,6 +23,8 @@ file, so fixture drift cannot pass merely because both an input and its expected
 hash were edited together. Consumers should copy the whole corpus byte-for-byte,
 record the producer commit and corpus SHA-256, then verify their parser against
 each exact `text` string. Never build a separate guessed schema fixture instead.
+The per-file Git attribute disables line-ending conversion; a fresh-checkout
+regression verifies exact bytes even with `core.autocrlf=true`.
 
 These are positive conformance vectors, not a complete security test suite.
 Consumers still need their own duplicate-key, size/depth, malformed-number,
