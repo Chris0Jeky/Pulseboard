@@ -19,10 +19,11 @@ TOKEN = os.environ.get('READ_TOKEN', 'desk-browser-test-only-' + '0' * 40)
 
 def offline_html():
     html = (PUBLIC / 'index.html').read_text()
-    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-model.mjs', 'desk-product.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-network.mjs', 'desk-release.mjs', 'desk-usage.mjs',
+    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-dialog.mjs', 'desk-model.mjs', 'desk-product.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-network.mjs', 'desk-release.mjs', 'desk-usage.mjs',
                                                       'desk-voices.mjs', 'products/alibi.mjs', 'products/index.mjs', 'dashboard.mjs'])
     source = re.sub(r'^import .*?;\n', '', source, flags=re.M)
     source = re.sub(r'\bexport (?=(?:async )?(?:const|function|class))', '', source)
+    html = html.replace('<script type="module" src="/desk-dialog.mjs"></script>', '')
     html = html.replace('<link rel="stylesheet" href="/dashboard.css">', '<style>' + (PUBLIC / 'dashboard.css').read_text() + '</style>')
     html = re.sub(r'<link rel="icon"[^>]+>', '', html)
     html = html.replace('<img src="/mark.svg" width="34" height="34" alt="">', (PUBLIC / 'mark.svg').read_text().replace('<svg ', '<svg width="34" height="34" '))
