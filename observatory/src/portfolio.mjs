@@ -13,6 +13,7 @@ const LIMITATIONS = [
   'Action outcomes count events. Retries and repeated attempts are not deduplicated operations.',
   'Paired flows match session, route and release, in sequence. They are not named-action funnels.',
   'Named operations pair a registered start with the first registered terminal event before the next start. Open attempts may mean abandonment, withdrawal, outage or lost delivery.',
+  'Named-operation retries are starts after a failed or open attempt in the same session, route, release and window. They are retry candidates, not proof of retrying the same puzzle; starts after success are not retries.',
   'Probe success describes scheduled samples, not time-weighted uptime or a service-level objective.',
   'Release cohorts are descriptive and may differ in users, routes and exposure.',
   'No acquisition attribution, retention cohorts, production tracing or automatic remediation is inferred.',
@@ -26,14 +27,15 @@ export function limitations(projects = registry) {
 function operationDefinitions(projects) {
   return Object.entries(projects).flatMap(([project, config]) => (config.operations || []).map(operation => ({ project, ...operation })));
 }
+// Each failed/open start with a following start contributes one retry candidate.
+// Counting its successor this way avoids treating a new puzzle after success as a retry.
 function operationQuery(db, operation, start, end) {
   return db.prepare(`WITH starts AS (
     SELECT project,session,route,release,seq,
-      ROW_NUMBER() OVER (PARTITION BY project,session,route,release ORDER BY seq) AS ordinal,
       LEAD(seq) OVER (PARTITION BY project,session,route,release ORDER BY seq) AS next_seq
     FROM events WHERE project=? AND received>=? AND received<? AND event=?
   ), resolved AS (
-    SELECT release,ordinal,(
+    SELECT release,next_seq,(
       SELECT b.event FROM events b
       WHERE b.project=s.project AND b.session=s.session AND b.route=s.route AND b.release=s.release
       AND b.event IN (?,?) AND b.seq>s.seq AND (s.next_seq IS NULL OR b.seq<s.next_seq)
@@ -43,10 +45,10 @@ function operationQuery(db, operation, start, end) {
     SUM(CASE WHEN terminal=? THEN 1 ELSE 0 END) AS completed,
     SUM(CASE WHEN terminal=? THEN 1 ELSE 0 END) AS failed,
     SUM(CASE WHEN terminal IS NULL THEN 1 ELSE 0 END) AS open,
-    SUM(CASE WHEN ordinal>1 THEN 1 ELSE 0 END) AS retries
+    SUM(CASE WHEN next_seq IS NOT NULL AND (terminal IS NULL OR terminal=?) THEN 1 ELSE 0 END) AS retries
     FROM resolved GROUP BY release ORDER BY release`)
     .bind(operation.project, start, end, operation.started, operation.completed, operation.failed,
-      start, end, operation.completed, operation.failed);
+      start, end, operation.completed, operation.failed, operation.failed);
 }
 export async function readPortfolio(db, { days = 7, now = Date.now(), collectionEnabled = false, admittedProjects = [], projects = registry } = {}) {
   if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days || !Array.isArray(admittedProjects) || admittedProjects.some(id => typeof id !== 'string')) throw new RangeError('Unsupported window or admission');
