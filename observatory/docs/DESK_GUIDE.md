@@ -153,4 +153,13 @@ No hosted D1 deployment or production traffic is certified by the local tests.
 Imports are manually reviewed, unverified files held in one tab. Project identities
 from imported catalogues are not silently fuzzy-matched to telemetry projects.
 There is no cross-tab incident sync, automatic retry backoff escalation, persistent
-snapshot history, live trace viewer or named-action funnel in this version.
+snapshot history or live trace viewer in this version. The registered `puzzle.solve`
+operation is a bounded named-operation measure, separate from generic paired flow.
+Its retry count means a start after a failed or unfinished attempt in the same
+session, route, release and window, not any later puzzle after success and not proof
+that the same puzzle was retried. Open attempts and unmatched terminals are missing
+evidence, not verified failures or successes; #73 tracks remaining host qualification
+and explicit orphan-terminal reporting.
+
+See [Named-operation measurement notes](NAMED_OPERATIONS.md) for the contract and
+historical retry-count comparability limits.
