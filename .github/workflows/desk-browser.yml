@@ -47,4 +47,6 @@ jobs:
           ../.browser-venv/bin/python tests/alibi-journey-browser.py
       - name: Prove generated SDK pagehide delivery in Chromium
         working-directory: observatory
-        run: ../.browser-venv/bin/python tests/sdk-keepalive-browser.py
+        run: |
+          ../.browser-venv/bin/python tests/keepalive-http-test.py
+          ../.browser-venv/bin/python tests/sdk-keepalive-browser.py
