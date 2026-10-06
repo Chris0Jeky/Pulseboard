@@ -21,25 +21,40 @@ class DataHub:
 
     Maintains:
     - Latest event from each feed
-    - Recent history window for each feed
+    - Recent history window and event-count ceiling for each feed
     - WebSocket connections grouped by dashboard ID
     - Mapping of which feeds are used by which dashboards
     """
 
-    def __init__(self, history_window: timedelta = timedelta(minutes=10)):
+    def __init__(
+        self,
+        history_window: timedelta = timedelta(minutes=10),
+        *,
+        history_limit: int = 10_000,
+    ):
         """
         Initialize DataHub.
 
         Args:
             history_window: How long to keep event history
+            history_limit: Maximum retained events per feed; oldest events are evicted.
+                This bounds event count, not payload bytes or the total number of feeds.
         """
+        if (
+            isinstance(history_limit, bool)
+            or not isinstance(history_limit, int)
+            or history_limit < 1
+        ):
+            raise ValueError("history_limit must be a positive integer")
         self.history_window = history_window
 
         # Latest event per feed
         self.latest: Dict[UUID, FeedEvent] = {}
 
-        # Recent history per feed (time-windowed)
-        self.history: Dict[UUID, Deque[FeedEvent]] = defaultdict(deque)
+        # Bound high-rate publishers even when every event is still inside the time window.
+        self.history: Dict[UUID, Deque[FeedEvent]] = defaultdict(
+            lambda: deque(maxlen=history_limit)
+        )
 
         # WebSocket connections grouped by dashboard ID
         self.connections: Dict[UUID, List[WebSocket]] = defaultdict(list)
@@ -174,7 +189,7 @@ class DataHub:
 
         Args:
             websocket: WebSocket connection
-            feed_ids: Feed IDs to send state for
+            feed_ids: Set of feed IDs to send state for
         """
         for feed_id in feed_ids:
             if feed_id in self.latest:
