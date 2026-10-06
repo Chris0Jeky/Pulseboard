@@ -28,8 +28,13 @@ def _feed_manager(request: Request) -> FeedManager | None:
     return getattr(request.app.state, "feed_manager", None)
 
 
-def _validate_interval_sec(config: dict) -> None:
-    """Reject out-of-range or non-numeric interval_sec values."""
+def _validate_config(config: object) -> None:
+    """Require an object before validating optional feed settings."""
+    if not isinstance(config, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="config_json must be a JSON object",
+        )
     if "interval_sec" not in config:
         return
     value = config["interval_sec"]
@@ -101,8 +106,7 @@ async def create_feed(
             detail="Invalid JSON in config_json",
         ) from exc
 
-    if isinstance(parsed_config, dict):
-        _validate_interval_sec(parsed_config)
+    _validate_config(parsed_config)
 
     db_feed = FeedDefinition.model_validate(feed)
     session.add(db_feed)
@@ -156,8 +160,8 @@ async def update_feed(
                 detail="Invalid JSON in config_json",
             ) from exc
 
-    if "config_json" in update_data and isinstance(parsed_update_config, dict):
-        _validate_interval_sec(parsed_update_config)
+    if "config_json" in update_data:
+        _validate_config(parsed_update_config)
 
     for field, value in update_data.items():
         setattr(feed, field, value)
