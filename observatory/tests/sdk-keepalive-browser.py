@@ -1,7 +1,7 @@
 """Real-browser proof that a queued SDK event survives navigation via fetch keepalive.
 
 Compare Playwright interception with two actual loopback HTTPS origins, with both
-cold and cached CORS preflights. No production endpoint or stored telemetry is touched.
+max-age 0 and 600. A separate control tests default-vs-no-store cache behavior. No production endpoint or stored telemetry is touched.
 """
 
 import argparse
@@ -47,7 +47,7 @@ process.stdout.write(buildEmbed('mdviewer', {
 
 def events(receipts: list[dict]) -> list[dict]:
     result = []
-    for receipt in receipts:
+    for receipt in list(receipts):
         result.extend(json.loads(receipt["body"])["events"])
     return result
 
@@ -55,7 +55,7 @@ def events(receipts: list[dict]) -> list[dict]:
 async def wait_for_event(receipts: list[dict], name: str, timeout: float = 5.0) -> dict:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        for receipt in receipts:
+        for receipt in list(receipts):
             for event in json.loads(receipt["body"])["events"]:
                 if event["event"] == name:
                     return receipt
@@ -80,9 +80,9 @@ async def exercise(transport, chromium=None, fixture=None) -> None:
             'resourceType': request.resource_type,
             **({'failure': str(request.failure)[:160]} if kind == 'failed' else {}),
         })
-    page_errors: list[str] = []
-    console_messages: list[dict] = []
-    requests: list[dict] = []
+    page_errors = deque(maxlen=64)
+    console_messages = deque(maxlen=64)
+    requests = deque(maxlen=64)
 
     async with async_playwright() as playwright:
         # The production SDK deliberately stays inert when navigator.webdriver is true.
@@ -144,6 +144,7 @@ async def exercise(transport, chromium=None, fixture=None) -> None:
                 }
                 request = route.request
                 if request.method == "OPTIONS":
+                    NETWORK_TRACE.append({'kind': 'intercepted-preflight', 'method': 'OPTIONS', 'url': safe_url(request.url)})
                     await route.fulfill(
                         status=204,
                         headers={
@@ -175,7 +176,7 @@ async def exercise(transport, chromium=None, fixture=None) -> None:
             page = await context.new_page()
             page.on("pageerror", lambda error: page_errors.append(str(error)))
             page.on("console", lambda message: console_messages.append({"type": message.type, "text": message.text}))
-            page.on("request", lambda request: requests.append({"url": request.url, "resourceType": request.resource_type}))
+            page.on("request", lambda request: requests.append({"url": safe_url(request.url), "resourceType": request.resource_type}))
             await page.goto(f"{source_origin}/", wait_until="load")
             await page.wait_for_timeout(250)
             diagnostics = await page.evaluate(
@@ -191,7 +192,7 @@ async def exercise(transport, chromium=None, fixture=None) -> None:
                   bodyText: document.body?.innerText || '',
                 })"""
             )
-            diagnostics.update({"pageErrors": page_errors, "console": console_messages, "requests": requests})
+            diagnostics.update({"pageErrors": list(page_errors), "console": list(console_messages), "requests": list(requests)})
             assert diagnostics["webdriver"] is False, diagnostics
             sharing_panel = page.locator("#pulseboard-usage-sharing")
             if await sharing_panel.count() == 0:
@@ -223,9 +224,10 @@ async def exercise(transport, chromium=None, fixture=None) -> None:
             preflights = None
             if fixture:
                 preflights = sum(item['method'] == 'OPTIONS' for item in fixture.trace)
-                # A cache-free collector needs a fresh preflight on the pagehide POST;
-                # a warmed cache reuses the initial admission preflight.
-                assert preflights == (2 if fixture.max_age == 0 else 1), list(fixture.trace)
+                # The SDK uses cache:no-store. Chromium bypasses its preflight cache
+                # even when the server advertises max-age 600. Do not change the SDK
+                # to manufacture a cached path; the independent control below proves it.
+                assert preflights == 2, list(fixture.trace)
 
             print(
                 json.dumps(
@@ -233,6 +235,7 @@ async def exercise(transport, chromium=None, fixture=None) -> None:
                         "passed": True,
                         "transport": transport,
                         "actualSocketPreflights": preflights,
+                        "sdkCacheMode": "no-store",
                         "networkTrace": list(NETWORK_TRACE),
                         "navigation": page.url,
                         "delivered": [event["event"] for event in submitted],
@@ -247,11 +250,46 @@ async def exercise(transport, chromium=None, fixture=None) -> None:
             await browser.close()
 
 
+async def cache_control(chromium=None):
+    """Positive cache control, NOT an SDK modification or a navigation delivery proof."""
+    NETWORK_TRACE.clear()
+    with HttpsFixture(max_age=600) as fixture:
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                headless=True, **({"executable_path": chromium} if chromium else {}),
+            )
+            try:
+                context = await browser.new_context(ignore_https_errors=True)
+                page = await context.new_page()
+                await page.goto(fixture.source_origin, wait_until='load')
+                observed = []
+                for cache, expected in [('default', 1), ('default', 1), ('no-store', 2), ('no-store', 3)]:
+                    result = await page.evaluate("""async ({endpoint, cache}) => {
+                        const response = await fetch(endpoint, {
+                            method: 'POST', credentials: 'omit', referrerPolicy: 'no-referrer',
+                            cache, headers: {'Content-Type': 'application/json'}, body: '{"events":[]}',
+                            signal: AbortSignal.timeout(5000),
+                        });
+                        await response.text();
+                        return response.status;
+                    }""", {'endpoint': fixture.collector_origin + '/v1/collect/mdviewer', 'cache': cache})
+                    assert result == 202, result
+                    count = sum(item['method'] == 'OPTIONS' for item in fixture.trace)
+                    observed.append({'cache': cache, 'preflights': count})
+                    assert count == expected, {'observed': observed, 'collectorTrace': list(fixture.trace)}
+                assert len(fixture.receipts) == 4, len(fixture.receipts)
+                print(json.dumps({'passed': True, 'transport': 'cache-control', 'observations': observed}))
+            finally:
+                await browser.close()
+
+
 async def run(args):
-    transports = ['intercepted', 'http-cold', 'http-cached'] if args.transport == 'all' else [args.transport]
+    transports = ['intercepted', 'http-cold', 'http-max-age-600', 'cache-control'] if args.transport == 'all' else [args.transport]
     for transport in transports:
         try:
-            if transport == 'intercepted':
+            if transport == 'cache-control':
+                await cache_control(args.chromium)
+            elif transport == 'intercepted':
                 await exercise(transport, args.chromium)
             else:
                 with HttpsFixture(max_age=0 if transport == 'http-cold' else 600) as fixture:
@@ -267,6 +305,6 @@ async def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--transport', choices=['all', 'intercepted', 'http-cold', 'http-cached'], default='all')
+    parser.add_argument('--transport', choices=['all', 'intercepted', 'http-cold', 'http-max-age-600', 'cache-control'], default='all')
     parser.add_argument('--chromium', help='Optional existing Chromium executable for local testing')
     asyncio.run(run(parser.parse_args()))
