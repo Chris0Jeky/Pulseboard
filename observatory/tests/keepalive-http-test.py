@@ -1,8 +1,11 @@
 """Contract tests for the isolated HTTPS receipt fixture, never production endpoints."""
 import json
+import io
+import threading
+from contextlib import redirect_stderr
 import ssl
 import unittest
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from keepalive_http import HttpsFixture, safe_url
@@ -12,6 +15,47 @@ class FixtureTests(unittest.TestCase):
     def test_diagnostic_urls_drop_credentials_query_and_fragment(self):
         self.assertEqual(safe_url('https://user:secret@example.test/path?token=secret#private'), 'https://example.test/path')
         self.assertEqual(len(safe_url('https://example.test/' + 'a' * 500)), 240)
+
+    def test_expected_self_signed_rejection_is_a_bounded_diagnostic_not_a_stack_trace(self):
+        with HttpsFixture(max_age=0) as fixture:
+            server = fixture._servers[0][0]
+            handled = threading.Event()
+            original = server.handle_error
+
+            def observe(*args):
+                try:
+                    original(*args)
+                finally:
+                    handled.set()
+
+            server.handle_error = observe
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                with self.assertRaises(URLError):
+                    urlopen(fixture.source_origin, context=ssl.create_default_context(), timeout=3)
+                self.assertTrue(handled.wait(3), 'server never observed the TLS rejection')
+            self.assertNotIn('Traceback', stderr.getvalue())
+            self.assertEqual(len(fixture.tls_alerts), 1)
+            self.assertEqual(fixture.tls_alerts[0]['role'], 'source')
+            self.assertIn(fixture.tls_alerts[0]['reason'], ('TLSV1_ALERT_UNKNOWN_CA', 'SSLV3_ALERT_CERTIFICATE_UNKNOWN'))
+            self.assertEqual(fixture.tls_alerts.maxlen, 64)
+            self.assertEqual(len(fixture.receipts), 0)
+            # A later fixture-authorized request still traverses the same real socket.
+            with urlopen(fixture.source_origin, context=ssl._create_unverified_context(), timeout=3) as response:
+                self.assertEqual(response.status, 200)
+
+    def test_unexpected_server_failures_keep_their_traceback(self):
+        with HttpsFixture(max_age=0) as fixture:
+            server = fixture._servers[0][0]
+            for error in (ValueError('unexpected fixture failure'), ssl.SSLError('unexpected TLS failure')):
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    try:
+                        raise error
+                    except Exception:
+                        server.handle_error(None, ('127.0.0.1', 0))
+                self.assertIn('Traceback', stderr.getvalue())
+                self.assertIn(str(error), stderr.getvalue())
 
     def test_https_origins_cors_receipts_and_body_bound(self):
         with HttpsFixture(max_age=0) as fixture:

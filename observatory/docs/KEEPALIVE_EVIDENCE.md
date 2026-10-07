@@ -46,3 +46,20 @@ cause, prove delivery after a browser crash, or certify current production hosts
 #122 remains open until the missing-event failure is reproduced and attributed,
 or the final legacy host is verified retired. No blind retry, enlarged deadline,
 production behavior change or relaxed event-delivery assertion is used here.
+
+## TLS diagnostic follow-up
+
+Temporary self-signed certificates can produce server-side unknown-CA or
+certificate-unknown alerts before a browser uses its fixture-specific HTTPS
+exception. The helper retains only these two known SSL reasons and the fixture
+role in a 64-entry deque, emitting one `fixtureRecentTlsAlerts` summary on exit.
+It does not log client addresses, certificates, keys, headers or payloads there.
+Unexpected SSL or non-SSL server failures still print their normal tracebacks.
+
+A real verifying client rejects the certificate in the regression test; the
+server must record that rejection without a traceback or collector receipt.
+A subsequent fixture-authorized request must still reach the socket. This
+changes diagnostics only, not production TLS policy, SDK behavior, timeouts,
+preflight counts, or event-delivery assertions. A compact alert is not evidence
+of a failed production request or successful delivery; the socket receipt remains
+the delivery evidence.
