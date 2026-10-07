@@ -17,6 +17,7 @@ were preserved, not recreated as duplicate PRs.
 | #203 | Real HTTPS keepalive receipts; corrected no-store preflight expectation; independent cache control | Head `1f9ba2e`, Observatory run 37554062911, browser run 37554062917. Three 194-byte deliveries; control preflights 1,1,2,3. Merged `a389726c`. |
 | #204 | Serialized per-feed lifecycle and fresh post-stop database definitions | Five expected failures before fix, then 184 backend passes plus Ruff/mypy/package. Head `3e7f1049`, backend run 37555122544, package 37555122564. Merged `388a8766`. |
 | #205 | UTC-day precision for new aggregate receipt writes; separate hour totals unchanged | Three precision regressions before fix, then 602 local tests. Head `e862ace1`, Observatory run 37555584542, browser 37555584574. Merged `2642aea1`. |
+| #206 | Manual fail-closed historical precision cleanup and audit; no hosted execution | 617 local tests, including15 cleanup/audit cases. Head `88b6a0dc`, Observatory37556606172, browser37556606210. Merged `dabe726b`. |
 
 The historical #112 follow-up adds manual audit/cleanup SQL with schema/type/date
 guards and real SQLite preservation, idempotence and rollback tests. It does not
@@ -27,6 +28,11 @@ self-review and exact-head CI checks; this is not an independent review claim.
 Local full backend execution was dependency-blocked, while hosted backend checks
 ran the full suite. Local browser navigation was administratively blocked, so
 browser proof comes from hosted Actions, not a bypass of that environment.
+
+The TLS diagnostic follow-up reproduced an actual client certificate rejection,
+then verified a bounded alert instead of a repeated stack trace. Both unexpected
+SSL and non-SSL errors still retain tracebacks; this does not change production
+TLS policy or any SDK delivery assertion. Four local HTTPS fixture tests pass.
 
 ## Open issue disposition
 
@@ -46,7 +52,7 @@ same as completing its broader acceptance criteria.
 | #75 | Config shape, history count and demonstrated stop/restart/stale-row races repaired. Async-route synchronous DB work, global shutdown/custom plugin cancellation and local-only SSRF/auth policy remain separate. |
 | #99 | Jurisdiction/provider-processing qualification remains unresolved here. Payload minimization alone is not that evidence. |
 | #112 | New writes are coarse. Verify actual hosted cleanup or expiry of old precise rows; backups and sparse read differencing remain limitations. |
-| #122 | All new delivery cases pass, but historical missing-event root cause remains unproved. Self-signed fixture TLS diagnostics are noisy; no delivery assertions were weakened. |
+| #122 | All new delivery cases pass, but historical missing-event root cause remains unproved. Known self-signed TLS alerts are bounded diagnostics; unexpected server failures retain tracebacks. No delivery assertions were weakened. |
 | #150 | Measure actual D1 size and shared Voices budget use before changing limits or allocation. No increase made. |
 | #169 | Producer identity/conformance work exists; retain compatibility boundaries until native consumer evidence and legacy-identity handling are qualified. |
 

@@ -2,8 +2,10 @@
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import json
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 from urllib.parse import urlsplit
@@ -26,6 +28,7 @@ class HttpsFixture:
         self.max_age = max_age
         self.receipts = deque(maxlen=64)
         self.trace = deque(maxlen=64)
+        self.tls_alerts = deque(maxlen=64)
         self.script = ''
         self._servers = []
         self._temporary = None
@@ -120,7 +123,20 @@ class HttpsFixture:
             do_POST = collect
             do_OPTIONS = collect
 
-        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        class FixtureServer(ThreadingHTTPServer):
+            def handle_error(self, request, client_address):
+                error = sys.exc_info()[1]
+                if isinstance(error, ssl.SSLError) and getattr(error, 'reason', None) in (
+                    'TLSV1_ALERT_UNKNOWN_CA', 'SSLV3_ALERT_CERTIFICATE_UNKNOWN',
+                ):
+                    # Browsers may reject the temporary certificate before retrying
+                    # under the fixture context's explicit trust exception. Keep the
+                    # observation, not a repeated traceback or client address.
+                    fixture.tls_alerts.append({'role': role, 'reason': error.reason})
+                    return
+                super().handle_error(request, client_address)
+
+        server = FixtureServer(('127.0.0.1', 0), Handler)
         server.socket = tls.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         self._servers.append((server, thread))
@@ -133,5 +149,7 @@ class HttpsFixture:
             server.server_close()
             thread.join(timeout=3)
         self._servers.clear()
+        if self.tls_alerts:
+            print(json.dumps({'fixtureRecentTlsAlerts': list(self.tls_alerts)}))
         if self._temporary:
             self._temporary.cleanup()
