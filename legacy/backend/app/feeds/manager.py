@@ -4,8 +4,10 @@ FeedManager for managing feed lifecycle.
 
 import json
 import logging
+from asyncio import Lock
 from typing import Dict
 from uuid import UUID
+from weakref import WeakValueDictionary
 
 from sqlmodel import Session, select
 
@@ -36,6 +38,9 @@ class FeedManager:
         """
         self.hub = hub
         self.feeds: Dict[UUID, BaseFeed] = {}
+        # Holders and waiters retain their lock; idle entries disappear rather than
+        # leaking one permanent lock for every feed ever deleted. One event loop only.
+        self._lifecycle_locks: WeakValueDictionary[UUID, Lock] = WeakValueDictionary()
         self.logger = logging.getLogger(__name__)
 
     async def load_feeds(self, session: Session) -> None:
@@ -61,8 +66,20 @@ class FeedManager:
                     exc_info=True,
                 )
 
+    def _lifecycle_lock(self, feed_id: UUID) -> Lock:
+        lock = self._lifecycle_locks.get(feed_id)
+        if lock is None:
+            lock = Lock()
+            self._lifecycle_locks[feed_id] = lock
+        return lock
+
     async def start_feed(self, feed_def: FeedDefinition) -> None:
-        """Start a single feed."""
+        """Start a single feed after any earlier lifecycle operation settles."""
+        async with self._lifecycle_lock(feed_def.id):
+            await self._start_feed(feed_def)
+
+    async def _start_feed(self, feed_def: FeedDefinition) -> None:
+        """Start while the caller holds this feed's lifecycle lock."""
         if feed_def.id in self.feeds and self.feeds[feed_def.id].is_running():
             self.logger.warning(f"Feed {feed_def.id} is already running")
             return
@@ -83,7 +100,12 @@ class FeedManager:
         self.logger.info(f"Started feed {feed_def.id} ({feed_def.name}) of type {feed_def.type}")
 
     async def stop_feed(self, feed_id: UUID) -> None:
-        """Stop a feed."""
+        """Stop a feed; concurrent callers wait for the same stop to settle."""
+        async with self._lifecycle_lock(feed_id):
+            await self._stop_feed(feed_id)
+
+    async def _stop_feed(self, feed_id: UUID) -> None:
+        """Stop while the caller holds this feed's lifecycle lock."""
         feed = self.feeds.pop(feed_id, None)
         if feed is None:
             self.logger.warning(f"Feed {feed_id} not found in manager")
@@ -95,14 +117,17 @@ class FeedManager:
 
     async def restart_feed(self, session: Session, feed_id: UUID) -> None:
         """Restart a feed with its current database configuration."""
-        await self.stop_feed(feed_id)
+        async with self._lifecycle_lock(feed_id):
+            await self._stop_feed(feed_id)
 
-        feed_def = session.get(FeedDefinition, feed_id)
-        if not feed_def:
-            raise ValueError(f"Feed {feed_id} not found in database")
+            # Routes commit before calling us but may hold a cached pre-await row.
+            # Force a read so a concurrent committed delete/disable/update wins.
+            feed_def = session.get(FeedDefinition, feed_id, populate_existing=True)
+            if not feed_def:
+                raise ValueError(f"Feed {feed_id} not found in database")
 
-        if feed_def.enabled:
-            await self.start_feed(feed_def)
+            if feed_def.enabled:
+                await self._start_feed(feed_def)
 
     async def stop_all_feeds(self) -> None:
         """Stop all running feeds."""
