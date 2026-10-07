@@ -35,8 +35,10 @@ day; a later new value is stored as `other`, while `unknown`, `none` and `other`
 dimension and value only, with no timestamp finer than the day, and stored `WITHOUT ROWID` so
 storage order is key order rather than arrival order. That makes re-joining a request's rows to its
 event counts harder, not impossible: an operator who polls the one-day read repeatedly while
-traffic is sparse can still difference single requests, and `statistics.received` keeps the last
-write time. With a handful of testers this is not anonymity (`USAGE_PLAN.md`). Counts from before a dimension was recorded read `unknown`, and so do the browser dimensions a
+traffic is sparse can still difference single requests. New `statistics.received` writes keep only
+the UTC day (see [receipt precision](STATISTICS_PRECISION.md)); untouched historical rows can still
+contain precise last-write times until separately verified cleanup or expiry. With a handful of
+testers this is not anonymity (`USAGE_PLAN.md`). Counts from before a dimension was recorded read `unknown`, and so do the browser dimensions a
 batch's version does not carry (v1 has none, v2 has device, source and visit). The country and region
 are Cloudflare's edge codes; the User-Agent is classified into a closed browser and OS vocabulary and
 dropped, the first `Accept-Language` tag is reduced to its primary subtag, and the collector never reads
