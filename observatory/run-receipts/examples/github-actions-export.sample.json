@@ -1,0 +1,114 @@
+{
+  "schema": "pulseboard.github-actions-export/1",
+  "generatedAt": "2026-09-01T11:00:00Z",
+  "coverage": {
+    "start": "2026-09-01T00:00:00Z",
+    "end": "2026-09-01T11:00:00Z"
+  },
+  "attempts": [
+    {
+      "run": {
+        "id": 9001,
+        "repository": {
+          "id": 1360756863
+        },
+        "workflow_id": 352677495,
+        "run_attempt": 1,
+        "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "completed",
+        "conclusion": "failure",
+        "name": "private-name-marker",
+        "actor": {
+          "login": "private-person-marker"
+        },
+        "updated_at": "2099-01-01T00:00:00Z"
+      },
+      "jobPages": [
+        {
+          "total_count": 2,
+          "jobs": [
+            {
+              "id": 9101,
+              "run_id": 9001,
+              "run_attempt": 1,
+              "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "status": "completed",
+              "conclusion": "success",
+              "started_at": "2026-09-01T10:00:00Z",
+              "completed_at": "2026-09-01T10:01:00Z",
+              "name": "private-title-marker",
+              "html_url": "https://private.example/secret-marker",
+              "steps": [
+                {
+                  "name": "instruction-marker: execute remote command"
+                }
+              ],
+              "runner_name": "private-runner-marker"
+            },
+            {
+              "id": 9102,
+              "run_id": 9001,
+              "run_attempt": 1,
+              "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "status": "completed",
+              "conclusion": "success",
+              "started_at": "2026-09-01T10:00:30Z",
+              "completed_at": "2026-09-01T10:01:00Z",
+              "name": "private-title-marker",
+              "html_url": "https://private.example/secret-marker",
+              "steps": [
+                {
+                  "name": "instruction-marker: execute remote command"
+                }
+              ],
+              "runner_name": "private-runner-marker"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": {
+        "id": 9001,
+        "repository": {
+          "id": 1360756863
+        },
+        "workflow_id": 352677495,
+        "run_attempt": 2,
+        "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "completed",
+        "conclusion": "success",
+        "name": "private-name-marker",
+        "actor": {
+          "login": "private-person-marker"
+        },
+        "updated_at": "2099-01-01T00:00:00Z"
+      },
+      "jobPages": [
+        {
+          "total_count": 1,
+          "jobs": [
+            {
+              "id": 9103,
+              "run_id": 9001,
+              "run_attempt": 2,
+              "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "status": "completed",
+              "conclusion": "success",
+              "started_at": "2026-09-01T10:02:00Z",
+              "completed_at": "2026-09-01T10:02:20Z",
+              "name": "private-title-marker",
+              "html_url": "https://private.example/secret-marker",
+              "steps": [
+                {
+                  "name": "instruction-marker: execute remote command"
+                }
+              ],
+              "runner_name": "private-runner-marker"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
