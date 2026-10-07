@@ -100,7 +100,8 @@ test('all served desk assets exist and stay within a small static transfer budge
   // first product panel (both 2026-09-26; measured 184/61 KiB), then from 192/64 KiB for the page guides, onboarding
   // steps and the readable-type stylesheet (2026-09-27; measured 198/64.4 KiB), then from 208/68 KiB for the Voices view
   // and its Content section (2026-09-27; measured 231/75.2 KiB, desk-voices.mjs 17.5/6.3 KiB). Raise again only for a
-  // concrete interaction.
-  assert.ok(bytes.reduce((n, b) => n + b.length, 0) < 240 * 1024, 'Desk assets exceed 240 KiB raw');
-  assert.ok(bytes.reduce((n, b) => n + gzipSync(b).length, 0) < 80 * 1024, 'Desk assets exceed 80 KiB gzip');
+  // concrete interaction. The pinned operation inspector (2026-10-07) adds its v3 details, review navigation
+  // and synthetic fixture: measured 245.9 KiB raw / 80.7 KiB gzip; no dependency or extra read is added.
+  assert.ok(bytes.reduce((n, b) => n + b.length, 0) < 256 * 1024, 'Desk assets exceed 256 KiB raw');
+  assert.ok(bytes.reduce((n, b) => n + gzipSync(b).length, 0) < 84 * 1024, 'Desk assets exceed 84 KiB gzip');
 });

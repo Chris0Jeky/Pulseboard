@@ -52,7 +52,7 @@ async def run(args):
             await page.goto(args.origin, wait_until='networkidle')
         await page.evaluate('''fixtures => {
           window.fetch = async url => {
-            if (url === '/v1/portfolio?days=7') return Response.json(fixtures.portfolio);
+            if (url === '/v1/portfolio?days=7&version=3') return Response.json(fixtures.portfolio);
             if (url === '/v1/statistics/alibi?days=7') return Response.json(fixtures.statistics);
             throw new Error('Unexpected fixture request: ' + url);
           };

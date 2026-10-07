@@ -3,6 +3,7 @@ import { makeIdentifiedHandoff } from './desk-handoff-export.mjs';
 import { makeDemo, makeGithubDemo, makeProductDemo, makeProductEventsDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
 import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
+import { operationReading, operationPanel } from './desk-operations.mjs';
 import { requestStatistics, assertStatistics, usageReading, usageQuestions, makeStatisticsDemo, foldTop, hourSeries, STATISTICS_MAX_BYTES, USAGE_WINDOWS } from './desk-usage.mjs';
 import { requestProduct, requestProductEvents, assertProduct, assertProductEvents, propertyBreakdown, vitalRating, PRODUCT_MAX_BYTES, PRODUCT_EVENTS_MAX_BYTES, PRODUCT_EVENTS_LIMIT } from './desk-product.mjs';
 import { productPanel } from './products/index.mjs';
@@ -141,14 +142,19 @@ function signalCard(signal, compact = false) {
       status === 'open' ? button('Review', () => review(signal, 'acknowledged')) : e('span', { class: 'state-label' }, status),
       status === 'open' ? button('Snooze 1h', () => review(signal, 'snoozed')) : null));
 }
-function signalDetail(signal) {
-  const evidenceSnapshot = state.snapshot, evidenceStale = state.stale, evidenceEpoch = state.epoch;
-  const current = () => state.epoch === evidenceEpoch && identified.isConnected && $('#detail-dialog').open
-    && document.querySelectorAll('dialog[open]').length === 1;
+function signalDetail(signal, evidenceSnapshot = state.snapshot, evidenceStale = state.stale) {
+  const exportStale = () => evidenceStale || state.stale;
+  const exportSignal = () => signal.version === 'operation-evidence/1'
+    ? buildSignals(evidenceSnapshot, Date.now(), exportStale()).find(s => s.id === signal.id) || signal : signal;
   const identified = button('Prepare identified handoff (v2)', async () => {
+    // Capture the read epoch per preparation, not when the drawer first opened.
+    // A hidden-tab cancellation invalidates pending hashing, not a later click.
+    const evidenceEpoch = state.epoch;
+    const current = () => state.epoch === evidenceEpoch && identified.isConnected && $('#detail-dialog').open
+      && document.querySelectorAll('dialog[open]').length === 1;
     identified.disabled = true;
     try {
-      const packet = await makeIdentifiedHandoff(evidenceSnapshot, signal, evidenceStale);
+      const packet = await makeIdentifiedHandoff(evidenceSnapshot, exportSignal(), exportStale());
       // Hashing is asynchronous. Closing/replacing the drawer or disconnecting invalidates this preparation.
       if (!current()) return;
       $('#detail-dialog').close();
@@ -160,14 +166,17 @@ function signalDetail(signal) {
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, signal.title), e('p', { class: 'muted' }, signal.detail),
     e('div', { class: 'subline' }, `${signal.severity.toUpperCase()} / ${signal.rule} / ${signal.version}`),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'The evidence'), e('pre', { class: 'code-evidence', tabindex: '0' }, JSON.stringify(signal.evidence, null, 2))),
+    signal.rule.startsWith('operation.') && evidenceSnapshot.projects.some(p => p.id === signal.project)
+      ? button('Inspect operation evidence', () => projectDetail(evidenceSnapshot.projects.find(p => p.id === signal.project), evidenceSnapshot, exportStale())) : null,
     e('section', { class: 'drawer-section' }, e('h3', {}, 'A sensible next check'), e('p', {}, signal.next),
       button('Prepare a task handoff ↗', () => {
         $('#detail-dialog').close();
-        preview(JSON.stringify(makeHandoff(evidenceSnapshot, signal, evidenceStale), null, 2), `pulseboard-${evidenceSnapshot.mode}-handoff.json`, 'application/json');
+        preview(JSON.stringify(makeHandoff(evidenceSnapshot, exportSignal(), exportStale()), null, 2), `pulseboard-${evidenceSnapshot.mode}-handoff.json`, 'application/json');
       }, 'primary'), identified,
       e('p', { class: 'tiny muted' }, 'V2 adds a stable observation identity for compatible receivers. The original task handoff remains v1. Neither file grants execution permission.')),
     e('p', { class: 'tiny muted' }, 'Rules are deterministic. A signal is an observation to inspect, not a diagnosis, productivity score, or instruction to deploy.'));
   showDialog('#detail-dialog');
+  $('#detail-title').tabIndex = -1; $('#detail-title').focus();
 }
 function chart(projects, mini = false) {
   const { start, end } = state.snapshot.window;
@@ -224,24 +233,32 @@ function overview() {
       : e('p', { class: 'muted' }, 'Nothing open right now. Parts of a site that send no events can still break unnoticed.'), button('All alerts →', () => navigate('signals'))),
       panel('Session events per day', chart(ps), e('span', { class: 'mini-label' }, 'ALL SITES'))), projectTable()];
 }
-function projectDetail(p) {
-  // The drawer, its deployment leads and any pin all read the snapshot it opened with, not a later poll.
-  state.drawerSnapshot = state.snapshot; state.drawerStale = state.stale;
+function projectDetail(p, snapshot = state.snapshot, stale = state.stale) {
+  // Pass this pin through drawer-to-signal links; globals may change during a poll.
+  const evidenceSnapshot = structuredClone(snapshot), evidenceStale = stale;
+  p = evidenceSnapshot.projects.find(project => project.id === p.id);
+  state.drawerSnapshot = evidenceSnapshot; state.drawerStale = evidenceStale;
   const outcomes = p.totals.completed + p.totals.failed;
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, p.label), chip(p),
     e('div', { class: 'facts' }, ...[['Session events', count(p.totals.events)], ['Sessions', count(p.totals.sessions)],
       ['Finished / finished or failed', `${p.totals.completed} / ${outcomes}`], ['Site checks passed / run', `${p.probeSamples.numerator} / ${p.probeSamples.denominator}`],
       ['Detailed session events', p.collectionEligible ? (p.collectionAdmitted ? 'On' : 'Off (see Usage and Product)') : 'Not collected (local only)']]
       .map(([label, value]) => e('div', { class: 'fact' }, e('span', {}, label), e('strong', {}, value)))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'Where these numbers come from'), e('p', { class: 'muted' }, `Read ${date(state.snapshot.generatedAt)}. Last site check: ${date(p.monitor.checked)}. Session events come from visitors’ browsers after they opt in, and are self-reported. Site status comes from the scheduled site check.`)),
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'Where these numbers come from'), e('p', { class: 'muted' }, `Read ${date(evidenceSnapshot.generatedAt)}. Last site check: ${date(p.monitor.checked)}. Session events come from visitors’ browsers after they opt in, and are self-reported. Site status comes from the scheduled site check.`)),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Started and finished'), e('p', {}, `${p.flow.numerator} of ${p.flow.denominator} groups that started something also finished it (${percent(p.flow.value)}). A group is one session on one page and version.`),
       e('p', { class: 'muted' }, 'A finish only counts when a later event matches the same session, page and version. This is not retention or a conversion funnel.')),
+    operationPanel(operationReading(evidenceSnapshot, p.id, Date.now(), evidenceStale), { e, button, table, count, date }, (id, kind) => {
+      if (state.drawerSnapshot !== evidenceSnapshot) return;
+      const signal = buildSignals(evidenceSnapshot, Date.now(), evidenceStale || state.stale).find(s => s.project === p.id && s.rule === `operation.${id}.${kind}`);
+      if (signal) signalDetail(signal, evidenceSnapshot, evidenceStale);
+    }),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Events by page'), e('div', { class: 'table-shell' }, table(['Page (route)', 'Events'], p.routes.map(r => [r.route, count(r.n)])))),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'By version'), e('div', { class: 'table-shell' }, table(['Version', 'Finished or failed', 'Failed', 'Time (95% took this long or less)'], p.releases.map(r => [releaseLabel(r.release), count(r.completed + r.failed), count(r.failed), r.duration ? `${count(r.duration.p95)} ms · ${count(r.duration.n)} samples` : 'No samples']))),
       button('Compare versions →', () => { state.releaseProject = p.id; state.baseline = ''; state.candidate = ''; $('#detail-dialog').close(); navigate('releases'); })),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Builds, deploys and releases (GitHub)'), e('div', { id: 'github-evidence', 'data-project': p.id }, githubView(p.id))),
-    e('section', { class: 'drawer-section' }, e('h3', {}, 'Limits of these numbers'), e('ul', {}, state.snapshot.limitations.map(text => e('li', {}, text)))));
+    e('section', { class: 'drawer-section' }, e('h3', {}, 'Limits of these numbers'), e('ul', {}, evidenceSnapshot.limitations.map(text => e('li', {}, text)))));
   showDialog('#detail-dialog');
+  $('#detail-title').tabIndex = -1; $('#detail-title').focus();
 }
 const githubClass = { passing: 'up', observed: 'up', failing: 'down', stale: 'stale', 'rate-limited': 'stale' };
 function githubRow(repository, kind, name, item) {

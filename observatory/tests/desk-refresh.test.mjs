@@ -66,7 +66,7 @@ test('authenticated portfolio requests pin privacy, redirect and timeout policy'
     return expected;
   }, { token: 't'.repeat(32), days: 14, signal: controller.signal });
   assert.equal(result, expected);
-  assert.equal(call.url, '/v1/portfolio?days=14');
+  assert.equal(call.url, '/v1/portfolio?days=14&version=3');
   assert.deepEqual(call.init.headers, { authorization: `Bearer ${'t'.repeat(32)}` });
   assert.equal(call.init.cache, 'no-store');
   assert.equal(call.init.credentials, 'omit');

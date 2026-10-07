@@ -19,7 +19,7 @@ TOKEN = os.environ.get('READ_TOKEN', 'desk-browser-test-only-' + '0' * 40)
 
 def offline_html():
     html = (PUBLIC / 'index.html').read_text()
-    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-dialog.mjs', 'desk-model.mjs', 'desk-product.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-network.mjs', 'desk-release.mjs', 'desk-usage.mjs',
+    source = '\n'.join((PUBLIC / name).read_text() for name in ['desk-dialog.mjs', 'desk-model.mjs', 'desk-product.mjs', 'desk-demo.mjs', 'desk-bridge.mjs', 'desk-operations.mjs', 'desk-network.mjs', 'desk-release.mjs', 'desk-usage.mjs',
                                                       'desk-voices.mjs', 'products/alibi.mjs', 'products/index.mjs', 'dashboard.mjs'])
     # Preserve the new module's private scope in the legacy offline concatenation harness.
     handoff = re.sub(r'^import .*?;\n', '', (PUBLIC / 'desk-handoff-export.mjs').read_text(), flags=re.M)

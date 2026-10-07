@@ -3,7 +3,7 @@ export const READ_TIMEOUT_MS = 10_000;
 
 export function requestPortfolio(fetcher, { token, days, signal }) {
   if (typeof fetcher !== 'function') throw new TypeError('fetcher');
-  return fetcher(`/v1/portfolio?days=${days}`, {
+  return fetcher(`/v1/portfolio?days=${days}&version=3`, {
     headers: { authorization: `Bearer ${token}` },
     cache: 'no-store',
     credentials: 'omit',
