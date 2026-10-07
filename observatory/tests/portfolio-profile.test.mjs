@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const script = new URL('../tools/profile-portfolio.mjs', import.meta.url);
 function run(args) {
-  return spawnSync(process.execPath, [script.pathname, ...args], { encoding: 'utf8', timeout: 10_000 });
+  return spawnSync(process.execPath, [fileURLToPath(script), ...args], { encoding: 'utf8', timeout: 10_000 });
 }
 
 test('local profiler reconciles all shapes and supported windows without hosted claims', () => {
