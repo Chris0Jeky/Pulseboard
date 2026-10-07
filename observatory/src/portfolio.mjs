@@ -7,8 +7,11 @@ import { monitorState } from './contracts.mjs';
 import { foldReleaseRows } from './release-label.mjs';
 import { operationQuery } from './operations.mjs';
 export const WINDOWS = [1, 7, 14];
+export const VERSIONS = [2, 3];
 const OPERATION_COUNTS = ['attempts', 'completed', 'failed', 'open', 'retries'];
 const sumOf = (rows, key) => rows.reduce((sum, row) => sum + row[key], 0);
+const unmatchedOf = rows => Object.fromEntries(['completed', 'failed'].map(key =>
+  [key, rows.reduce((sum, row) => sum + row.unmatched[key], 0)]));
 const LIMITATIONS = [
   'Browser events are opt-in, client-reported and spoofable. Sessions are not people.',
   'Action outcomes count events. Retries and repeated attempts are not deduplicated operations.',
@@ -28,8 +31,8 @@ export function limitations(projects = registry) {
 function operationDefinitions(projects) {
   return Object.entries(projects).flatMap(([project, config]) => (config.operations || []).map(operation => ({ project, ...operation })));
 }
-export async function readPortfolio(db, { days = 7, now = Date.now(), collectionEnabled = false, admittedProjects = [], projects = registry } = {}) {
-  if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days || !Array.isArray(admittedProjects) || admittedProjects.some(id => typeof id !== 'string')) throw new RangeError('Unsupported window or admission');
+export async function readPortfolio(db, { days = 7, version = 2, now = Date.now(), collectionEnabled = false, admittedProjects = [], projects = registry } = {}) {
+  if (!VERSIONS.includes(version) || !WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days || !Array.isArray(admittedProjects) || admittedProjects.some(id => typeof id !== 'string')) throw new RangeError('Unsupported window or admission');
   const admitted = new Set(admittedProjects);
   const start = now - days * DAY;
   const ranged = sql => db.prepare(sql).bind(start, now);
@@ -70,8 +73,9 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
   ]);
   const [counts, sessions, daily, routes, probes, probeSamples, budgets, flows, timings, ...operationRows] = rows.map(r => r.results);
   const operationEvidence = operationDefs.map((operation, index) => ({ ...operation, rows: operationRows[index] || [] }));
-  return { schema: 'pulseboard.portfolio/2', mode: 'live', generatedAt: now, collectionEnabled,
-    window: { start, end: now, days, timezone: 'UTC' }, limitations: limitations(projects),
+  return { schema: `pulseboard.portfolio/${version}`, mode: 'live', generatedAt: now, collectionEnabled,
+    window: { start, end: now, days, timezone: 'UTC' }, limitations: [...limitations(projects),
+      ...(version === 3 ? ['Unmatched terminal events did not resolve an in-window start. They are missing pairing evidence, not additional failed attempts; duplicates, route changes or lost starts can explain them.'] : [])],
     projects: Object.entries(projects).map(([id, config]) => {
       const events = counts.filter(row => row.project === id);
       const total = event => events.filter(row => !event || row.event === event).reduce((n, row) => n + row.n, 0);
@@ -91,18 +95,23 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
         last: Math.max(...rest.map(row => row.last)), duration: null }))
         .sort((a, b) => b.last - a.last || a.release.localeCompare(b.release));
       const operations = operationEvidence.filter(operation => operation.project === id).map(operation => {
-        const operationReleases = foldReleaseRows(operation.rows.map(row => ({
+        const operationReleases = foldReleaseRows(operation.rows.filter(row => version === 3 || Number(row.attempts) > 0).map(row => ({
           release: row.release,
           attempts: Number(row.attempts || 0),
           completed: Number(row.completed || 0),
           failed: Number(row.failed || 0),
           open: Number(row.open || 0),
           retries: Number(row.retries || 0),
-        })), row => row.attempts, rest => Object.fromEntries(OPERATION_COUNTS.map(key => [key, sumOf(rest, key)])));
+          ...(version === 3 ? { unmatched: { completed: Number(row.unmatched_completed),
+            failed: Number(row.unmatched_failed) } } : {}),
+        })), row => row.attempts + (version === 3 ? row.unmatched.completed + row.unmatched.failed : 0),
+        rest => ({ ...Object.fromEntries(OPERATION_COUNTS.map(key => [key, sumOf(rest, key)])),
+          ...(version === 3 ? { unmatched: unmatchedOf(rest) } : {}) }));
         const sum = key => operationReleases.reduce((value, row) => value + row[key], 0);
         const attempts = sum('attempts'), completed = sum('completed');
         return { id: operation.id, version: operation.version, attempts, completed, failed: sum('failed'),
-          open: sum('open'), retries: sum('retries'), completion: fraction(completed, attempts), releases: operationReleases };
+          open: sum('open'), retries: sum('retries'),
+          ...(version === 3 ? { unmatched: unmatchedOf(operationReleases) } : {}), completion: fraction(completed, attempts), releases: operationReleases };
       });
       const collectionEligible = Boolean(config.origin);
       return { id, label: config.label, origin: config.origin, probeExpected: Boolean(config.probe),

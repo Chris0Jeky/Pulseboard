@@ -79,7 +79,7 @@ export function readLensProjection(input) {
 }
 /** Public export is an explicit projection, not serialization of the desk or an imported artifact. */
 export function makePublicPulse(snapshot, selected, now = Date.now()) {
-  requireValue(snapshot?.schema === 'pulseboard.portfolio/2' && ['demo', 'live'].includes(snapshot.mode), 'No supported snapshot');
+  requireValue(['pulseboard.portfolio/2', 'pulseboard.portfolio/3'].includes(snapshot?.schema) && ['demo', 'live'].includes(snapshot.mode), 'No supported snapshot');
   assertPortfolio({ ...snapshot, mode: 'live' });
   requireValue(Number.isSafeInteger(now) && Number.isSafeInteger(snapshot.generatedAt) && snapshot.generatedAt <= now && now - snapshot.generatedAt <= STALE_AFTER, 'Refresh before preparing a public pulse');
   list(selected, 16); unique(selected); requireValue(selected.length > 0, 'Select at least one project');
@@ -113,7 +113,8 @@ export async function readLimitedJson(response, maxBytes = 524288) {
 }
 /** Validate all fields consumed by the desk before replacing a last-good snapshot. */
 export function assertPortfolio(input) {
-  requireValue(plain(input) && input.schema === 'pulseboard.portfolio/2' && input.mode === 'live' && typeof input.collectionEnabled === 'boolean', 'Unexpected portfolio contract');
+  const detailedOperations = input?.schema === 'pulseboard.portfolio/3';
+  requireValue(plain(input) && ['pulseboard.portfolio/2', 'pulseboard.portfolio/3'].includes(input.schema) && input.mode === 'live' && typeof input.collectionEnabled === 'boolean', 'Unexpected portfolio contract');
   const stamp = value => { requireValue(Number.isSafeInteger(value) && value >= 0 && value <= 8640000000000000, 'Invalid timestamp'); return value; };
   stamp(input.generatedAt); requireValue(plain(input.window), 'Missing window');
   const { start, end, days } = input.window;
@@ -137,15 +138,21 @@ export function assertPortfolio(input) {
       requireValue(plain(f), 'Missing fraction'); integer(f.numerator); integer(f.denominator);
       requireValue(f.numerator <= f.denominator && (f.denominator ? Number.isFinite(f.value) && Math.abs(f.value - f.numerator / f.denominator) < 1e-12 : f.value === null), 'Invalid fraction');
     }
-    const operations = p.operations === undefined ? [] : list(p.operations, 16);
+    const operations = p.operations === undefined && !detailedOperations ? [] : list(p.operations, 16);
     unique(operations.map(operation => operation.id));
     for (const operation of operations) {
-      exactKeys(operation, ['id', 'version', 'attempts', 'completed', 'failed', 'open', 'retries', 'completion', 'releases']);
+      exactKeys(operation, ['id', 'version', 'attempts', 'completed', 'failed', 'open', 'retries', 'completion', 'releases', ...(detailedOperations ? ['unmatched'] : [])]);
       requireValue(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/.test(boundedString(operation.id, 80)) && operation.version === 1,
         'Invalid operation identity or version');
       for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) integer(operation[key]);
       requireValue(operation.completed + operation.failed + operation.open === operation.attempts
         && operation.retries <= operation.attempts, 'Invalid operation totals');
+      if (detailedOperations) {
+        exactKeys(operation.unmatched, ['completed', 'failed']);
+        integer(operation.unmatched.completed); integer(operation.unmatched.failed);
+        requireValue(operation.attempts + operation.completed + operation.failed
+          + operation.unmatched.completed + operation.unmatched.failed <= p.totals.events, 'Operation evidence exceeds event total');
+      }
       const completion = operation.completion;
       requireValue(plain(completion), 'Missing operation completion fraction');
       integer(completion.numerator); integer(completion.denominator);
@@ -156,11 +163,19 @@ export function assertPortfolio(input) {
       const operationReleases = list(operation.releases, 64);
       unique(operationReleases.map(row => row.release));
       for (const row of operationReleases) {
-        exactKeys(row, ['release', 'attempts', 'completed', 'failed', 'open', 'retries']);
+        exactKeys(row, ['release', 'attempts', 'completed', 'failed', 'open', 'retries', ...(detailedOperations ? ['unmatched'] : [])]);
         boundedString(row.release, 160);
+        if (detailedOperations) {
+          exactKeys(row.unmatched, ['completed', 'failed']);
+          integer(row.unmatched.completed); integer(row.unmatched.failed);
+        }
         for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) integer(row[key]);
         requireValue(row.completed + row.failed + row.open === row.attempts && row.retries <= row.attempts,
           'Invalid operation release totals');
+      }
+      if (detailedOperations) for (const key of ['completed', 'failed']) {
+        requireValue(operationReleases.reduce((total, row) => total + row.unmatched[key], 0) === operation.unmatched[key],
+          'Unmatched release totals do not reconcile');
       }
       for (const key of ['attempts', 'completed', 'failed', 'open', 'retries']) {
         requireValue(operationReleases.reduce((total, row) => total + row[key], 0) === operation[key],

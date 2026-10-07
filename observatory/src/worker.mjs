@@ -6,7 +6,7 @@ import { validateProductBatch, redactProps, consentRegion, PRODUCT_DEFAULT_LIMIT
 import { readStatistics, READ_WINDOWS, AGGREGATE_RETENTION_DAYS } from './statistics.mjs';
 import { readProduct, readProductEvents, EVENTS_DEFAULT_LIMIT } from './product.mjs';
 import { readVoices } from './voices.mjs';
-import { readPortfolio, WINDOWS } from './portfolio.mjs';
+import { readPortfolio, WINDOWS, VERSIONS } from './portfolio.mjs';
 import { parseFeedback, parseSurvey, respondentHash, VOICE_DEFAULT_LIMIT, VOICE_GLOBAL_LIMIT, VOICE_GLOBAL_KEY,
   FEEDBACK_RETENTION_DAYS, SURVEY_RETENTION_DAYS } from './voice-contract.mjs';
 import { assets } from './assets.mjs';
@@ -155,13 +155,15 @@ export async function handle(request, env) {
     }
     if (url.pathname === '/v1/portfolio' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
+      const versions = url.searchParams.getAll('version'), version = versions[0] ?? '2';
+      if (versions.length > 1 || !/^[23]$/.test(version)) return json({ error: 'version', allowedVersions: VERSIONS }, 400);
       const value = url.searchParams.get('days') ?? '7';
       if (!/^(1|7|14)$/.test(value) || url.searchParams.getAll('days').length > 1 || !WINDOWS.includes(Number(value))) {
         return json({ error: 'window', allowedDays: WINDOWS }, 400);
       }
       const admission = collectionAdmission(env);
       if (!admission.valid) return json({ error: 'invalid_collection_configuration', invalid: admission.invalid }, 503);
-      return json(await readPortfolio(env.DB, { days: Number(value), collectionEnabled: admission.enabled, admittedProjects: admission.admitted }));
+      return json(await readPortfolio(env.DB, { days: Number(value), version: Number(version), collectionEnabled: admission.enabled, admittedProjects: admission.admitted }));
     }
     const readMatch = /^\/v1\/statistics\/([a-z0-9-]{1,64})$/.exec(url.pathname);
     if (readMatch && request.method === 'GET') {
@@ -239,7 +241,7 @@ export async function handle(request, env) {
       const budgetKey = productId + ':product', productLimit = productProject.productLimit ?? PRODUCT_DEFAULT_LIMIT;
       const size = productBody.events.length;
       // Two budgets, one decision: the project row is reserved only if the global row (every project's product events,
-      // sized for D1's 500 MB free-plan cap) also has room, and the global row is then charged only if the project
+      // sized for D1's 500 MB free-plan cap) also has room, and the global row is charged only if the project
       // reservation carries this receipt. Either one full refuses the batch and neither is charged.
       const globalRoom = `(SELECT COALESCE(MAX(used),0) FROM budget WHERE project='${PRODUCT_GLOBAL_KEY}' AND day=?)+?<=?`;
       const productReserve = env.DB.prepare(`INSERT INTO budget(project,day,used,receipt) SELECT ?,?,?,? WHERE ?<=? AND ${globalRoom}
