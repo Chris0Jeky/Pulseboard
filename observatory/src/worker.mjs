@@ -355,8 +355,10 @@ export async function handle(request, env) {
       // session IDs, puzzle IDs, text, URLs or IPs, so there is nothing to deduplicate
       // on; every admitted POST adds its counts again and repeated requests count repeatedly.
       // D1 batch is transactional. Receipt gating makes a rejected reservation write no aggregate.
+      // Keep only UTC-day receipt precision in aggregate rows (#112). Dimensions such as
+      // hour still use statNow independently; received is not a freshness or retention key.
       const aggregates = statBody.counts.map(c => env.DB.prepare(`INSERT INTO statistics(project,day,event,route,release,n,received)
-        SELECT ?,?,?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
+        SELECT ?,?,?,?,?,?,CAST(? / 86400000 AS INTEGER) * 86400000 FROM budget WHERE project=? AND day=? AND receipt=?
         ON CONFLICT(project,day,event,route,release) DO UPDATE SET n=n+excluded.n,received=excluded.received`)
         .bind(statId, statDay, c.event, c.route, c.release, 1, statNow, statId, statDay, statReceipt));
       // One per-dimension total per admitted count, written in the same transaction and gated on the same receipt.
