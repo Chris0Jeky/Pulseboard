@@ -3,10 +3,12 @@ import json
 import io
 import threading
 from contextlib import redirect_stderr
+from http.client import HTTPSConnection
 import ssl
 import unittest
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 from keepalive_http import HttpsFixture, safe_url
 
@@ -80,11 +82,34 @@ class FixtureTests(unittest.TestCase):
             self.assertEqual(fixture.receipts[0]['body'], body.decode())
             self.assertEqual(fixture.receipts[0]['headers']['origin'], fixture.source_origin)
             self.assertEqual(fixture.trace[0]['method'], 'OPTIONS')
-            request = Request(endpoint, data=b'x' * (65536 + 1))
-            with self.assertRaises(HTTPError) as raised:
-                urlopen(request, context=context, timeout=3)
-            self.assertEqual(raised.exception.code, 413)
-            self.assertEqual(len(fixture.receipts), 1)
+            # The inclusive upper bound must still be fully received, not refused.
+            request = Request(endpoint, data=b'x' * 65536)
+            with urlopen(request, context=context, timeout=3) as response:
+                self.assertEqual(response.status, 202)
+            self.assertEqual(len(fixture.receipts), 2)
+            self.assertEqual(fixture.receipts[-1]['body'], 'x' * 65536)
+
+    def test_oversized_content_length_is_rejected_before_reading_body(self):
+        with HttpsFixture(max_age=0) as fixture:
+            target = urlsplit(fixture.collector_origin)
+            connection = HTTPSConnection(
+                target.hostname, target.port,
+                context=ssl._create_unverified_context(), timeout=3,
+            )
+            try:
+                # Send only headers: early 413 must not wait for or consume a body.
+                # Uploading the refused body races the server's connection close and
+                # can yield a client BrokenPipeError before it reads the valid 413.
+                connection.putrequest('POST', '/v1/collect/mdviewer')
+                connection.putheader('Content-Length', '65537')
+                connection.endheaders()
+                response = connection.getresponse()
+                self.assertEqual(response.status, 413)
+                self.assertEqual(response.read(), b'')
+                self.assertEqual(len(fixture.receipts), 0)
+                self.assertEqual(list(fixture.trace), [{'method': 'POST', 'path': '/v1/collect/mdviewer'}])
+            finally:
+                connection.close()
 
 
 if __name__ == '__main__':

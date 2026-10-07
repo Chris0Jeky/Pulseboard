@@ -63,3 +63,13 @@ changes diagnostics only, not production TLS policy, SDK behavior, timeouts,
 preflight counts, or event-delivery assertions. A compact alert is not evidence
 of a failed production request or successful delivery; the socket receipt remains
 the delivery evidence.
+
+## Early oversized-request rejection
+
+The body-limit fixture sends an oversized Content-Length header without a body
+and requires an immediate 413 with no receipt. A separate positive case sends
+all 65,536 bytes at the inclusive limit and requires an identical stored body.
+Uploading a refused 65,537-byte body can race the server's early connection close
+and raise a client BrokenPipeError before its HTTP library reads the 413. The
+header-only test removes that client race while strictly proving early rejection;
+it does not accept a broken pipe as evidence or weaken the collector's bound.
