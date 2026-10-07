@@ -233,6 +233,10 @@ export async function readRunReceiptSummary(DB, { project, start, end, registry 
       'Private aggregate; excluded from public pulse exports.',
       'Imported files are not authenticated provider evidence.',
       'Attempt counts and resource totals are not developer productivity or value scores.',
+      ...(results.some(row => row.source_kind === 'github-actions-file' && /^gh-jobs-v1-[0-9]+-[0-9]+$/.test(row.source_id)) ? [
+        'GitHub runner_seconds sums exported job intervals including parallel jobs; it is not billable time or CPU time.',
+        'GitHub receipt start/end bound the observed job envelope, not queue wait or exact workflow completion.',
+      ] : []),
     ],
   };
 }

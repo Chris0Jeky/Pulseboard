@@ -108,3 +108,11 @@ parent directories. The CLI requires exact argument counts and reports fixed
 failure messages instead of echoing JSON snippets, private paths or SQLite
 exceptions. Library callers still receive exceptions for diagnosis and should
 not publish them as public logs.
+
+## Provider export conversion
+
+The [offline GitHub Actions adapter](GITHUB_ACTIONS.md) converts explicitly supplied
+run-attempt and complete job-page files into this same private contract. It
+preserves retries and cancellation, sums parallel job intervals, previews before
+an explicit create-only output, and never invents billing or verified outcomes.
+It makes no provider connection and does not import the generated file silently.
