@@ -143,13 +143,15 @@ function signalCard(signal, compact = false) {
       status === 'open' ? button('Snooze 1h', () => review(signal, 'snoozed')) : null));
 }
 function signalDetail(signal, evidenceSnapshot = state.snapshot, evidenceStale = state.stale) {
-  const evidenceEpoch = state.epoch;
   const exportStale = () => evidenceStale || state.stale;
   const exportSignal = () => signal.version === 'operation-evidence/1'
     ? buildSignals(evidenceSnapshot, Date.now(), exportStale()).find(s => s.id === signal.id) || signal : signal;
-  const current = () => state.epoch === evidenceEpoch && identified.isConnected && $('#detail-dialog').open
-    && document.querySelectorAll('dialog[open]').length === 1;
   const identified = button('Prepare identified handoff (v2)', async () => {
+    // Capture the read epoch per preparation, not when the drawer first opened.
+    // A hidden-tab cancellation invalidates pending hashing, not a later click.
+    const evidenceEpoch = state.epoch;
+    const current = () => state.epoch === evidenceEpoch && identified.isConnected && $('#detail-dialog').open
+      && document.querySelectorAll('dialog[open]').length === 1;
     identified.disabled = true;
     try {
       const packet = await makeIdentifiedHandoff(evidenceSnapshot, exportSignal(), exportStale());
@@ -233,7 +235,7 @@ function overview() {
 }
 function projectDetail(p, snapshot = state.snapshot, stale = state.stale) {
   // Pass this pin through drawer-to-signal links; globals may change during a poll.
-  const evidenceSnapshot = structuredClone(snapshot), evidenceStale = stale, evidenceEpoch = state.epoch;
+  const evidenceSnapshot = structuredClone(snapshot), evidenceStale = stale;
   p = evidenceSnapshot.projects.find(project => project.id === p.id);
   state.drawerSnapshot = evidenceSnapshot; state.drawerStale = evidenceStale;
   const outcomes = p.totals.completed + p.totals.failed;
@@ -246,7 +248,7 @@ function projectDetail(p, snapshot = state.snapshot, stale = state.stale) {
     e('section', { class: 'drawer-section' }, e('h3', {}, 'Started and finished'), e('p', {}, `${p.flow.numerator} of ${p.flow.denominator} groups that started something also finished it (${percent(p.flow.value)}). A group is one session on one page and version.`),
       e('p', { class: 'muted' }, 'A finish only counts when a later event matches the same session, page and version. This is not retention or a conversion funnel.')),
     operationPanel(operationReading(evidenceSnapshot, p.id, Date.now(), evidenceStale), { e, button, table, count, date }, (id, kind) => {
-      if (state.epoch !== evidenceEpoch) return;
+      if (state.drawerSnapshot !== evidenceSnapshot) return;
       const signal = buildSignals(evidenceSnapshot, Date.now(), evidenceStale || state.stale).find(s => s.project === p.id && s.rule === `operation.${id}.${kind}`);
       if (signal) signalDetail(signal, evidenceSnapshot, evidenceStale);
     }),

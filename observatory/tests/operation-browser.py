@@ -84,6 +84,15 @@ async def run(args):
         await expect(section).to_contain_text('0.11.5')
         await expect(section).to_contain_text('<img src=x onerror=alert(1)>')
         assert await section.locator('img').count() == 0
+        # Visibility cancels reads, not the operator's pinned inspection. Simulate the
+        # actual visibility event handler without relying on headless tab throttling.
+        await page.evaluate('''() => {
+          let hidden = false;
+          Object.defineProperty(document, 'hidden', {configurable:true, get:()=>hidden});
+          window.operationVisibility = value => {
+            hidden = value; document.dispatchEvent(new Event('visibilitychange'));
+          };
+        }''')
         # A poll replaces global state; the open drawer and its links must retain their own source.
         before = await section.inner_text()
         response['value'] = newer
@@ -95,13 +104,22 @@ async def run(args):
                 await page.evaluate("document.querySelector('#refresh').click()")
         await expect(page.locator('#refresh')).to_be_enabled()
         assert await section.inner_text() == before
+        await page.evaluate('operationVisibility(true); operationVisibility(false)')
+        await page.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+        await expect(page.locator('#refresh')).to_be_enabled()
         await section.get_by_role('button', name='Review unmatched outcomes', exact=True).click()
         await expect(page.locator('#detail-title')).to_contain_text('unmatched')
         evidence = json.loads(await page.locator('#detail .code-evidence').text_content())
         assert evidence['unmatched'] == {'completed': 3, 'failed': 1}
         await page.get_by_role('button', name='Inspect operation evidence', exact=True).click()
         assert await section.inner_text() == before
+        await page.evaluate('operationVisibility(true); operationVisibility(false)')
+        await page.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+        await expect(page.locator('#refresh')).to_be_enabled()
         await section.get_by_role('button', name='Review unmatched outcomes', exact=True).click()
+        await page.evaluate('operationVisibility(true); operationVisibility(false)')
+        await page.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+        await expect(page.locator('#refresh')).to_be_enabled()
         await page.get_by_role('button', name='Prepare a task handoff ↗' if args.offline else 'Prepare identified handoff (v2)', exact=True).click()
         await expect(page.locator('#export-dialog')).to_be_visible()
         text = await page.locator('#export-preview').text_content()
@@ -133,6 +151,7 @@ async def run(args):
         await section.get_by_role('button', name='Review unmatched outcomes', exact=True).click()
         await expect(page.locator('#detail-title')).to_contain_text('last-known')
         await page.get_by_role('button', name='Prepare a task handoff ↗', exact=True).click()
+        await expect(page.locator('#export-dialog')).to_be_visible()
         stale = json.loads(await page.locator('#export-preview').text_content())
         assert stale['stale'] is True and stale['evidence']['lastKnown'] is True
         await page.keyboard.press('Escape')
@@ -160,6 +179,11 @@ async def run(args):
         await expect(section).to_contain_text('SYNTHETIC DEMO')
         assert await page.evaluate('document.documentElement.scrollWidth') <= 390
         assert await section.evaluate('n=>n.getBoundingClientRect().right') <= 390
+        await section.locator('summary').click()
+        release_table = section.get_by_role('region', name='puzzle.solve outcomes by release')
+        await expect(release_table).to_be_visible()
+        assert await release_table.evaluate('n=>n.scrollWidth > n.clientWidth')
+        assert await page.evaluate('document.documentElement.scrollWidth') <= 390
         if args.screenshot:
             await section.scroll_into_view_if_needed()
             await page.screenshot(path=args.screenshot)
@@ -168,11 +192,42 @@ async def run(args):
         assert json.loads(await page.locator('#export-preview').text_content())['mode'] == 'demo'
         await expect(page.locator('#export-warning')).to_contain_text('SYNTHETIC DEMO')
         assert len(downloads) == 1
+        if args.offline:
+            # About:blank has no native SubtleCrypto. A deterministic digest stub
+            # tests only the button's async lifecycle; the HTTP path tests native
+            # hashing and actual receiver validation above. No stub bytes download.
+            await page.keyboard.press('Escape')
+            await page.locator('.project-name button').filter(has_text='Alibi').click()
+            await section.get_by_role('button', name='Review unmatched outcomes', exact=True).click()
+            await page.evaluate('''() => {
+              Object.defineProperty(window.crypto, 'subtle', {configurable:true,
+                value:{digest:async()=>new Uint8Array(32).buffer}});
+              operationVisibility(true); operationVisibility(false);
+            }''')
+            # Cancel one preparation during its digest, then allow a fresh click.
+            await page.evaluate('''() => {
+              let paused = false;
+              window.crypto.subtle.digest = async () => {
+                if (!paused) {paused=true; await new Promise(resolve=>window.releaseDigest=resolve);}
+                return new Uint8Array(32).buffer;
+              };
+            }''')
+            identified = page.get_by_role('button', name='Prepare identified handoff (v2)', exact=True)
+            await identified.click()
+            await page.wait_for_function('typeof window.releaseDigest === "function"')
+            await page.evaluate('operationVisibility(true); operationVisibility(false); releaseDigest()')
+            await expect(identified).to_be_enabled()
+            await expect(page.locator('#export-dialog')).not_to_be_visible()
+            await identified.click()
+            await expect(page.locator('#export-dialog')).to_be_visible()
+            assert json.loads(await page.locator('#export-preview').text_content())['schema'] == 'pulseboard.handoff/2'
+            assert len(downloads) == 1
+            await page.keyboard.press('Escape')
         assert not errors, errors
         if not args.offline: assert await page.evaluate('window.csp') == []
         assert all('/v1/portfolio?' in url for url in requests if '/v1/' in url), requests
         print(json.dumps({'passed':True,'transport':'offline DOM/v1 export; no HTTP/CSP/WebCrypto claim' if args.offline else 'HTTP assets/native WebCrypto; synthetic SQLite read fixtures',
-                          'checks':([] if args.offline else ['v2/v3 authenticated API','native v2 digest','CSP']) + ['drawer/signal round trip','pinned evidence after poll',
+                          'checks':([] if args.offline else ['v2/v3 authenticated API','native v2 digest','CSP']) + ['drawer/signal round trip','pinned evidence after poll','visibility resumes pinned review',
                                     'exact reviewed download and receiver preview','malformed-refresh retention',
                                     'v2 unavailable detail','inert markup','390px layout','synthetic markings','no extra reads']}))
         await browser.close()

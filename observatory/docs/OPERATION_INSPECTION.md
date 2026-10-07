@@ -29,7 +29,9 @@ in Alerts. **Inspect operation evidence** returns from the note to its source
 project drawer. Both directions retain the snapshot being reviewed, even when a
 poll updates the rest of the Desk. Reopen the project to inspect a newer reading.
 Replacement drawer headings receive focus; no new modal or background read is
-introduced.
+introduced. Returning from a hidden tab does not disable the pinned review
+buttons. A pending identified-handoff preparation is still invalidated when the
+read epoch changes; a later click captures a fresh epoch and can proceed.
 
 The notes use the separate `operation-evidence/1` rule version. Existing
 `desk-rules/1` thresholds and outcomes are unchanged. The new note is not a failure
@@ -74,7 +76,9 @@ the local collector remains disabled. No product origin or account is contacted.
 Where local browser networking is unavailable, `--offline` reuses the repository's
 inlined-asset harness. It checks the same drawer round-trip, changed-poll pinning,
 malformed-refresh retention, v2 absence, inert markup, 390-pixel layout and exact
-reviewed v1 download/receiver preview. It does **not** prove HTTP, CSP or native
+reviewed v1 download/receiver preview. A deterministic digest stub additionally
+checks async button cancellation/resume in the offline harness; its output is not
+downloaded or counted as native WebCrypto evidence. It does **not** prove HTTP, CSP or native
 WebCrypto. Those remain mandatory real-server CI gates before merge.
 
 This continuation reproduced all ten draft #212 tests failing before implementation.
@@ -83,10 +87,14 @@ added. The full suite then passed 787 tests with no skips. An independent browse
 mutation removed the explicit source pin at the project-to-signal link: the
 round-trip test failed after a new poll, then passed with the pin restored. Earlier
 browser fixture URL expectations were updated to the explicitly negotiated URL;
-no serving assertion was removed to obtain a pass.
+no serving assertion was removed to obtain a pass. Final review reproduced two
+hidden-tab lifecycle failures: the project-to-note callback became inert, and an
+identified-handoff click retained an obsolete read epoch. Both fail before their
+repairs and pass afterward; cancelled pending hashing still cannot open an export.
+The phone test also expands the release table and checks its internal scroll.
 
-Measured assets total 251,756 raw bytes and 82,550 independently gzipped bytes
-(245.9 and 80.7 KiB, rounded up to one decimal). The concrete inspection/review
+Measured assets total 251,907 raw bytes and 82,615 independently gzipped bytes
+(246.1 and 80.7 KiB, rounded up to one decimal). The concrete inspection/review
 interaction raises the checked ceiling from 240/80 to **256/84 KiB**. It adds no
 runtime dependency, data request, polling loop, event admission or storage budget.
 
