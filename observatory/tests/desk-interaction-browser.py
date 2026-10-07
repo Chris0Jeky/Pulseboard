@@ -81,7 +81,7 @@ async def check_focus(page):
 
 async def check_navigation(page):
     alerts = page.locator('[data-view=signals]')
-    for scenario, count in [('quiet', 0), ('release', 3), ('pressure', 7)]:
+    for scenario, count in [('quiet', 1), ('release', 3), ('pressure', 7)]:
         await page.locator('#scenario').select_option(scenario)
         await expect(alerts.locator('#signal-count')).to_have_text(str(count))
         await expect(alerts.locator('kbd')).to_have_text('2')

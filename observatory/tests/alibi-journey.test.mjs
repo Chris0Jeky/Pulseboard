@@ -132,7 +132,8 @@ test('many attempts with few resolved outcomes still read as too little evidence
   const snapshot = await readPortfolio(DB, { now, projects, collectionEnabled: true, admittedProjects: ['alibi'] });
   snapshot.mode = 'demo';
   const signals = buildSignals(snapshot, now).filter(item => item.project === 'alibi' && item.rule.startsWith('operation.puzzle.solve.'));
-  assert.deepEqual(signals.map(item => item.rule), ['operation.puzzle.solve.low_sample']);
+  assert.deepEqual(signals.map(item => item.rule), ['operation.puzzle.solve.low_sample', 'operation.puzzle.solve.missingness_unavailable']);
+  assert.equal(signals[1].evidence.unmatched, null); // Old v2 cannot certify zero missingness.
   assert.equal(signals[0].evidence.attempts, 25);
   assert.equal(signals[0].evidence.open, 24);
 });

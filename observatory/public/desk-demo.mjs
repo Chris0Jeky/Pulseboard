@@ -42,9 +42,15 @@ export function makeDemo(scenario = 'release', { now = Date.now(), days = 7, pha
       totals: { events: n('events'), sessions: Math.floor(n('events') / 5), completed: n('completed'), failed: n('failed'), errors: n('errors'), last: empty ? null : end - 4 * 60_000 },
       flow: fraction(empty ? 0 : 72 + i * 2, empty ? 0 : 100 + i * 3), daily,
       routes: empty ? [] : [{ route: 'home', n: Math.floor(n('events') * 0.3) }, { route: 'workspace', n: n('events') - Math.floor(n('events') * 0.3) }],
+      operations: id === 'alibi' ? [{ id: 'puzzle.solve', version: 1, attempts: empty ? 0 : 30,
+        completed: empty ? 0 : 29, failed: empty ? 0 : 1, open: 0, retries: empty ? 0 : 1,
+        completion: fraction(empty ? 0 : 29, empty ? 0 : 30),
+        unmatched: { completed: scenario === 'blind' ? 4 : 0, failed: scenario === 'blind' ? 2 : 0 },
+        releases: empty ? [] : [{ release: '0.6.1', attempts: 30, completed: 29, failed: 1, open: 0, retries: 1,
+          unmatched: { completed: scenario === 'blind' ? 4 : 0, failed: scenario === 'blind' ? 2 : 0 } }] }] : [],
       releases, budget: { used: empty ? 0 : scenario === 'pressure' ? 2400 + i : Math.max(admittedToday, 280 + i * 47), limit: 2500, day: new Date(end).toISOString().slice(0, 10) } };
   });
-  return { schema: 'pulseboard.portfolio/2', mode: 'demo', generatedAt: end, collectionEnabled: true,
+  return { schema: 'pulseboard.portfolio/3', mode: 'demo', generatedAt: end, collectionEnabled: true,
     window: { start, end, days, timezone: 'UTC' }, projects,
     limitations: ['Every number in this scenario is invented. No production request is made.',
       'Sessions are client-reported, not verified people. Repeated action outcomes are possible.',

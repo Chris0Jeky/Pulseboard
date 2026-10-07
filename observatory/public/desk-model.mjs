@@ -58,10 +58,10 @@ export function fingerprint(value) {
 /** Rules surface inspectable observations, never diagnoses or automated changes. */
 export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) {
   const signals = [];
-  const add = (project, rule, severity, title, detail, evidence, next) => {
+  const add = (project, rule, severity, title, detail, evidence, next, version = RULE_VERSION) => {
     const id = `${project?.id || 'portfolio'}:${rule}`;
     signals.push({ id, key: `${snapshot.mode}:${id}:${fingerprint(evidence)}`, project: project?.id || null,
-      label: project?.label || 'Portfolio', rule, version: RULE_VERSION, severity, title, detail, evidence, next });
+      label: project?.label || 'Portfolio', rule, version, severity, title, detail, evidence, next });
   };
   if (!snapshot.collectionEnabled) add(null, 'collection.paused', 'note', 'Collection is switched off',
     'You can still read past numbers, but the collector is not accepting new events from any site.', { collectionEnabled: false },
@@ -111,6 +111,20 @@ export function buildSignals(snapshot, now = Date.now(), refreshFailed = false) 
       const evidence = { operation: operation.id, version: operation.version, attempts: operation.attempts,
         completed: operation.completed, failed: operation.failed, open: operation.open, retries: operation.retries,
         minimum: MIN_OUTCOMES };
+      const lastKnown = refreshFailed === true || snapshot.generatedAt > now || now - snapshot.generatedAt > STALE_AFTER;
+      const detailAvailable = snapshot.schema === 'pulseboard.portfolio/3';
+      const unmatched = detailAvailable ? { ...operation.unmatched } : null;
+      const pairing = { ...evidence, sourceSchema: snapshot.schema, sourceMode: snapshot.mode, lastKnown, unmatched };
+      const suffix = lastKnown ? ' (last-known)' : '';
+      const refreshFirst = lastKnown ? 'Refresh and reopen the evidence before treating it as current. ' : '';
+      if (!detailAvailable) add(p, `operation.${operation.id}.missingness_unavailable`, 'note',
+        `${p.label}: ${operation.id} pairing detail is unavailable${suffix}`,
+        'This older reading does not report unmatched outcomes. Missing detail is unavailable, not zero.', pairing,
+        refreshFirst + 'Use a collector that supports portfolio v3 to inspect missing pairing evidence.', 'operation-evidence/1');
+      else if (unmatched.completed + unmatched.failed > 0) add(p, `operation.${operation.id}.unmatched`, 'note',
+        `${p.label}: unmatched ${operation.id} outcomes${suffix}`,
+        `${unmatched.completed} completed and ${unmatched.failed} failed events did not resolve a matching start. These are not extra failed attempts; missing starts, sequence ties, extra terminals or route changes can explain them.`, pairing,
+        refreshFirst + 'Inspect hook ordering, sequence and route/release boundaries. This legacy session-event read does not prove current product-journey coverage.', 'operation-evidence/1');
       if (p.collectionAdmitted && operation.attempts === 0) add(p, `operation.${operation.id}.no_evidence`, 'note',
         `${p.label}: no ${operation.id} attempts reported`,
         'No attempts is unknown, not healthy: nobody may have tried, or the reporting may be broken.', evidence,

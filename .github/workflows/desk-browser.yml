@@ -44,6 +44,7 @@ jobs:
           ../.browser-venv/bin/python tests/desk-interaction-browser.py --origin http://127.0.0.1:8788
           ../.browser-venv/bin/python tests/release-fold-browser.py --origin http://127.0.0.1:8788
           ../.browser-venv/bin/python tests/handoff-browser.py --origin http://127.0.0.1:8788
+          ../.browser-venv/bin/python tests/operation-browser.py --origin http://127.0.0.1:8788
           ../.browser-venv/bin/python tests/alibi-journey-browser.py
       - name: Prove generated SDK pagehide delivery in Chromium
         working-directory: observatory
