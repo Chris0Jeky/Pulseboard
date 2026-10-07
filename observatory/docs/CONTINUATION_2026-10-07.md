@@ -30,8 +30,8 @@ consistency, pagination, status, time and retry-chain checks fail closed. Parall
 job seconds and observed job-envelope duration stay distinct, and their limitations
 survive import and question-card export. Preview is read-only; explicit output is
 create-only, not an implicit import. See
-[the adapter guide](../run-receipts/GITHUB_ACTIONS.md). Forty-two focused converter
-and file-publication tests plus the full 714-test suite pass locally. One selected
+[the adapter guide](../run-receipts/GITHUB_ACTIONS.md). Forty-three focused converter
+and file-publication tests plus the full 715-test suite pass locally. One selected
 API projection from the existing Alibi mapping produced 1,532 runner-seconds and
 one private receipt, with a duplicate on reimport and no cost or verified outcome.
 Its private source projection/database are deliberately absent from this repo.

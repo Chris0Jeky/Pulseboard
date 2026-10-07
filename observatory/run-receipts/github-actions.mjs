@@ -35,7 +35,7 @@ export function convertGithubActionsExport(text, mapping, { now = Date.now(), re
   const generatedAt = new Date(time(input.generatedAt)).toISOString();
   const coverage = { start: new Date(time(input.coverage.start)).toISOString(), end: new Date(time(input.coverage.end)).toISOString(),
     complete: false, limitations: ['manual-export', 'partial-history', 'outcomes-incomplete'] };
-  const seenAttempts = new Set(), seenJobs = new Set();
+  const seenAttempts = new Set(), seenJobs = new Set(), runHeads = new Map();
   const rows = input.attempts.map(entry => {
     exact(entry, ['run', 'jobPages']);
     const run = entry.run;
@@ -43,6 +43,9 @@ export function convertGithubActionsExport(text, mapping, { now = Date.now(), re
     requireValue(id(run.id) && run.repository?.id === mapping.repositoryId && run.workflow_id === mapping.workflowId &&
       Number.isSafeInteger(run.run_attempt) && run.run_attempt >= 1 && run.run_attempt <= 100 &&
       typeof run.head_sha === 'string' && /^[0-9a-f]{40}$/.test(run.head_sha), 'Actions run identity does not match its mapping');
+    requireValue(!runHeads.has(run.id) || runHeads.get(run.id) === run.head_sha,
+      'Inconsistent Actions head across run attempts');
+    runHeads.set(run.id, run.head_sha);
     const key = `${run.id}:${run.run_attempt}`;
     requireValue(!seenAttempts.has(key), 'Duplicate Actions run attempt');
     seenAttempts.add(key);
