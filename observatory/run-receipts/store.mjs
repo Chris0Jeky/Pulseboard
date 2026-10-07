@@ -90,11 +90,16 @@ function refreshCoverage(parsed, item) {
     JSON.stringify(parsed.coverage.limitations), item.receiptKey, item.contentHash, complete, complete, parsed.generatedAt];
 }
 
-export async function importRunReceiptFile(DB, text, { now = Date.now(), registry = projects } = {}) {
-  requireValue(DB?.prepare && DB?.batch, 'A D1-compatible database is required');
+export function validateRunReceiptImport(text, { now = Date.now(), registry = projects } = {}) {
   requireValue(Number.isSafeInteger(now) && now >= 0, 'Invalid import time');
   const parsed = parseRunReceiptFile(text, registry);
   requireValue(parsed.generatedAt <= now + 300_000, 'Run receipt file is future dated');
+  return parsed;
+}
+
+export async function importRunReceiptFile(DB, text, { now = Date.now(), registry = projects } = {}) {
+  requireValue(DB?.prepare && DB?.batch, 'A D1-compatible database is required');
+  const parsed = validateRunReceiptImport(text, { now, registry });
   const stored = parsed.receipts.map(receipt => storedReceipt(parsed, receipt, now));
 
   // Validate every existing identity before writing anything. A repeated byte-equivalent receipt is

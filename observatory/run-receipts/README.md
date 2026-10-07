@@ -84,3 +84,27 @@ npx wrangler deploy --dry-run
 ```
 
 The Worker dry-run proves this private local module does not alter the deployed bundle. Automatic provider connections, hosted storage, invoices and real account scopes remain future reviewed gates.
+
+## File boundary and rejected imports
+
+Input bytes, UTF-8, the receipt contract and import time are validated before an
+output directory is created or SQLite is opened. An invalid input leaves an
+existing database unchanged; an identity conflict is separately rejected by the
+store's existing transactional trigger. This is not a claim that every later
+storage failure can undo directory creation or database initialization.
+
+The reader opens one regular-file descriptor, checks it against the named file,
+reads at most 256 KiB plus one rejection byte, and rechecks size, identity and
+modification metadata. It rejects changed or replaced inputs rather than relying
+on an earlier path-only size check. Final-component symlinks are refused; platforms
+that provide O_NOFOLLOW and O_NONBLOCK also use those flags. Descriptors close on
+both success and failure. This is a defensive file boundary, not authentication,
+immutable storage, or a guarantee against arbitrary hostile filesystem actors.
+
+Imports require a trusted output directory. Existing database symlinks and
+non-files are refused, but SQLite opens its destination by pathname, so input
+checks do not provide an atomic cross-process lock on that destination or its
+parent directories. The CLI requires exact argument counts and reports fixed
+failure messages instead of echoing JSON snippets, private paths or SQLite
+exceptions. Library callers still receive exceptions for diagnosis and should
+not publish them as public logs.
