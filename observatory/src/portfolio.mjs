@@ -5,6 +5,7 @@ import { DAY, fraction } from '../public/desk-model.mjs';
 // browser, which must not import from src/; the two must stay in step.
 import { monitorState } from './contracts.mjs';
 import { foldReleaseRows } from './release-label.mjs';
+import { operationQuery } from './operations.mjs';
 export const WINDOWS = [1, 7, 14];
 const OPERATION_COUNTS = ['attempts', 'completed', 'failed', 'open', 'retries'];
 const sumOf = (rows, key) => rows.reduce((sum, row) => sum + row[key], 0);
@@ -27,29 +28,6 @@ export function limitations(projects = registry) {
 function operationDefinitions(projects) {
   return Object.entries(projects).flatMap(([project, config]) => (config.operations || []).map(operation => ({ project, ...operation })));
 }
-// Each failed/open start with a following start contributes one retry candidate.
-// Counting its successor this way avoids treating a new puzzle after success as a retry.
-function operationQuery(db, operation, start, end) {
-  return db.prepare(`WITH starts AS (
-    SELECT project,session,route,release,seq,
-      LEAD(seq) OVER (PARTITION BY project,session,route,release ORDER BY seq) AS next_seq
-    FROM events WHERE project=? AND received>=? AND received<? AND event=?
-  ), resolved AS (
-    SELECT release,next_seq,(
-      SELECT b.event FROM events b
-      WHERE b.project=s.project AND b.session=s.session AND b.route=s.route AND b.release=s.release
-      AND b.event IN (?,?) AND b.seq>s.seq AND (s.next_seq IS NULL OR b.seq<s.next_seq)
-      AND b.received>=? AND b.received<? ORDER BY b.seq LIMIT 1
-    ) AS terminal FROM starts s
-  ) SELECT release,COUNT(*) AS attempts,
-    SUM(CASE WHEN terminal=? THEN 1 ELSE 0 END) AS completed,
-    SUM(CASE WHEN terminal=? THEN 1 ELSE 0 END) AS failed,
-    SUM(CASE WHEN terminal IS NULL THEN 1 ELSE 0 END) AS open,
-    SUM(CASE WHEN next_seq IS NOT NULL AND (terminal IS NULL OR terminal=?) THEN 1 ELSE 0 END) AS retries
-    FROM resolved GROUP BY release ORDER BY release`)
-    .bind(operation.project, start, end, operation.started, operation.completed, operation.failed,
-      start, end, operation.completed, operation.failed, operation.failed);
-}
 export async function readPortfolio(db, { days = 7, now = Date.now(), collectionEnabled = false, admittedProjects = [], projects = registry } = {}) {
   if (!WINDOWS.includes(days) || !Number.isSafeInteger(now) || now < DAY * days || !Array.isArray(admittedProjects) || admittedProjects.some(id => typeof id !== 'string')) throw new RangeError('Unsupported window or admission');
   const admitted = new Set(admittedProjects);
@@ -70,15 +48,17 @@ export async function readPortfolio(db, { days = 7, now = Date.now(), collection
     ranged(`SELECT project, COUNT(*) AS n, SUM(ok) AS good, MAX(checked) AS last
       FROM probe_history WHERE checked >= ? AND checked < ? GROUP BY project`),
     db.prepare('SELECT project,used FROM budget WHERE day=?').bind(new Date(now).toISOString().slice(0, 10)),
-    db.prepare(`WITH starts AS (
-      SELECT project,session,route,release,MIN(seq) AS seq FROM events
-      WHERE received >= ? AND received < ? AND event='action.requested'
+    // Existence of a strictly later completion equals MAX(completion)>MIN(start)
+    // inside the same partition and receipt window; no per-session rescan is needed.
+    ranged(`WITH paired AS (
+      SELECT project,session,route,release,
+        MIN(CASE WHEN event='action.requested' THEN seq END) AS start_seq,
+        MAX(CASE WHEN event='action.completed' THEN seq END) AS completed_seq
+      FROM events WHERE received>=? AND received<? AND event IN ('action.requested','action.completed')
       GROUP BY project,session,route,release
-    ) SELECT a.project,COUNT(*) AS started,SUM(CASE WHEN EXISTS (
-      SELECT 1 FROM events b WHERE b.project=a.project AND b.session=a.session
-      AND b.route=a.route AND b.release=a.release AND b.event='action.completed'
-      AND b.seq>a.seq AND b.received>=? AND b.received<?
-    ) THEN 1 ELSE 0 END) AS completed FROM starts a GROUP BY a.project`).bind(start, now, start, now),
+    ) SELECT project,COUNT(*) AS started,
+      SUM(CASE WHEN completed_seq>start_seq THEN 1 ELSE 0 END) AS completed
+      FROM paired WHERE start_seq IS NOT NULL GROUP BY project`),
     ranged(`WITH ranked AS (
       SELECT project,release,value,ROW_NUMBER() OVER (PARTITION BY project,release ORDER BY value) AS rank,
       COUNT(*) OVER (PARTITION BY project,release) AS n FROM events
