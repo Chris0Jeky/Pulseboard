@@ -16,7 +16,22 @@ export async function ingest(db, source, events, now = Date.now()) {
     ON CONFLICT(source,day) DO UPDATE SET used=used+excluded.used,receipt=excluded.receipt
     WHERE used+excluded.used<=? RETURNING used`)
     .bind(source.id, day, events.length, receipt, events.length, source.dailyLimit, source.dailyLimit);
-  const statements = [reserve];
+  // In the same transaction, invalidate this admission receipt if any identity
+  // contradicts stored evidence. Every insert/heartbeat is gated by that receipt,
+  // so the whole evidence batch is refused while attempts still consume budget.
+  // Events are closed, flat scalar objects; comparing key/type/value sets also
+  // accepts historical JSON with a different property order without rewriting it.
+  const rejectConflicts = db.prepare(`UPDATE watch_budget SET receipt=?
+    WHERE source=? AND day=? AND receipt=? AND EXISTS (
+      SELECT 1 FROM json_each(?) incoming JOIN watch_events stored
+        ON stored.source=? AND stored.id=json_extract(incoming.value,'$.id')
+      WHERE EXISTS (SELECT key,type,atom FROM json_each(stored.data)
+        EXCEPT SELECT key,type,atom FROM json_each(incoming.value))
+      OR EXISTS (SELECT key,type,atom FROM json_each(incoming.value)
+        EXCEPT SELECT key,type,atom FROM json_each(stored.data))
+    ) RETURNING used`)
+    .bind(`conflict:${receipt}`, source.id, day, receipt, JSON.stringify(events), source.id);
+  const statements = [reserve, rejectConflicts];
   for (const e of events) {
     statements.push(db.prepare(`INSERT OR IGNORE INTO watch_events(source,id,at,received,kind,asset,data)
       SELECT ?,?,?,?,?,?,? FROM watch_budget WHERE source=? AND day=? AND receipt=? RETURNING id`)
@@ -34,7 +49,9 @@ export async function ingest(db, source, events, now = Date.now()) {
   }
   const result = await db.batch(statements);
   if (!result[0].results.length) return null;
-  return { inserted: result.slice(1).reduce((n, r) => n + r.results.length, 0), charged: events.length,
+  if (result[1].results.length) return { conflict: true, inserted: 0, charged: events.length,
+    used: result[0].results[0].used };
+  return { inserted: result.slice(2).reduce((n, r) => n + r.results.length, 0), charged: events.length,
     used: result[0].results[0].used };
 }
 export function coverage(source, sensor, now) {
