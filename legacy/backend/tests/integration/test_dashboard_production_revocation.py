@@ -80,3 +80,31 @@ async def test_independent_session_deletion_during_handshake_closes(production_r
     socket.close.assert_awaited_once_with(code=1008)
     socket.receive_text.assert_not_awaited()
     assert dashboard_id not in hub.connections
+
+
+@pytest.mark.parametrize("lookup_number", [2, 3])
+async def test_expired_identity_error_closes_before_initial_state_or_pong(production_runtime, monkeypatch, lookup_number):
+    from fastapi import WebSocketDisconnect
+    from sqlalchemy import inspect
+    from sqlalchemy.orm.exc import ObjectDeletedError
+
+    _client, engine, hub, dashboard_id = production_runtime
+    socket = AsyncMock()
+    socket.receive_text.side_effect = ['{"type":"ping"}', WebSocketDisconnect()]
+    with Session(engine) as reader:
+        dashboard = reader.get(Dashboard, dashboard_id)
+        error = ObjectDeletedError(inspect(dashboard))
+        real_get, calls = reader.get, 0
+
+        def expired_get(model, identity):
+            nonlocal calls
+            calls += 1
+            if calls == lookup_number:
+                raise error
+            return real_get(model, identity)
+
+        monkeypatch.setattr(reader, "get", expired_get)
+        await ws_router.websocket_dashboard(socket, dashboard_id, reader, hub)
+    socket.close.assert_awaited_once_with(code=1008)
+    socket.send_text.assert_not_awaited()
+    assert dashboard_id not in hub.connections
