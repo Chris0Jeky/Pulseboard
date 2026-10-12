@@ -122,6 +122,18 @@ function githubEvidence(env) {
 }
 /** Projects admitted while COLLECT_ENABLED is true. Invalid or local-only ids fail the whole policy closed. */
 export const collecting = env => collectionAdmission(env).admitted;
+/** Monitoring configuration is not a product measurement or a collector schema-readiness gate. */
+export function probeConfiguration(env) {
+  const configured = [], unconfigured = [];
+  for (const [project, value] of Object.entries(projects)) {
+    if (!value.probe) continue;
+    const binding = value.probe.binding;
+    if (binding && typeof env[binding]?.fetch !== 'function') {
+      unconfigured.push({ project, reason: 'service_binding_unavailable' });
+    } else configured.push(project);
+  }
+  return { configured, unconfigured };
+}
 export async function handle(request, env) {
   const url = new URL(request.url);
   // Held outside the try so an unexpected failure after the origin match is still readable by the calling page.
@@ -147,7 +159,7 @@ export async function handle(request, env) {
         admitted: admission.enabled && admission.valid ? productAdmission(env) : [] };
       const voices = { configured: typeof env.COLLECT_VOICE_PROJECTS === 'string' && env.COLLECT_VOICE_PROJECTS !== '',
         admitted: admission.enabled && admission.valid ? voiceAdmission(env) : [] };
-      return json({ ready: admission.valid, schema, collection, statistics, product, voices }, admission.valid ? 200 : 503);
+      return json({ ready: admission.valid, schema, collection, statistics, product, voices, probes: probeConfiguration(env) }, admission.valid ? 200 : 503);
     }
     if (url.pathname === '/v1/summary' && request.method === 'GET') {
       if (!await authorized(request, env.READ_TOKEN)) return json({ error: 'unauthorized' }, 401);
@@ -295,7 +307,7 @@ export async function handle(request, env) {
         const stored = 'EXISTS(SELECT 1 FROM voice_feedback WHERE project=? AND id=?)';
         const duplicate = env.DB.prepare(`SELECT ${stored} AS duplicate`).bind(voiceId, record.id);
         const insert = env.DB.prepare(`INSERT INTO voice_feedback(project,id,received,day,written,release,kind,route,subject,text,redacted,
-          device,country,browser,os) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
+          device,country,browser,os) SELECT ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,? FROM budget WHERE project=? AND day=? AND receipt=?
           ON CONFLICT(project,id) DO NOTHING`)
           .bind(voiceId, record.id, voiceNow, voiceDay, record.written, record.release, record.kind, record.route, record.subject, record.text,
             record.redacted, record.device, derived.country, derived.browser, derived.os, voiceKey, voiceDay, voiceReceipt);
@@ -410,14 +422,17 @@ export async function handle(request, env) {
   } catch { return json({ error: 'unavailable' }, 503, cors); }
 }
 export async function probeAll(env, transport = fetch, now = Date.now()) {
+  const configuration = probeConfiguration(env), unavailable = new Set(configuration.unconfigured.map(p => p.project));
   for (const [id, project] of Object.entries(projects)) {
-    if (!project.probe) continue;
+    // Never substitute a public subrequest for a required binding or fabricate a failed measurement.
+    // Prior real observations remain untouched and age naturally through monitorState().
+    if (!project.probe || unavailable.has(id)) continue;
     const start = performance.now(); let ok = false, status = 0;
     try {
       // Workers fetch accepts only 'follow' and 'manual' for redirect ('error' throws before any request is sent,
       // measured on workerd 2026-09-10); with 'manual' a 3xx is a non-ok response, so a redirect still counts as a failure.
       // A same-account Worker is reached through its service binding (public-hostname subrequests fail with 1042).
-      const send = project.probe.binding && env[project.probe.binding] ? (url, init) => env[project.probe.binding].fetch(url, init) : transport;
+      const send = project.probe.binding ? (url, init) => env[project.probe.binding].fetch(url, init) : transport;
       const r = await send(project.probe.url, { redirect: 'manual', signal: AbortSignal.timeout(8000),
         headers: { 'User-Agent': 'Pulseboard-Observatory/0.1 (+synthetic-monitor)' }, cache: 'no-store' });
       status = r.status;
@@ -442,6 +457,7 @@ export async function probeAll(env, transport = fetch, now = Date.now()) {
       env.DB.prepare('INSERT OR IGNORE INTO probe_history VALUES(?,?,?,?)').bind(id, now, ok ? 1 : 0, duration),
     ]);
   }
+  return configuration;
 }
 export async function maintain(env, now = Date.now()) {
   // Product events are kept 90 days (USAGE_PLAN.md "Consent categories"). Legacy session events keep 14 days: the deployed

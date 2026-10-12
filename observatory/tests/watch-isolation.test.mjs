@@ -21,12 +21,14 @@ function setup(t) {
 async function runSchedule(DB, extra = {}) {
   const targets = Object.values(projects).filter(p => p.probe), seen = [];
   await DB.prepare('INSERT OR REPLACE INTO probe_history VALUES(?,?,?,?)').bind('mdviewer', NOW - 31 * DAY, 1, 5).run();
-  await entry.scheduled(null, { DB, WATCH_ENABLED: 'false', ...extra }, null, async url => {
+  const transport = async url => {
     const target = targets.find(p => p.probe.url === url);
     assert.ok(target, 'no unregistered probe target');
     seen.push(url);
     return new Response(target.probe.marker);
-  });
+  };
+  const bindings = Object.fromEntries(targets.filter(p => p.probe.binding).map(p => [p.probe.binding, { fetch: transport }]));
+  await entry.scheduled(null, { DB, WATCH_ENABLED: 'false', ...bindings, ...extra }, null, transport);
   assert.deepEqual(seen, targets.map(p => p.probe.url));
   const history = (await DB.prepare('SELECT * FROM probe_history').all()).results;
   assert.equal(history.length, targets.length, 'real core retention removed the old history row');

@@ -10,6 +10,8 @@ const event = (extra = {}) => ({ v: 1, id: crypto.randomUUID(), session: crypto.
 function db() { const value = openDatabase(); value.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8')); return value; }
 const request = (events, extra = {}) => new Request('https://collector.example/v1/collect/mdviewer', { method: 'POST', headers: { Origin: projects.mdviewer.origin, 'Content-Type': 'application/json', ...extra }, body: JSON.stringify({ events }) });
 const env = DB => ({ DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'mdviewer', READ_TOKEN: 'a'.repeat(64) });
+const probeEnv = (DB, fetch) => ({ ...env(DB), ...Object.fromEntries(Object.values(projects)
+  .filter(p => p.probe?.binding).map(p => [p.probe.binding, { fetch }])) });
 const withDB = fn => async () => { const database = db(); try { await fn(database); } finally { database.close(); } };
 test('closed contract accepts only the documented envelope', () => { assert.equal(validateEvent(event(), projects.mdviewer), true); });
 test('Alibi 0.11.6 is admitted from the shared registry, an unregistered well-formed release too (q-28), and malformed releases still fail closed', () => {
@@ -128,7 +130,7 @@ test('the scheduled handler probes with the injected transport and then runs mai
   const now = Date.now(), seen = [];
   const transport = async url => { seen.push(url); return new Response(Object.values(projects).find(p => p.probe?.url === url).probe.marker); };
   await DB.prepare('INSERT INTO probe_history VALUES(?,?,?,?)').bind('mdviewer', now - 31 * 86400000, 1, 5).run();
-  await worker.scheduled(null, env(DB), null, transport);
+  await worker.scheduled(null, probeEnv(DB, transport), null, transport);
   assert.equal(seen.length, Object.values(projects).filter(p => p.probe).length);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM probes').first()).n, seen.length);
   // maintain() ran after probeAll: the old history row is gone, the row this run wrote is not.
@@ -163,26 +165,28 @@ test('monitor debounces failures and recovery', () => {
 });
 test('real probe pipeline persists status and bounded content checks', withDB(async DB => {
   const transport = async url => new Response(Object.values(projects).find(p => p.probe?.url === url).probe.marker);
-  await probeAll(env(DB), transport, Date.now() - 1000); await probeAll(env(DB), transport, Date.now());
+  await probeAll(probeEnv(DB, transport), transport, Date.now() - 1000); await probeAll(probeEnv(DB, transport), transport, Date.now());
   const s = await summary(DB); assert.equal(s.projects.filter(p => p.monitor.state === 'up').length, 7);
-  await probeAll(env(DB), async () => new Response('unexpected content'), Date.now() + 1);
+  const unexpected = async () => new Response('unexpected content');
+  await probeAll(probeEnv(DB, unexpected), unexpected, Date.now() + 1);
   assert.ok((await DB.prepare('SELECT * FROM probes').all()).results.every(p => p.failures === 1));
 }));
 test('probes ask for a redirect mode workerd accepts and count a redirect as a failure', withDB(async DB => {
   // redirect: 'error' throws inside workerd before any request leaves (measured 2026-09-10), which read as every target down.
   const options = [];
   const transport = async (url, init) => { options.push(init); return new Response(null, { status: 301, headers: { Location: url + '?moved' } }); };
-  await probeAll(env(DB), transport, Date.now());
+  await probeAll(probeEnv(DB, transport), transport, Date.now());
   assert.ok(options.length > 0 && options.every(o => o.redirect === 'manual'));
   assert.ok((await DB.prepare('SELECT * FROM probes').all()).results.every(p => p.status === 301 && p.failures === 1));
 }));
-test('a probe with a service binding goes through the binding, the others through the transport', withDB(async DB => {
+test('a bound probe uses its binding, a missing binding is skipped, and direct probes use transport', withDB(async DB => {
   const bound = [], direct = [];
   const service = { fetch: async (url, init) => { bound.push([url, init.redirect]); return new Response('CommitAtlas'); } };
   const transport = async url => { direct.push(url); return new Response(Object.values(projects).find(p => p.probe?.url === url).probe.marker); };
   await probeAll({ ...env(DB), COMMITATLAS: service }, transport, Date.now());
   assert.deepEqual(bound, [[projects.commitatlas.probe.url, 'manual']]);
-  assert.ok(direct.includes(projects.alibi.probe.url) && !direct.includes(projects.commitatlas.probe.url)); // ALIBI binding absent here: falls back
+  assert.ok(!direct.includes(projects.alibi.probe.url) && !direct.includes(projects.commitatlas.probe.url));
+  assert.equal(await DB.prepare('SELECT * FROM probes WHERE project=?').bind('alibi').first(), null);
   assert.equal((await DB.prepare('SELECT successes FROM probes WHERE project=?').bind('commitatlas').first()).successes, 1);
 }));
 test('the read model says which probes observe the application rather than its public edge', async () => {
@@ -221,7 +225,9 @@ test('readiness reports the schema version and fails on a partially migrated dat
   const response = await handle(new Request('https://x.test/readyz'), env(DB));
   assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ready: true, schema: 5,
     collection: { enabled: true, configured: ['mdviewer'], admitted: ['mdviewer'], invalid: [] },
-    statistics: { configured: false, admitted: [] }, product: { configured: false, admitted: [] }, voices: { configured: false, admitted: [] } });
+    statistics: { configured: false, admitted: [] }, product: { configured: false, admitted: [] }, voices: { configured: false, admitted: [] },
+    probes: { configured: ['mdviewer', 'developer-lens', 'idleharbor', 'portfolio', 'wealthlens'],
+      unconfigured: ['commitatlas', 'alibi'].map(project => ({ project, reason: 'service_binding_unavailable' })) } });
   DB.exec('DROP TABLE probe_history');
   assert.equal((await handle(new Request('https://x.test/readyz'), env(DB))).status, 503);
 }));
