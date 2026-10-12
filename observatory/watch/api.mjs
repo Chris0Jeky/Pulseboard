@@ -34,6 +34,7 @@ export async function handleWatch(request, env, now = Date.now()) {
     await ready(env.DB);
     const receipt = await ingest(env.DB, source, body.events, now);
     if (!receipt) return json({ error: 'daily_budget' }, 429, { 'Retry-After': '3600' });
+    if (receipt.conflict) return json({ error: 'identity_conflict', charged: receipt.charged, used: receipt.used }, 409);
     return json({ accepted: true, ...receipt }, 202);
   } catch { return json({ error: 'unavailable' }, 503); }
 }
