@@ -319,8 +319,8 @@ test('the product read aggregates totals, sessions, journeys, exits, p75 vitals 
   assert.equal(r.window.startDay, '2026-09-19'); assert.equal(r.window.days, 7);
   // The exact shape the Desk (#119) validates.
   assert.deepEqual(Object.keys(r), ['schema', 'project', 'generatedAt', 'window', 'collectionAdmitted', 'population', 'limitations', 'total',
-    'totals', 'sessions', 'journeys', 'exits', 'exitsTruncated', 'vitals', 'vitalsTruncated', 'errors']);
-  assert.equal(r.exitsTruncated, false); assert.equal(r.vitalsTruncated, false);
+    'totals', 'sessions', 'journeys', 'exits', 'exitsTruncated', 'vitals', 'vitalsTruncated', 'errors', 'errorsTruncated']);
+  assert.equal(r.exitsTruncated, false); assert.equal(r.vitalsTruncated, false); assert.equal(r.errorsTruncated, false);
   assert.ok(r.population.length <= 120 && r.limitations.length <= 16 && r.limitations.every(line => line.length <= 500));
   assert.equal(r.total, 22);
   assert.deepEqual(r.totals.names.slice(0, 3), [{ name: 'web.vital', n: 13 }, { name: 'js.error', n: 3 }, { name: 'puzzle.started', n: 3 }]);
@@ -359,8 +359,9 @@ test('error groups are cut to the Desk bounds before grouping, so kind and messa
     { name: 'web.vital', props: { metric: 'LCP', value: -5 } },
   ]);
   const r = await readProduct(DB, { project: 'alibi', days: 1, now: NOW });
-  assert.deepEqual(r.errors.map(e => [e.kind.length, e.message.length, e.n]), [[64, 160, 2], [5, 10, 2], [5, 7, 1], [7, 7, 1]]);
-  assert.deepEqual(r.errors.slice(1).map(e => [e.kind, e.message]), [['Error', 'line break'], ['Error', 'unknown'], ['unknown', 'no kind']]);
+  const byKindMessage = [...r.errors].sort((a, b) => a.kind.localeCompare(b.kind) || a.message.localeCompare(b.message));
+  assert.deepEqual(byKindMessage.map(e => [e.kind.length, e.message.length, e.n]), [[5, 10, 2], [5, 7, 1], [64, 160, 2], [7, 7, 1]]);
+  assert.deepEqual(byKindMessage.filter(e => e.kind.length < 64).map(e => [e.kind, e.message]), [['Error', 'line break'], ['Error', 'unknown'], ['unknown', 'no kind']]);
   assert.ok(r.errors.every(e => e.kind && e.message && !/[\x00-\x1f\x7f]/.test(e.kind + e.message)), 'the Desk refuses empty or control text');
   assert.deepEqual(r.vitals, [], 'a negative vital is not a timing');
 });

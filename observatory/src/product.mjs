@@ -22,7 +22,7 @@ const LIMITATIONS = [
   'Session duration is the span between the first and last batch the collector received, so a session delivered in one batch reads 0.',
   'An exit is the last event a session sent inside the window; a session still in progress or cut by the window edge also has one.',
   'Vitals are the nearest-rank 75th percentile of the raw values per metric and route, never an average of percentiles; INP is an approximation.',
-  'Journeys show the latest 100 sessions and their first 60 steps; errors show the 100 most frequent kind and message pairs, cut to 64 and 160 characters.',
+  'Journeys show the latest 100 sessions and their first 60 steps; errors show up to 100 normalized kind/message pairs from at most 500 raw groups, cut to 64 and 160 characters.',
   'Names, routes and releases show at most 512, 256 and 64 rows by count; a truncated list sums to less than the total.',
   'Exits and vitals show at most 512 and 1,280 rows by count; truncated exits sum to less than the session count.',
   'Properties lose personal, identifier and link keys, e-mail and IP addresses and URL paths before storage; redaction is best effort, not a guarantee of anonymity.',
@@ -84,7 +84,7 @@ export async function readProduct(db, { project, days = 7, now = Date.now(), adm
     // Raw groups; cleaned, cut to the Desk's bounds in JavaScript and re-merged in errorGroups().
     db.prepare(`SELECT CAST(json_extract(props,'$.kind') AS TEXT) AS kind, CAST(json_extract(props,'$.message') AS TEXT) AS message,
       COUNT(*) AS n, MAX(received) AS lastSeen FROM product_events WHERE ${W} AND name='js.error'
-      GROUP BY 1, 2 ORDER BY n DESC, lastSeen DESC LIMIT ${ERROR_ROWS}`).bind(...bind),
+      GROUP BY 1, 2 ORDER BY n DESC, lastSeen DESC, kind, message LIMIT ${ERROR_ROWS + 1}`).bind(...bind),
   ])).map(result => result.results);
   const journeys = [];
   for (const row of journeyRows) {
@@ -93,11 +93,13 @@ export async function readProduct(db, { project, days = 7, now = Date.now(), adm
       durationMs: Number(row.last) - Number(row.first), steps: [], stepsTruncated: Number(row.n) > JOURNEY_STEPS });
     journey.steps.push(row.name);
   }
+  const errorsTruncated = errors.length > ERROR_ROWS;
   const total = Number(totals[0]?.n || 0), s = sessions[0] || {}, sessionCount = Number(s.count || 0);
   const orNull = value => sessionCount === 0 || value === null || value === undefined ? null : Number(value);
   return {
     schema: 'pulseboard.product/1', project, generatedAt: now, window: w,
-    collectionAdmitted: admitted, population: 'client-reported product events', limitations: LIMITATIONS, total,
+    collectionAdmitted: admitted, population: 'client-reported product events',
+    limitations: [...LIMITATIONS, ...(errorsTruncated ? ['Error rollup is incomplete: counts and last-seen timestamps are lower bounds; normalized groups may be missing and ranking is incomplete.'] : [])], total,
     totals: {
       names: names.slice(0, TOTALS_CAPS.names).map(row => ({ name: row.name, n: Number(row.n) })),
       routes: routes.slice(0, TOTALS_CAPS.routes).map(row => ({ route: row.route, n: Number(row.n) })),
@@ -111,7 +113,8 @@ export async function readProduct(db, { project, days = 7, now = Date.now(), adm
     exitsTruncated: exits.length > EXITS_CAP,
     vitals: vitals.slice(0, VITALS_CAP).map(row => ({ metric: row.metric, route: row.route, p75: Number(row.p75), n: Number(row.n) })),
     vitalsTruncated: vitals.length > VITALS_CAP,
-    errors: errorGroups(errors),
+    errors: errorGroups(errors.slice(0, ERROR_ROWS)),
+    errorsTruncated,
   };
 }
 
