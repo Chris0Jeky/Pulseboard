@@ -7,6 +7,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
+from sqlalchemy.orm.exc import ObjectDeletedError
 
 from app.api.deps import SessionDep
 from app.api.routes.dashboards import collect_feed_ids
@@ -52,7 +53,10 @@ async def websocket_dashboard(
         # The handshake yields: deletion may have committed while accept waited.
         # Re-read before registering or sending any cached feed state.
         session.expire_all()
-        dashboard = session.get(Dashboard, dashboard_id)
+        try:
+            dashboard = session.get(Dashboard, dashboard_id)
+        except ObjectDeletedError:
+            dashboard = None
         if not dashboard:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
@@ -71,7 +75,10 @@ async def websocket_dashboard(
                     if message.get("type") == "ping":
                         try:
                             session.expire_all()
-                            current = session.get(Dashboard, dashboard_id)
+                            try:
+                                current = session.get(Dashboard, dashboard_id)
+                            except ObjectDeletedError:
+                                current = None
                             if current is None:
                                 await hub.disconnect_dashboard(dashboard_id)
                                 return
