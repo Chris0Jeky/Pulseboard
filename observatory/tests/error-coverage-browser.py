@@ -78,13 +78,20 @@ async def run(output):
             await expect(panel).to_contain_text('ERROR COVERAGE UNKNOWN')
             await expect(panel).to_contain_text('not reported by this collector')
             await expect(panel.get_by_role('columnheader', name='Count (at least)', exact=True)).to_be_visible()
+            await page.goto(origin + '/?demo=release#product', wait_until='networkidle')
+            await expect(page.locator('#mode')).to_have_text('SYNTHETIC DEMO')
+            await expect(panel).to_contain_text('GROUPED BY KIND AND MESSAGE')
+            await expect(panel).not_to_contain_text('ERROR COVERAGE UNKNOWN')
+            await expect(panel).not_to_contain_text('lower bounds')
+            await expect(panel.get_by_role('columnheader', name='Count', exact=True)).to_be_visible()
+            await panel.screenshot(path=str(output/'complete-demo.png'))
             assert not errors, errors
             assert await page.evaluate('window.__csp') == []
             await context.close()
             await browser.close()
             result = {'passed':True, 'transport':'real HTTP assets and SQLite; metadata removal only for old-collector compatibility',
                 'checks':['1499-row historical fixture', 'partial count heading', 'desktop/mobile warning',
-                    '390px layout', 'complete empty reading', 'unknown legacy coverage', 'no page/CSP errors']}
+                    '390px layout', 'complete empty reading', 'unknown legacy coverage', 'complete generated demo', 'no page/CSP errors']}
             (output/'result.json').write_text(json.dumps(result, indent=2) + '\n')
             print(json.dumps(result))
     finally:

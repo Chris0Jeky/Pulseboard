@@ -6,6 +6,7 @@ import { readProduct } from '../src/product.mjs';
 import { handle } from '../src/worker.mjs';
 import { projects } from '../src/projects.mjs';
 import * as desk from '../public/desk-product.mjs';
+import { makeProductDemo, makeProductEventsDemo } from '../public/desk-demo.mjs';
 const now = Date.parse('2026-10-12T12:00:00Z'), day = '2026-10-12';
 function database(t) {
   const db = openDatabase(); db.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
@@ -74,4 +75,20 @@ test('Desk accepts both coverage flags, rejects malformed flags, and treats olde
   const partial = desk.errorCoverage({ errorsTruncated: true });
   assert.equal(partial.state, 'partial'); assert.equal(partial.countHeading, 'Count (at least)');
   assert.match(partial.notice, /lower bounds.*ranking.*incomplete/i);
+});
+
+
+test('generated demo errors have explicit complete coverage across every window and public project', () => {
+  for (const days of desk.PRODUCT_WINDOWS) for (const [project, config] of Object.entries(projects)) {
+    if (!config.origin) continue;
+    const demo = makeProductDemo(days, now, project);
+    assert.equal(demo.errorsTruncated, false, `${project}/${days}: locally exhaustive demo is not a legacy response`);
+    assert.equal(desk.assertProduct(demo, days, project), demo);
+    const coverage = desk.errorCoverage(demo);
+    assert.equal(coverage.state, 'complete'); assert.equal(coverage.notice, null);
+    assert.equal(coverage.countHeading, 'Count');
+    const raw = makeProductEventsDemo(days, now, project, 'js.error', 5000);
+    assert.equal(raw.truncated, false);
+    assert.equal(demo.errors.reduce((sum, row) => sum + row.n, 0), raw.events.length);
+  }
 });
