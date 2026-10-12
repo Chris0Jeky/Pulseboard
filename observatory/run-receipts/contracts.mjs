@@ -69,6 +69,8 @@ function readCoverage(value, generatedAt) {
   const limitations = boundedList(value.limitations, 8, 'Too many coverage limitations')
     .map(item => enumValue(item, RUN_RECEIPT_LIMITATIONS, 'Unknown coverage limitation'));
   unique(limitations, 'Duplicate coverage limitation');
+  requireValue(!value.complete || !limitations.includes('partial-history'),
+    'Complete coverage cannot include partial-history');
   return { start, end, complete: value.complete, limitations: [...limitations].sort() };
 }
 
