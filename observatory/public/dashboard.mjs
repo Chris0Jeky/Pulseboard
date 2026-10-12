@@ -5,7 +5,7 @@ import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assert
 import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
 import { operationReading, operationPanel } from './desk-operations.mjs';
 import { requestStatistics, assertStatistics, usageReading, usageQuestions, makeStatisticsDemo, foldTop, hourSeries, STATISTICS_MAX_BYTES, USAGE_WINDOWS } from './desk-usage.mjs';
-import { requestProduct, requestProductEvents, assertProduct, assertProductEvents, propertyBreakdown, vitalRating, PRODUCT_MAX_BYTES, PRODUCT_EVENTS_MAX_BYTES, PRODUCT_EVENTS_LIMIT } from './desk-product.mjs';
+import { requestProduct, requestProductEvents, assertProduct, assertProductEvents, propertyBreakdown, vitalRating, errorCoverage, PRODUCT_MAX_BYTES, PRODUCT_EVENTS_MAX_BYTES, PRODUCT_EVENTS_LIMIT } from './desk-product.mjs';
 import { productPanel } from './products/index.mjs';
 import { requestVoices, assertVoices, makeVoicesDemo, voiceKindCounts, voiceContent, VOICE_KINDS, VOICE_CONTENT_NAMES, VOICES_MAX_BYTES } from './desk-voices.mjs';
 import { assertGithubEvidence, deploymentLeads, pinInvestigation, makeReleaseNote, releaseNoteMarkdown } from './desk-release.mjs';
@@ -625,6 +625,7 @@ function productView() {
   const p = state.product, label = siteLabel(), plugin = productPanel(state.usageProject);
   const picker = sitePicker('Product events from browsers that allow them. Sessions are browser tabs, never people.');
   if (!p) return [picker, siteMissing('product', 'product events')];
+  const coverage = errorCoverage(p);
   const days = [];
   for (let t = Date.parse(p.window.startDay); t <= Date.parse(p.window.endDay); t += 86400000) days.push(new Date(t).toISOString().slice(0, 10));
   const perDay = days.map(d => p.totals.days.find(r => r.day === d)?.n ?? 0), s = p.sessions;
@@ -650,8 +651,9 @@ function productView() {
           const rating = vitalRating(v.metric, v.p75);
           return [v.metric === 'INP' ? 'INP (approximate)' : v.metric, v.route, e('span', { class: 'nowrap' }, vitalValue(v.metric, v.p75)), count(v.n), e('span', { class: `state-chip ${vitalClass[rating]}` }, ({ good: 'Good', 'needs-improvement': 'Needs work', poor: 'Poor' })[rating] ?? 'Unknown')];
         })), p.vitalsTruncated ? e('p', { class: 'tiny muted' }, 'The collector capped this list; metric and route pairs with fewer samples are not shown.') : null) : e('p', { class: 'muted' }, 'No web vitals in this window.'), tag(p.vitalsTruncated ? 'P75 · CAPPED LIST' : 'P75 · NEVER AVERAGED')),
-        panel('Errors', p.errors.length ? e('div', { class: 'table-shell' }, table(['Kind', 'Message', 'Count', 'Last seen'], p.errors.map(x => [x.kind, x.message, count(x.n), date(x.lastSeen)])))
-          : e('p', { class: 'muted' }, 'No errors reported in this window.'), tag('GROUPED BY KIND AND MESSAGE')))),
+        panel('Errors', e('div', {}, coverage.notice ? e('p', { class: 'tiny muted' }, coverage.notice) : null,
+          p.errors.length ? e('div', { class: 'table-shell' }, table(['Kind', 'Message', coverage.countHeading, 'Last seen'], p.errors.map(x => [x.kind, x.message, count(x.n), date(x.lastSeen)])))
+          : e('p', { class: 'muted' }, coverage.state === 'complete' ? 'No errors reported in this window.' : 'No error groups returned; coverage is incomplete or unknown.')), tag(coverage.tag)))),
     plugin ? pluginSection(plugin) : null, explorer(),
     panel('Limits of these numbers', e('ul', { class: 'tiny muted' }, p.limitations.map(text => e('li', {}, text))))].filter(Boolean);
 }

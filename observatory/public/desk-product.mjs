@@ -14,7 +14,7 @@
  *    journeys: [{ session: <uuid v4>, startedAt: <ms>, durationMs: <int>, steps: [name] 1..200, stepsTruncated: <bool> }] ≤100,  // newest first
  *    exits: [{ name, n }] ≤512, exitsTruncated: <bool>,                    // last step of each session; sums to sessions.n unless truncated (then ≤)
  *    vitals: [{ metric: LCP|INP|CLS|FCP|TTFB, route, p75: <number ≥0>, n: <int ≥1> }] ≤1280, vitalsTruncated: <bool>,  // p75 from raw values; CLS unitless, others ms
- *    errors: [{ kind: <text ≤64>, message: <text ≤160>, n: <int ≥1>, lastSeen: <ms> }] ≤100 }  // lengths in JS string units
+ *    errors: [{ kind: <text ≤64>, message: <text ≤160>, n: <int ≥1>, lastSeen: <ms> }] ≤100, errorsTruncated?: <bool> }  // lengths in JS string units
  *
  *  GET /v1/product/<id>/events?days=…&name=…&limit=1..5000  →
  *  { schema: 'pulseboard.product-events/1', project, generatedAt, mode?: 'demo', window: {…as above}, name, limit, truncated: <bool>,
@@ -76,7 +76,8 @@ function productHeader(input, schema, days, project, keys) {
 
 export function assertProduct(input, days, project) {
   productHeader(input, PRODUCT_SCHEMA, days, project, ['schema', 'project', 'generatedAt', 'window', 'collectionAdmitted', 'population', 'limitations',
-    'total', 'totals', 'sessions', 'journeys', 'exits', 'exitsTruncated', 'vitals', 'vitalsTruncated', 'errors']);
+    'total', 'totals', 'sessions', 'journeys', 'exits', 'exitsTruncated', 'vitals', 'vitalsTruncated', 'errors', ...(Object.hasOwn(input, 'errorsTruncated') ? ['errorsTruncated'] : [])]);
+  requireValue(!Object.hasOwn(input, 'errorsTruncated') || typeof input.errorsTruncated === 'boolean', 'Invalid error truncation flag');
   requireValue(typeof input.exitsTruncated === 'boolean' && typeof input.vitalsTruncated === 'boolean', 'Invalid truncation flag');
   requireValue(typeof input.collectionAdmitted === 'boolean', 'Invalid admission flag');
   boundedString(input.population, 120);
@@ -204,4 +205,14 @@ export function propertyBreakdown(events, { top = 10, bins = 10 } = {}) {
     }
     return result;
   });
+}
+
+/** Missing metadata from an older collector is unknown, never proof that the raw error rollup was complete. */
+export function errorCoverage(input) {
+  const state = input.errorsTruncated === false ? 'complete' : input.errorsTruncated === true ? 'partial' : 'unknown';
+  return { state, countHeading: state === 'complete' ? 'Count' : 'Count (at least)',
+    tag: state === 'complete' ? 'GROUPED BY KIND AND MESSAGE' : state === 'partial' ? 'PARTIAL ERROR ROLLUP' : 'ERROR COVERAGE UNKNOWN',
+    notice: state === 'complete' ? null : state === 'partial'
+      ? 'Error rollup is incomplete: counts and last-seen timestamps are lower bounds; groups may be missing and ranking is incomplete.'
+      : 'Error coverage was not reported by this collector. Counts and last-seen timestamps may be lower bounds; groups and ranking may be incomplete.' };
 }

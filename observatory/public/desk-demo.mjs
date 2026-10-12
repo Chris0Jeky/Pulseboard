@@ -149,7 +149,7 @@ export function makeProductDemo(days = 7, now = Date.now(), project = 'alibi') {
       return { metric, route, p75: rankQuantile(values, 0.75), n: values.length };
     }).sort((a, b) => a.metric.localeCompare(b.metric) || a.route.localeCompare(b.route)), vitalsTruncated: false,
     errors: [...byKey(pool.filter(x => x.name === 'js.error'), x => `${x.props.kind}|${x.props.message}`).values()]
-      .map(xs => ({ kind: xs[0].props.kind, message: xs[0].props.message, n: xs.length, lastSeen: Math.max(...xs.map(x => x.received)) })).sort((a, b) => b.n - a.n) };
+      .map(xs => ({ kind: xs[0].props.kind, message: xs[0].props.message, n: xs.length, lastSeen: Math.max(...xs.map(x => x.received)) })).sort((a, b) => b.n - a.n), errorsTruncated: false };
 }
 /** The explorer's raw read over the same pool: newest first, one event name, bounded by limit. */
 export function makeProductEventsDemo(days, now, project, name, limit = 1000) {

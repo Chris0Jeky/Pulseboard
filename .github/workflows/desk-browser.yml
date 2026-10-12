@@ -46,8 +46,17 @@ jobs:
           ../.browser-venv/bin/python tests/handoff-browser.py --origin http://127.0.0.1:8788
           ../.browser-venv/bin/python tests/operation-browser.py --origin http://127.0.0.1:8788
           ../.browser-venv/bin/python tests/alibi-journey-browser.py
+          ../.browser-venv/bin/python tests/error-coverage-browser.py --output "$RUNNER_TEMP/error-coverage"
       - name: Prove generated SDK pagehide delivery in Chromium
         working-directory: observatory
         run: |
           ../.browser-venv/bin/python tests/keepalive-http-test.py
           ../.browser-venv/bin/python tests/sdk-keepalive-browser.py
+      - name: Preserve error coverage browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-coverage-${{ github.sha }}
+          path: ${{ runner.temp }}/error-coverage/
+          if-no-files-found: ignore
+          retention-days: 7
