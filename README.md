@@ -2,7 +2,7 @@
 
 <img src="observatory/public/mark.svg" width="54" height="54" alt="Pulseboard mark">
 
-<p align="center"><img src="docs/assets/hero.svg" alt="Pulseboard" width="100%"></p>
+<p align="center"><img src="docs/assets/Pulseboard-loop.svg" alt="Pulseboard workflow, animated" width="100%"></p>
 
 **A private desk for a small portfolio: bounded signals, explicit gaps, and a next check that still carries its source, window and limits.**
 
