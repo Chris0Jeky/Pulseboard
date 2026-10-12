@@ -47,13 +47,11 @@ The usage plan (`USAGE_PLAN.md`) stores no cross-visit identifier and no free te
   `Access-Control-Allow-Methods: POST, PUT`, `Access-Control-Allow-Headers: Content-Type`, max age 600.
 - `content-type: application/json` only (a `charset` parameter is allowed); bodies are read with the existing bounded
   reader: 16 KiB, 5 seconds.
-- Budget: each new or changed write reserves one unit under `<project>:voice` (default 300 a UTC day, overridable per project
+- Budget: each accepted write reserves one unit under `<project>:voice` (default 300 a UTC day, overridable per project
   as `voiceLimit` in `src/projects.mjs`) and one under the global key `*:voice` (100 a day, "Budget and storage"
   below), charged with the same receipt-gated two-budget statement as product events: the project row is reserved only
   if the global row has room, the global row is charged only against that receipt, and the stored row is gated on the
-  same receipt in the same D1 batch. A new or changed write with either budget full returns `429` with
-  `Retry-After: 3600`; nothing is stored and neither is charged. An unchanged stored survey/rating or a stored
-  feedback id is acknowledged without a write or charge, including when a budget is full.
+  same receipt in the same D1 batch. Either budget full: `429` with `Retry-After: 3600`; nothing stored, neither charged.
 
 Checks run in this order, and CORS headers are present on every answer after the origin check:
 
@@ -68,7 +66,7 @@ Checks run in this order, and CORS headers are present on every answer after the
 | `400` | `{ error: 'contract' }` | over 16 KiB, not UTF-8 JSON, or outside the contract below |
 | `429` | `{ error: 'daily_budget' }` | a budget is full (`Retry-After: 3600`) |
 | `202` | `{ accepted: true, duplicate: <bool> }` | feedback stored, or its `id` was already stored |
-| `202` | `{ accepted: true, updated: <bool> }` | survey or rating stored or unchanged; `updated` only when content replaced an earlier answer |
+| `202` | `{ accepted: true, updated: <bool> }` | survey or rating stored; `updated` when it replaced an earlier answer |
 
 An unexpected failure answers `503 { error: 'unavailable' }`.
 
@@ -138,31 +136,10 @@ and redaction as feedback) is allowed. Unknown surveys, questions, options, meta
 
 Storage (`voice_survey`, primary key `(project, survey, subject, respondent)` where `respondent` is the hash):
 `first_received, received, day, release, answers` (canonical JSON), `meta` (canonical JSON), `comment, redacted,
-device, country, submissions`. Changed producer content replaces an existing row in place (answers, meta, comment
-and its `redacted` count, release, received, day, device, country) and increments `submissions`:
-`202 { accepted: true, updated: true }`. A player therefore counts once per survey and subject however often they
-resubmit. New and changed writes are charged; an unchanged acknowledgement is not another write.
-
-### Unchanged retries and the v1 ordering boundary
-
-For the same `(project, survey, subject, respondent)` key, equality of canonical `answers`, canonical `meta`,
-redacted `comment`, `redacted` count, `release` and `device` is an unchanged retry. It returns the existing v1
-shape `202 { accepted: true, updated: false }`, without changing either budget, `submissions`, receipt timestamps,
-UTC day or country. The duplicate check, guarded budget reservation and upsert share one transaction, so
-concurrent identical requests charge once. Origin, admission and contract checks still precede this recognition.
-
-Equality is over the normalized stored representation, not original private text or JSON formatting. Reordered
-questions/options and text that redacts to the same value with the same removal count are equivalent. A changed
-release, device or redaction count is still a changed submission. Edge-country or server-clock changes alone are
-not. An unchanged next-day retry does not extend retention or create today's budget rows. Existing historical
-`submissions` values are not rewritten and may include retries accepted before this repair; they are not a
-historically uniform count of deliberate player edits. A deliberate resubmission with identical normalized
-content is indistinguishable from a network retry in v1 and is also a no-op; this repair does not infer user intent.
-
-This repairs current-content retry charging, not source ordering (#218). After A then B, a delayed A differs
-from the current B and v1 still cannot identify it as stale. Solving that requires a versioned producer revision,
-transactional stale/equal/conflicting-revision classification before reserving budget, and a coordinated Alibi
-producer rollout. No revision, migration, retention interval or admission setting is added by this repair.
+device, country, submissions`. An existing row is replaced in place (answers, meta, comment and its `redacted` count,
+release, received, day, device, country) and `submissions` increments: `202 { accepted: true, updated: true }`. A
+player therefore counts once per survey and subject however often they resubmit. Every accepted write is charged,
+updates included.
 
 ### Alibi surveys (registry v1)
 
