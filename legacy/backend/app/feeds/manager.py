@@ -138,12 +138,19 @@ class FeedManager:
                 await self._start_feed(feed_def)
 
     async def stop_all_feeds(self) -> None:
-        """Stop all running feeds."""
+        """Attempt each managed feed; aggregate ordinary cleanup failures."""
         self.logger.info("Stopping all feeds")
 
+        failures: list[Exception] = []
         for feed_id in list(self.feeds.keys()):
-            await self.stop_feed(feed_id)
+            try:
+                await self.stop_feed(feed_id)
+            except Exception as exc:
+                # Failed instances stay owned for retry. Cancellation still propagates.
+                failures.append(exc)
 
+        if failures:
+            raise ExceptionGroup("Feed cleanup failed", failures)
         self.logger.info("All feeds stopped")
 
     def get_feed(self, feed_id: UUID) -> BaseFeed | None:
