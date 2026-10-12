@@ -84,6 +84,11 @@ class FeedManager:
             self.logger.warning(f"Feed {feed_def.id} is already running")
             return
 
+        # A stopped polling flag does not prove that plugin resources were released.
+        # Finish any retained instance's cleanup under this same lifecycle lock.
+        if feed_def.id in self.feeds:
+            await self._stop_feed(feed_def.id)
+
         feed_class = get_feed_class(feed_def.type)
         if not feed_class:
             raise ValueError(f"Unknown feed type: {feed_def.type}")
@@ -106,12 +111,15 @@ class FeedManager:
 
     async def _stop_feed(self, feed_id: UUID) -> None:
         """Stop while the caller holds this feed's lifecycle lock."""
-        feed = self.feeds.pop(feed_id, None)
+        feed = self.feeds.get(feed_id)
         if feed is None:
             self.logger.warning(f"Feed {feed_id} not found in manager")
             return
 
+        # Keep ownership on failure or cancellation so cleanup can be retried.
+        # Nothing awaits between successful cleanup and removing the managed entry.
         await feed.stop()
+        self.feeds.pop(feed_id)
         self.hub.clear_feed_data(feed_id)
         self.logger.info(f"Stopped feed {feed_id}")
 
@@ -139,11 +147,11 @@ class FeedManager:
         self.logger.info("All feeds stopped")
 
     def get_feed(self, feed_id: UUID) -> BaseFeed | None:
-        """Get a running feed by ID."""
+        """Get a managed feed, including an instance awaiting successful cleanup."""
         return self.feeds.get(feed_id)
 
     def get_running_feed_ids(self) -> list[UUID]:
-        """Get all running feed IDs."""
+        """Get managed IDs, including pending cleanup; query running state separately."""
         return list(self.feeds.keys())
 
     def is_feed_running(self, feed_id: UUID) -> bool:
