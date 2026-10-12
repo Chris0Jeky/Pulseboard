@@ -322,6 +322,13 @@ export async function handle(request, env) {
       if (!record) return json({ error: 'contract' }, 400, cors);
       // Only the hash is stored; the raw survey key goes no further than this line.
       const respondent = await respondentHash(voiceId, record.respondent);
+      // Compare normalized producer content inside the reservation transaction.
+      // Receipt time and edge country cannot turn an unchanged retry into an edit.
+      const unchanged = `EXISTS(SELECT 1 FROM voice_survey WHERE project=? AND survey=? AND subject=? AND respondent=?
+        AND release=? AND answers=? AND meta=? AND comment=? AND redacted=? AND device=?)`;
+      const unchangedBinds = [voiceId, record.survey, record.subject, respondent, record.release,
+        record.answers, record.meta, record.comment, record.redacted, record.device];
+      const duplicate = env.DB.prepare(`SELECT ${unchanged} AS duplicate`).bind(...unchangedBinds);
       const upsert = env.DB.prepare(`INSERT INTO voice_survey(project,survey,subject,respondent,first_received,received,day,release,answers,meta,
         comment,redacted,device,country,submissions) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,1 FROM budget WHERE project=? AND day=? AND receipt=?
         ON CONFLICT(project,survey,subject,respondent) DO UPDATE SET received=excluded.received,day=excluded.day,release=excluded.release,
@@ -329,9 +336,12 @@ export async function handle(request, env) {
           country=excluded.country,submissions=voice_survey.submissions+1 RETURNING submissions`)
         .bind(voiceId, record.survey, record.subject, respondent, voiceNow, voiceNow, voiceDay, record.release, record.answers, record.meta,
           record.comment, record.redacted, record.device, derived.country, voiceKey, voiceDay, voiceReceipt);
-      const result = await env.DB.batch([...voiceReservation(env.DB, { key: voiceKey, day: voiceDay, receipt: voiceReceipt, limit: voiceLimit }), upsert]);
-      if (!result[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
-      return json({ accepted: true, updated: Number(result[2].results?.[0]?.submissions) > 1 }, 202, cors);
+      const result = await env.DB.batch([duplicate, ...voiceReservation(env.DB, { key: voiceKey, day: voiceDay, receipt: voiceReceipt,
+        limit: voiceLimit, unless: [unchanged, ...unchangedBinds] }), upsert]);
+      // Keep the v1 acknowledgement; updated=false also covers an unchanged stored answer.
+      if (Number(result[0].results?.[0]?.duplicate) === 1) return json({ accepted: true, updated: false }, 202, cors);
+      if (!result[1].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
+      return json({ accepted: true, updated: Number(result[3].results?.[0]?.submissions) > 1 }, 202, cors);
     }
     // Read only on explicit desk action, never by the portfolio poll; its own contract keeps /v1/portfolio closed.
     if (url.pathname === '/v1/github-evidence' && request.method === 'GET') {

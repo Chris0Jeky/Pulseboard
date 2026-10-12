@@ -97,7 +97,7 @@ test('a survey is stored once per installation, survey and subject, replaced in 
   assert.deepEqual({ ...rows[0], received: 0 }, { ...row, received: 0, release: '0.15.1', answers: '{"often":"daily","difficulty":"too-hard"}', comment: '',
     device: 'tablet', country: 'DE', submissions: 2 });
   assert.ok(rows[0].received > row.received); assert.equal(rows[0].first_received, row.first_received);
-  // Every accepted write is charged, updates included.
+  // New and changed writes are charged; unchanged retries are not writes.
   assert.equal(await used(DB, 'alibi:voice'), 2); assert.equal(await used(DB, VOICE_GLOBAL_KEY), 2);
   // A different installation or a different survey is a different row.
   assert.deepEqual(await (await handle(send('survey', taste({ respondent: OTHER_KEY })), env(DB))).json(), { accepted: true, updated: false });
@@ -255,7 +255,8 @@ test('the local runner admits feedback and surveys against real SQLite with the 
   assert.deepEqual(await (await call('feedback', 'POST', body)).json(), { accepted: true, duplicate: false });
   assert.deepEqual(await (await call('feedback', 'POST', body)).json(), { accepted: true, duplicate: true });
   assert.deepEqual(await (await call('survey', 'PUT', taste())).json(), { accepted: true, updated: false });
-  assert.deepEqual(await (await call('survey', 'PUT', taste())).json(), { accepted: true, updated: true });
+  assert.deepEqual(await (await call('survey', 'PUT', taste())).json(), { accepted: true, updated: false });
+  assert.deepEqual(await (await call('survey', 'PUT', taste({ comment: 'A changed answer' }))).json(), { accepted: true, updated: true });
   assert.equal((await call('survey', 'PUT', taste(), 'https://evil.test')).status, 403);
   assert.equal((await call('feedback', 'PUT', body)).status, 405);
   const ready = await (await fetch(runner.origin + '/readyz')).json();
