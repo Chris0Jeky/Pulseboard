@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     hub = DataHub(history_window=timedelta(minutes=settings.history_window_minutes))
     logger.info("DataHub initialized")
 
+    app.state.hub = hub
     ws_router.set_hub(hub)
     feed_manager = FeedManager(hub)
     app.state.feed_manager = feed_manager
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if feed_manager:
         await feed_manager.stop_all_feeds()
     app.state.feed_manager = None
+    app.state.hub = None
 
     logger.info("Application shutdown complete")
 

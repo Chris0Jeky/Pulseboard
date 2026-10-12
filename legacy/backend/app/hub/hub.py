@@ -129,6 +129,8 @@ class DataHub:
         disconnected = []
 
         for websocket in snapshot:
+            if websocket not in self.connections.get(dashboard_id, []):
+                continue
             try:
                 await websocket.send_text(message)
             except Exception as e:
@@ -165,7 +167,7 @@ class DataHub:
         )
 
         # Send initial state for all feeds
-        await self._send_initial_state(websocket, feed_ids)
+        await self._send_initial_state(dashboard_id, websocket, feed_ids)
 
     async def refresh_dashboard_feeds(
         self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
@@ -175,15 +177,17 @@ class DataHub:
 
         No-op when the dashboard has no registered connections.
         """
-        if dashboard_id not in self.connections:
+        if websocket not in self.connections.get(dashboard_id, []):
             return
 
         previous = self.dashboard_feeds.get(dashboard_id, set())
         self.dashboard_feeds[dashboard_id] = set(feed_ids)
 
-        await self._send_initial_state(websocket, set(feed_ids) - previous)
+        await self._send_initial_state(dashboard_id, websocket, set(feed_ids) - previous)
 
-    async def _send_initial_state(self, websocket: WebSocket, feed_ids: Set[UUID]) -> None:
+    async def _send_initial_state(
+        self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
+    ) -> None:
         """
         Send initial state (latest events) to a newly connected client.
 
@@ -192,6 +196,8 @@ class DataHub:
             feed_ids: Set of feed IDs to send state for
         """
         for feed_id in feed_ids:
+            if websocket not in self.connections.get(dashboard_id, []):
+                return
             if feed_id in self.latest:
                 event = self.latest[feed_id]
                 message = FeedEventMessage.from_feed_event(event)
@@ -199,6 +205,18 @@ class DataHub:
                     await websocket.send_text(message.model_dump_json())
                 except Exception as e:
                     self.logger.error(f"Failed to send initial state for feed {feed_id}: {e}")
+
+    async def disconnect_dashboard(self, dashboard_id: UUID) -> None:
+        """Revoke all membership before awaiting best-effort socket closure."""
+        connections = self.connections.pop(dashboard_id, [])
+        self.dashboard_feeds.pop(dashboard_id, None)
+        for websocket in connections:
+            try:
+                await websocket.close(code=1008)
+            except Exception:
+                self.logger.warning(
+                    f"Failed to close revoked connection for dashboard {dashboard_id}"
+                )
 
     async def unregister_connection(self, dashboard_id: UUID, websocket: WebSocket) -> None:
         """

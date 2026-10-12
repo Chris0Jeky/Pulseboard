@@ -8,10 +8,11 @@ from collections.abc import Iterable
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlmodel import select
 
 from app.api.deps import SessionDep, reject_nulls
+from app.hub.hub import DataHub
 from app.models import (
     Dashboard,
     DashboardCreate,
@@ -106,7 +107,7 @@ def update_dashboard(
 
 
 @router.delete("/{dashboard_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_dashboard(dashboard_id: UUID, session: SessionDep) -> None:
+async def delete_dashboard(dashboard_id: UUID, session: SessionDep, request: Request) -> None:
     """Delete a dashboard and its panels."""
     dashboard = session.get(Dashboard, dashboard_id)
     if not dashboard:
@@ -116,6 +117,12 @@ def delete_dashboard(dashboard_id: UUID, session: SessionDep) -> None:
 
     session.delete(dashboard)
     session.commit()
+
+    # The lifespan owns the same hub used by WebSocket connections. Revoke on
+    # its event loop immediately after the database commit, before awaiting close.
+    hub: DataHub | None = getattr(request.app.state, "hub", None)
+    if hub is not None:
+        await hub.disconnect_dashboard(dashboard_id)
 
     logger.info(f"Deleted dashboard {dashboard_id}")
 
