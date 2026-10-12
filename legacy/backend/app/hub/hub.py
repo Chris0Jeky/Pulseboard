@@ -2,6 +2,7 @@
 DataHub for managing feed events and WebSocket connections.
 """
 
+import asyncio
 import logging
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
@@ -13,6 +14,9 @@ from fastapi import WebSocket
 from .events import FeedEvent, FeedEventMessage
 
 logger = logging.getLogger(__name__)
+
+# One deadline for the entire revoked dashboard, not one delay per socket.
+CLOSE_TIMEOUT_SECONDS = 1.0
 
 
 class DataHub:
@@ -62,6 +66,9 @@ class DataHub:
         # Dashboard -> Feed IDs mapping (which feeds does each dashboard use)
         self.dashboard_feeds: Dict[UUID, Set[UUID]] = defaultdict(set)
 
+        # Keep cancellation-resistant transport tasks alive until they actually settle.
+        # They cannot regain membership or block deletion after the close deadline.
+        self._closing_tasks: set[asyncio.Task[None]] = set()
         self.logger = logging.getLogger(__name__)
 
     async def publish_feed_event(self, feed_id: UUID, payload: Dict[str, Any]) -> None:
@@ -210,13 +217,36 @@ class DataHub:
         """Revoke all membership before awaiting best-effort socket closure."""
         connections = self.connections.pop(dashboard_id, [])
         self.dashboard_feeds.pop(dashboard_id, None)
-        for websocket in connections:
-            try:
-                await websocket.close(code=1008)
-            except Exception:
+        if not connections:
+            return
+        tasks = {
+            asyncio.create_task(self._close_revoked_connection(dashboard_id, websocket))
+            for websocket in connections
+        }
+        self._closing_tasks.update(tasks)
+        for task in tasks:
+            task.add_done_callback(self._closing_tasks.discard)
+        try:
+            _, pending = await asyncio.wait(tasks, timeout=CLOSE_TIMEOUT_SECONDS)
+            if pending:
                 self.logger.warning(
-                    f"Failed to close revoked connection for dashboard {dashboard_id}"
+                    f"Socket close deadline reached for dashboard {dashboard_id}"
                 )
+        finally:
+            # Do not await cancelled transports: a close coroutine may suppress
+            # cancellation, which would make wait_for/gather unbounded again.
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+
+    async def _close_revoked_connection(self, dashboard_id: UUID, websocket: WebSocket) -> None:
+        """Close one revoked socket without exposing transport exception content."""
+        try:
+            await websocket.close(code=1008)
+        except Exception:
+            self.logger.warning(
+                f"Failed to close revoked connection for dashboard {dashboard_id}"
+            )
 
     async def unregister_connection(self, dashboard_id: UUID, websocket: WebSocket) -> None:
         """
