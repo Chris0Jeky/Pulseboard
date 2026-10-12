@@ -193,7 +193,9 @@ export async function readRunReceiptSummary(DB, { project, start, end, registry 
   }
 
   // One source cannot certify a missing interval for another observed source.
-  const complete = claimedComplete
+  // Older files may contain contradictory coverage assertions. Preserve their
+  // measurements, but never certify completeness or derive a unit cost from them.
+  const complete = claimedComplete && !limitations.has('partial-history')
     && [...coverageBySource.values()].every(intervals => coversWindow(intervals, start, end));
   const costList = [...costs.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.currency.localeCompare(b.currency));
   let costPerVerifiedAccepted = null, costAbstention = null;
