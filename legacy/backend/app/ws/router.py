@@ -7,6 +7,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
+from sqlalchemy.orm.exc import ObjectDeletedError
 
 from app.api.deps import SessionDep
 from app.api.routes.dashboards import collect_feed_ids
@@ -48,9 +49,18 @@ async def websocket_dashboard(
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
-        feed_ids: set[UUID] = collect_feed_ids(dashboard.panels)
-
         await websocket.accept()
+        # The handshake yields: deletion may have committed while accept waited.
+        # Re-read before registering or sending any cached feed state.
+        session.expire_all()
+        try:
+            dashboard = session.get(Dashboard, dashboard_id)
+        except ObjectDeletedError:
+            dashboard = None
+        if not dashboard:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        feed_ids: set[UUID] = collect_feed_ids(dashboard.panels)
         await hub.register_connection(dashboard_id, websocket, feed_ids)
 
         logger.info(
@@ -65,13 +75,18 @@ async def websocket_dashboard(
                     if message.get("type") == "ping":
                         try:
                             session.expire_all()
-                            current = session.get(Dashboard, dashboard_id)
-                            if current:
-                                await hub.refresh_dashboard_feeds(
-                                    dashboard_id,
-                                    websocket,
-                                    collect_feed_ids(current.panels),
-                                )
+                            try:
+                                current = session.get(Dashboard, dashboard_id)
+                            except ObjectDeletedError:
+                                current = None
+                            if current is None:
+                                await hub.disconnect_dashboard(dashboard_id)
+                                return
+                            await hub.refresh_dashboard_feeds(
+                                dashboard_id,
+                                websocket,
+                                collect_feed_ids(current.panels),
+                            )
                         except Exception:
                             logger.exception(
                                 f"Failed to refresh feeds for dashboard {dashboard_id}"
