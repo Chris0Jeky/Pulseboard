@@ -2,6 +2,8 @@
 
 <img src="observatory/public/mark.svg" width="54" height="54" alt="Pulseboard mark">
 
+<p align="center"><img src="docs/assets/hero.svg" alt="Pulseboard" width="100%"></p>
+
 **A private desk for a small portfolio: bounded signals, explicit gaps, and a next check that still carries its source, window and limits.**
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue)](LICENSE)
@@ -60,6 +62,8 @@ The browser SDK (`observatory/sdk/pulseboard-sdk.mjs`, `SDK_VERSION` `3.3.1`) is
 Admission is an allowlist per channel, not a global "tracking on" switch. A forged `Origin` still has to match the registered public origin. Daily budgets refuse the write instead of dropping fields. The collector does not store IP addresses or raw User-Agent strings; browser and OS are classified and the header is dropped. The one stored cross-visit handle is the SHA-256 of a player-chosen survey key, and only on the Voices tables.
 
 ## Architecture
+
+<p align="center"><img src="docs/assets/architecture.svg" alt="Pulseboard architecture" width="100%"></p>
 
 ```mermaid
 flowchart TB
