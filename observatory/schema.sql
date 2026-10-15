@@ -79,5 +79,9 @@ CREATE INDEX IF NOT EXISTS voice_survey_day ON voice_survey(day);
 CREATE TABLE IF NOT EXISTS schema_version (
   id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
 );
-INSERT INTO schema_version(id, version) VALUES (1, 6)
+INSERT INTO schema_version(id, version) VALUES (1, 5)
+  ON CONFLICT(id) DO UPDATE SET version = MAX(schema_version.version, excluded.version);
+-- CREATE TABLE IF NOT EXISTS cannot add voice_survey.revision to an existing schema-5 table, so re-running this file
+-- over one must not claim schema 6 (the deploy gate reads the marker): 6 only where the column exists. Apply 0006.
+INSERT INTO schema_version(id, version) SELECT 1, 6 WHERE EXISTS (SELECT 1 FROM pragma_table_info('voice_survey') WHERE name = 'revision')
   ON CONFLICT(id) DO UPDATE SET version = MAX(schema_version.version, excluded.version);

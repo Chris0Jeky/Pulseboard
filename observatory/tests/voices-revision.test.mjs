@@ -127,6 +127,10 @@ test('migration 0006 adds the nullable revision column to a schema-5 database, m
   migrated.exec(read('../migrations/0005-voices.sql'));
   migrated.exec(`INSERT INTO voice_survey VALUES('alibi','alibi-taste-1','','h',1,1,'2026-10-15','0.15.0','{}','{}','',0,'mobile','GB',1)`);
   assert.equal((await handle(new Request('https://desk.test/readyz'), { DB: migrated })).status, 503, 'schema 5 is not ready for this Worker');
+  // Re-running schema.sql over it (local startup does) adds no column, so it must not claim schema 6 for the deploy gate.
+  migrated.exec(read('../schema.sql'));
+  assert.equal((await migrated.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 5);
+  assert.equal((await handle(new Request('https://desk.test/readyz'), { DB: migrated })).status, 503);
   migrated.exec(read('../migrations/0006-voice-revision.sql'));
   const indexes = async DB => (await DB.prepare("SELECT name FROM sqlite_master WHERE tbl_name='voice_survey' ORDER BY name").all()).results.map(r => r.name);
   const columns = async DB => (await DB.prepare("SELECT name, type, \"notnull\", dflt_value, pk FROM pragma_table_info('voice_survey') ORDER BY cid").all()).results.map(r => ({ ...r }));
