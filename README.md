@@ -59,7 +59,7 @@ What the Desk actually serves, from `observatory/public/index.html` and `observa
 
 The browser SDK (`observatory/sdk/pulseboard-sdk.mjs`, `SDK_VERSION` `3.3.1`) is one script built per project with `npm run build:sdk`. It shows a Beta bar with three consent categories (usage counts, diagnostics, journeys), honours Global Privacy Control and Do Not Track, and posts only to the collector. Hosts install it with [SDK.md](observatory/docs/SDK.md).
 
-Admission is an allowlist per channel, not a global "tracking on" switch. A forged `Origin` still has to match the registered public origin. Daily budgets refuse the write instead of dropping fields. The collector does not store IP addresses or raw User-Agent strings; browser and OS are classified and the header is dropped. The one stored cross-visit handle is the SHA-256 of a player-chosen survey key, and only on the Voices tables.
+Admission is an allowlist per channel, not a global "tracking on" switch. A forged `Origin` still has to match the registered public origin. Daily budgets refuse the write instead of dropping fields. The collector does not store IP addresses or raw User-Agent strings; browser and OS are classified and the header is dropped. The one stored cross-visit handle is the SHA-256 of a random survey key (a UUID the device generates the first time a player submits a survey or rating, resettable from Privacy), and only on the Voices tables.
 
 ## Architecture
 
@@ -69,6 +69,8 @@ Admission is an allowlist per channel, not a global "tracking on" switch. A forg
 flowchart TB
   subgraph hosts [Public host pages]
     sdk["Pulseboard SDK"]
+    embed["Opt-in embed (legacy session events)"]
+    voices["Voices client (Alibi, player-initiated)"]
   end
   subgraph edge [Cloudflare Worker]
     entry["src/entry.mjs"]
@@ -90,7 +92,10 @@ flowchart TB
     sqlite[("SQLite .data/observatory.sqlite")]
     runner --> sqlite
   end
-  sdk -->|"POST /v1/collect-stat /v1/product /v1/feedback /v1/survey and legacy /v1/collect"| worker
+  sdk -->|"POST /v1/collect-stat/{project} and /v1/product/{project}"| worker
+  embed -->|"POST /v1/collect/{project}"| worker
+  voices -->|"POST /v1/feedback/{project}"| worker
+  voices -->|"PUT /v1/survey/{project}"| worker
   sdk -->|"GET /v1/consent region hint"| worker
   ui -->|"Bearer reads: /v1/portfolio /v1/statistics /v1/product /v1/voices"| worker
   ui --> runner
