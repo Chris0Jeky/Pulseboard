@@ -223,7 +223,7 @@ test('readiness fails on an unmigrated database', async () => {
 });
 test('readiness reports the schema version and fails on a partially migrated database', withDB(async DB => {
   const response = await handle(new Request('https://x.test/readyz'), env(DB));
-  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ready: true, schema: 5,
+  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { ready: true, schema: 6,
     collection: { enabled: true, configured: ['mdviewer'], admitted: ['mdviewer'], invalid: [] },
     statistics: { configured: false, admitted: [] }, product: { configured: false, admitted: [] }, voices: { configured: false, admitted: [] },
     probes: { configured: ['mdviewer', 'developer-lens', 'idleharbor', 'portfolio', 'wealthlens'],

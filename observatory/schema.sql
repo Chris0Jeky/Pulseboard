@@ -57,6 +57,8 @@ CREATE INDEX IF NOT EXISTS product_events_day ON product_events(day);
 -- identifier; its id is the device's idempotency key. A survey row's respondent is SHA-256(project + ':' + survey key),
 -- never the raw key, and a resubmission replaces the row and increments submissions. Text is cleaned and redacted on
 -- the server. No IP, User-Agent string or page URL is stored. Retention: feedback 365 days, surveys 400 days.
+-- Schema 6 (#218): voice_survey.revision is the producer's edit revision (pulseboard.survey/2), NULL for a v1 write; a
+-- stored revision is replaced only by a higher one. It is the last column because migration 0006 appends it.
 CREATE TABLE IF NOT EXISTS voice_feedback (
   project TEXT NOT NULL, id TEXT NOT NULL, received INTEGER NOT NULL, day TEXT NOT NULL, written TEXT NOT NULL,
   release TEXT NOT NULL, kind TEXT NOT NULL, route TEXT NOT NULL, subject TEXT NOT NULL, text TEXT NOT NULL,
@@ -68,7 +70,7 @@ CREATE TABLE IF NOT EXISTS voice_survey (
   project TEXT NOT NULL, survey TEXT NOT NULL, subject TEXT NOT NULL, respondent TEXT NOT NULL,
   first_received INTEGER NOT NULL, received INTEGER NOT NULL, day TEXT NOT NULL, release TEXT NOT NULL,
   answers TEXT NOT NULL, meta TEXT NOT NULL, comment TEXT NOT NULL, redacted INTEGER NOT NULL,
-  device TEXT NOT NULL, country TEXT NOT NULL, submissions INTEGER NOT NULL,
+  device TEXT NOT NULL, country TEXT NOT NULL, submissions INTEGER NOT NULL, revision INTEGER,
   PRIMARY KEY (project, survey, subject, respondent)
 );
 CREATE INDEX IF NOT EXISTS voice_survey_day ON voice_survey(day);
@@ -78,4 +80,8 @@ CREATE TABLE IF NOT EXISTS schema_version (
   id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL
 );
 INSERT INTO schema_version(id, version) VALUES (1, 5)
+  ON CONFLICT(id) DO UPDATE SET version = MAX(schema_version.version, excluded.version);
+-- CREATE TABLE IF NOT EXISTS cannot add voice_survey.revision to an existing schema-5 table, so re-running this file
+-- over one must not claim schema 6 (the deploy gate reads the marker): 6 only where the column exists. Apply 0006.
+INSERT INTO schema_version(id, version) SELECT 1, 6 WHERE EXISTS (SELECT 1 FROM pragma_table_info('voice_survey') WHERE name = 'revision')
   ON CONFLICT(id) DO UPDATE SET version = MAX(schema_version.version, excluded.version);

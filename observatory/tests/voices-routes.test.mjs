@@ -227,7 +227,7 @@ test('the voice budget is per project with voiceLimit, plus one global key, and 
 test('readiness reports the voice switch', async t => {
   const DB = database(t);
   const body = await (await handle(new Request('https://desk.test/readyz'), env(DB))).json();
-  assert.equal(body.schema, 5);
+  assert.equal(body.schema, 6);
   assert.deepEqual(body.voices, { configured: true, admitted: ['alibi'] });
   assert.deepEqual((await (await handle(new Request('https://desk.test/readyz'), env(DB, { COLLECT_VOICE_PROJECTS: 'alibi,mdviewer' }))).json()).voices,
     { configured: true, admitted: [] });

@@ -192,7 +192,7 @@ Origin-checked, no authentication, no storage. Returns `{ "v": 1, "region": "eea
 ### 5. Voices: `/v1/feedback/<id>` and `/v1/survey/<id>` (`VOICES.md`)
 
 Player-initiated feedback (`POST`, `pulseboard.feedback/1`) and survey answers or puzzle ratings (`PUT`,
-`pulseboard.survey/1`), validated against a closed per-project registry (`src/surveys.mjs`). Admission:
+`pulseboard.survey/1` or `/2`), validated against a closed per-project registry (`src/surveys.mjs`). Admission:
 `COLLECT_ENABLED`, a valid session policy and the id in `COLLECT_VOICE_PROJECTS` (exact comma list,
 same rules as the other channel switches; Alibi only). Budget `<id>:voice` (default 300 writes a day,
 `voiceLimit`) plus the global `*:voice` (100 a day), with the product events' receipt-gated

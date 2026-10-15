@@ -47,7 +47,8 @@ an assessment of provider request metadata and logging.
 The follow-up to #205 supplies two **manual** SQL files under `maintenance/`,
 outside `migrations/`. Nothing in startup, scheduled retention or deployment runs
 them. Merging the files does not change historical data. They target the existing
-schema-5 `statistics` table only; the marker is not incremented.
+schema-5 `statistics` table only; the marker is not incremented. Schema 6 (`migrations/0006-voice-revision.sql`, #218) leaves
+`statistics` unchanged, so the cleanup accepts both markers 5 and 6 and can run before or after 0006.
 
 First verify that the day-precision writer is deployed. Select and independently
 confirm the intended database/account/environment, using the existing approved
@@ -61,7 +62,7 @@ The exact commands from `observatory/`, for an already approved D1 target, are:
 # DB must be set explicitly to the reviewed database name or id. These are manual commands.
 npx --no-install wrangler d1 execute "${DB:?Set the reviewed database}" --remote --env="" \
   --file maintenance/statistics-received-audit.sql --json
-# Proceed only after schemaVersion == 5, invalidRows == 0, and the target/operation is approved.
+# Proceed only after schemaVersion is 5 or 6, invalidRows == 0, and the target/operation is approved.
 npx --no-install wrangler d1 execute "${DB:?Set the reviewed database}" --remote --env="" \
   --file maintenance/statistics-received-cleanup.sql --json
 npx --no-install wrangler d1 execute "${DB:?Set the reviewed database}" --remote --env="" \
@@ -82,7 +83,7 @@ window and every seeded non-target table. A deliberate statement failure rolls
 back every update. These SQLite tests do not substitute for a hosted execution
 receipt or prove physical erasure from database pages, replicas or backups.
 
-Require a successful execution and a post-audit with `schemaVersion == 5`,
+Require a successful execution and a post-audit with `schemaVersion` 5 or 6,
 `invalidRows == 0` and `preciseRows == 0`. Record source revision, target identity,
 execution time and both audit summaries without secrets. In a quiescent rehearsal,
 `totalRows` and `totalCount` must be identical before/after; during live collection

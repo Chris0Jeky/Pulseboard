@@ -57,7 +57,12 @@ before deploying; it only adds `voice_feedback`, `voice_survey` and their two `d
 `/readyz` reports schema 5 and `voices: { configured: true, admitted: ["alibi"] }`, and only then release the Alibi
 client that sends Voices. Rolling back to a schema-4 Worker needs
 `UPDATE schema_version SET version=4 WHERE id=1 AND version=5` after the deploy; the tables stay and nothing writes to
-them. To stop intake without a schema change, empty `COLLECT_VOICE_PROJECTS` and redeploy.
+them. To stop intake without a schema change, empty `COLLECT_VOICE_PROJECTS` and redeploy. For schema 6 (survey edit revision, #218),
+run `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0006-voice-revision.sql` before
+deploying; it only adds the nullable `voice_survey.revision` column, and a second run fails on that column without
+changing anything. Rolling back to a schema-5 Worker needs `UPDATE schema_version SET version=5 WHERE id=1 AND version=6`
+after the deploy. The #112 statistics cleanup (`STATISTICS_PRECISION.md`) accepts schema 5 or 6, so it can run before or after
+this migration.
 Aggregate retention stays 14 days (`AGGREGATE_RETENTION_DAYS` in `src/statistics.mjs`) until no deployed
 host shows the old 14-day statistics notice; raising it to 400 is its own reviewed change. Deploy the schema-4 Worker only together with a Desk that accepts
 `pulseboard.statistics/4`: the Desk and the Worker ship from the same build, and a Desk that still

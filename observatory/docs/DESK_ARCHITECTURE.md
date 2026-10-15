@@ -155,7 +155,7 @@ depend on admission. `/readyz` reports `product: { configured, admitted }` besid
 ### Voices (schema 5)
 
 `VOICES.md` is the contract. `POST /v1/feedback/<id>` (`pulseboard.feedback/1`) and `PUT /v1/survey/<id>`
-(`pulseboard.survey/1`) admit what a player explicitly sends: written feedback, survey answers and puzzle ratings,
+(`pulseboard.survey/1`, or `/2` with an edit `revision`, schema 6) admit what a player explicitly sends: written feedback, survey answers and puzzle ratings,
 validated against the closed registry in `src/surveys.mjs`. Admission needs `COLLECT_ENABLED`, a valid session policy
 and the id in `COLLECT_VOICE_PROJECTS` (the same exact-list parser, over projects with a voice registry entry). Each
 write draws one unit from `<id>:voice` (`voiceLimit`, default 300) and the global `*:voice` (100 a day) through the

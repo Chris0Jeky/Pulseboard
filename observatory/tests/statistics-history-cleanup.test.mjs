@@ -10,6 +10,8 @@ const now = Date.parse('2026-10-07T12:34:56.789Z');
 function database(t) {
   const db = openDatabase();
   db.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
+  // The reviewed procedure targets schema 5 and 6: schema 6 (#218) only adds voice_survey.revision, statistics is unchanged.
+  db.exec('UPDATE schema_version SET version=5');
   t.after(() => db.close());
   return db;
 }
@@ -32,7 +34,7 @@ test('historical cleanup coarsens timestamps only, preserving keys, counts, read
     INSERT INTO probe_history VALUES('alibi',${now},1,10);
     INSERT INTO product_events VALUES('alibi',${now},'2026-10-07',NULL,1,'page.view','home','unattributed',1,'{}',0,'unknown','unknown','unknown','unknown','unknown');
     INSERT INTO voice_feedback VALUES('alibi','synthetic-id',${now},'2026-10-07','2026-10-07','unattributed','other','home','','synthetic',0,'unknown','unknown','unknown','unknown');
-    INSERT INTO voice_survey VALUES('alibi','synthetic-survey','','synthetic-hash',${now},${now},'2026-10-07','unattributed','{}','{}','',0,'unknown','unknown',1);`);
+    INSERT INTO voice_survey VALUES('alibi','synthetic-survey','','synthetic-hash',${now},${now},'2026-10-07','unattributed','{}','{}','',0,'unknown','unknown',1,NULL);`);
   const otherTables = ['statistics_dimensions', 'budget', 'events', 'probes', 'probe_history', 'product_events', 'voice_feedback', 'voice_survey', 'schema_version'];
   const beforeOther = await Promise.all(otherTables.map(table => db.prepare(`SELECT * FROM ${table}`).all()));
   const beforeRows = await rows(db);
@@ -67,7 +69,7 @@ for (const [label, invalid] of [
   });
 }
 
-for (const version of [4, 6, null]) {
+for (const version of [4, 7, null]) {
   test(`historical cleanup refuses unexpected schema marker ${version}`, async t => {
     const db = database(t);
     await insert(db);
@@ -122,4 +124,15 @@ test('historical cleanup audit distinguishes empty, precise, cleaned and invalid
   assert.deepEqual(await audit(), { schemaVersion: 5, totalRows: 3, totalCount: 11, invalidRows: 1, preciseRows: 0 });
   db.exec('UPDATE schema_version SET version=6');
   assert.equal((await audit()).schemaVersion, 6);
+});
+
+test('historical cleanup also runs at schema 6, which leaves statistics unchanged', async t => {
+  const auditSql = readFileSync(new URL('../maintenance/statistics-received-audit.sql', import.meta.url), 'utf8');
+  const db = database(t);
+  const audit = async () => ({ ...await db.prepare(auditSql).first() });
+  await insert(db);
+  db.exec('UPDATE schema_version SET version=6');
+  assert.equal((await audit()).preciseRows, 1);
+  db.exec(cleanup);
+  assert.deepEqual(await audit(), { schemaVersion: 6, totalRows: 1, totalCount: 3, invalidRows: 0, preciseRows: 0 });
 });
