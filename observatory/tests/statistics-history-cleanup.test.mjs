@@ -10,6 +10,8 @@ const now = Date.parse('2026-10-07T12:34:56.789Z');
 function database(t) {
   const db = openDatabase();
   db.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
+  // The reviewed procedure targets the schema-5 marker; schema 6 (#218) does not touch statistics but is refused too.
+  db.exec('UPDATE schema_version SET version=5');
   t.after(() => db.close());
   return db;
 }
@@ -32,7 +34,7 @@ test('historical cleanup coarsens timestamps only, preserving keys, counts, read
     INSERT INTO probe_history VALUES('alibi',${now},1,10);
     INSERT INTO product_events VALUES('alibi',${now},'2026-10-07',NULL,1,'page.view','home','unattributed',1,'{}',0,'unknown','unknown','unknown','unknown','unknown');
     INSERT INTO voice_feedback VALUES('alibi','synthetic-id',${now},'2026-10-07','2026-10-07','unattributed','other','home','','synthetic',0,'unknown','unknown','unknown','unknown');
-    INSERT INTO voice_survey VALUES('alibi','synthetic-survey','','synthetic-hash',${now},${now},'2026-10-07','unattributed','{}','{}','',0,'unknown','unknown',1);`);
+    INSERT INTO voice_survey VALUES('alibi','synthetic-survey','','synthetic-hash',${now},${now},'2026-10-07','unattributed','{}','{}','',0,'unknown','unknown',1,NULL);`);
   const otherTables = ['statistics_dimensions', 'budget', 'events', 'probes', 'probe_history', 'product_events', 'voice_feedback', 'voice_survey', 'schema_version'];
   const beforeOther = await Promise.all(otherTables.map(table => db.prepare(`SELECT * FROM ${table}`).all()));
   const beforeRows = await rows(db);

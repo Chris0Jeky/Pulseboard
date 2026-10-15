@@ -174,13 +174,13 @@ test('redacted text is cut back to the bound when markers make it longer', () =>
 test('the example survey is accepted with answers in registry order and an empty optional many dropped', () => {
   const stored = parseSurvey(taste({ answers: { difficulty: 'mostly-right', more: ['scene', 'sudoku'], tiers: [], often: 'weekly' } }), 'alibi');
   assert.deepEqual(stored, { survey: 'alibi-taste-1', subject: '', respondent: KEY, release: '0.15.0',
-    answers: '{"often":"weekly","more":["scene","sudoku"],"difficulty":"mostly-right"}', meta: '{}', comment: '', redacted: 0, device: 'mobile' });
+    answers: '{"often":"weekly","more":["scene","sudoku"],"difficulty":"mostly-right"}', meta: '{}', comment: '', redacted: 0, device: 'mobile', revision: null });
   const full = parseSurvey(taste({ answers: { often: 'daily', more: ['castle', 'bridges', 'duel', 'trail', 'gardens'], difficulty: 'mixed',
     tiers: ['master', 'gentle', 'expert'], next: 'polish', feel: 'love-it', recommend: 'probably-not' }, comment: 'More castles!' }), 'alibi');
   assert.equal(full.answers, '{"often":"daily","more":["bridges","trail","duel","gardens","castle"],"difficulty":"mixed","tiers":["gentle","expert","master"],"next":"polish","feel":"love-it","recommend":"probably-not"}');
   assert.equal(full.comment, 'More castles!');
   assert.deepEqual(parseSurvey(rating(), 'alibi'), { survey: 'puzzle-rating', subject: 'vault-binary-04', respondent: KEY, release: '0.15.0',
-    answers: '{"difficulty":"just-right","more":"yes"}', meta: '{"family":"binary","tier":"tricky"}', comment: '', redacted: 0, device: 'desktop' });
+    answers: '{"difficulty":"just-right","more":"yes"}', meta: '{"family":"binary","tier":"tricky"}', comment: '', redacted: 0, device: 'desktop', revision: null });
   // Meta keys are stored in declaration order whatever order they were sent in.
   assert.equal(parseSurvey(rating({ meta: { tier: 'master', family: 'trail' }, answers: { difficulty: 'too-hard' } }), 'alibi').meta, '{"family":"trail","tier":"master"}');
   for (const family of ALIBI_FAMILIES) for (const tier of ALIBI_TIERS) assert.equal(validateSurvey(rating({ meta: { family, tier } }), 'alibi'), true);

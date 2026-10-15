@@ -47,7 +47,9 @@ an assessment of provider request metadata and logging.
 The follow-up to #205 supplies two **manual** SQL files under `maintenance/`,
 outside `migrations/`. Nothing in startup, scheduled retention or deployment runs
 them. Merging the files does not change historical data. They target the existing
-schema-5 `statistics` table only; the marker is not incremented.
+schema-5 `statistics` table only; the marker is not incremented. Schema 6 (`migrations/0006-voice-revision.sql`, #218) leaves
+`statistics` unchanged, but the cleanup still refuses its marker: run this procedure before applying 0006, or
+review the gate for schema 6 first.
 
 First verify that the day-precision writer is deployed. Select and independently
 confirm the intended database/account/environment, using the existing approved

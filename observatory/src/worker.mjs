@@ -15,7 +15,7 @@ import { githubMap } from './github-map.mjs';
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
 const json = (value, status = 200, extra = {}) => new Response(JSON.stringify(value), { status, headers: { ...headers, ...extra } });
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 // Naming every column means a database missing a later-added column fails readiness instead of failing a request.
 const READINESS = [
   'SELECT project,day,used,receipt FROM budget LIMIT 0',
@@ -24,7 +24,7 @@ const READINESS = [
   'SELECT project,day,dimension,value,n FROM statistics_dimensions LIMIT 0',
   'SELECT project,received,day,session,seq,name,route,release,ms,props,redacted,country,region,browser,os,device FROM product_events LIMIT 0',
   'SELECT project,id,received,day,written,release,kind,route,subject,text,redacted,device,country,browser,os FROM voice_feedback LIMIT 0',
-  'SELECT project,survey,subject,respondent,first_received,received,day,release,answers,meta,comment,redacted,device,country,submissions FROM voice_survey LIMIT 0',
+  'SELECT project,survey,subject,respondent,first_received,received,day,release,answers,meta,comment,redacted,device,country,submissions,revision FROM voice_survey LIMIT 0',
   'SELECT project,state,failures,successes,opened,checked,status,duration FROM probes LIMIT 0',
   'SELECT project,checked,ok,duration FROM probe_history LIMIT 0',
 ];
@@ -322,16 +322,33 @@ export async function handle(request, env) {
       if (!record) return json({ error: 'contract' }, 400, cors);
       // Only the hash is stored; the raw survey key goes no further than this line.
       const respondent = await respondentHash(voiceId, record.respondent);
+      // Edit ordering (#218): a stored revision holds the row against any write that does not exceed it, and an
+      // unrevisioned (v1) write never exceeds one. One transaction reads the prior row, skips the reservation for a held
+      // row, and gates the upsert on both the receipt and the revision, so a held write stores and charges nothing.
+      const identity = 'project=? AND survey=? AND subject=? AND respondent=?', identityBinds = [voiceId, record.survey, record.subject, respondent];
+      const prior = env.DB.prepare(`SELECT revision, (release=? AND answers=? AND meta=? AND comment=? AND device=?) AS same
+        FROM voice_survey WHERE ${identity}`).bind(record.release, record.answers, record.meta, record.comment, record.device, ...identityBinds);
+      const held = `EXISTS(SELECT 1 FROM voice_survey WHERE ${identity} AND revision IS NOT NULL AND revision>=COALESCE(?,0))`;
       const upsert = env.DB.prepare(`INSERT INTO voice_survey(project,survey,subject,respondent,first_received,received,day,release,answers,meta,
-        comment,redacted,device,country,submissions) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,1 FROM budget WHERE project=? AND day=? AND receipt=?
+        comment,redacted,device,country,submissions,revision) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,? FROM budget WHERE project=? AND day=? AND receipt=?
         ON CONFLICT(project,survey,subject,respondent) DO UPDATE SET received=excluded.received,day=excluded.day,release=excluded.release,
           answers=excluded.answers,meta=excluded.meta,comment=excluded.comment,redacted=excluded.redacted,device=excluded.device,
-          country=excluded.country,submissions=voice_survey.submissions+1 RETURNING submissions`)
+          country=excluded.country,submissions=voice_survey.submissions+1,revision=excluded.revision
+          WHERE voice_survey.revision IS NULL OR COALESCE(excluded.revision,0)>voice_survey.revision RETURNING submissions`)
         .bind(voiceId, record.survey, record.subject, respondent, voiceNow, voiceNow, voiceDay, record.release, record.answers, record.meta,
-          record.comment, record.redacted, record.device, derived.country, voiceKey, voiceDay, voiceReceipt);
-      const result = await env.DB.batch([...voiceReservation(env.DB, { key: voiceKey, day: voiceDay, receipt: voiceReceipt, limit: voiceLimit }), upsert]);
-      if (!result[0].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
-      return json({ accepted: true, updated: Number(result[2].results?.[0]?.submissions) > 1 }, 202, cors);
+          record.comment, record.redacted, record.device, derived.country, record.revision, voiceKey, voiceDay, voiceReceipt);
+      const result = await env.DB.batch([prior, ...voiceReservation(env.DB, { key: voiceKey, day: voiceDay, receipt: voiceReceipt, limit: voiceLimit,
+        unless: [held, ...identityBinds, record.revision] }), upsert]);
+      const stored = result[0].results?.[0];
+      if (stored && stored.revision !== null && (record.revision ?? 0) <= stored.revision) {
+        // An exact retry is idempotent; the same revision with other content is the producer's bug and is refused so it
+        // drops it (like 400); an older revision or a v1 replay is acknowledged as stale so a queue stops retrying it.
+        if (record.revision !== stored.revision) return json({ accepted: true, updated: false, stale: true }, 202, cors);
+        if (Number(stored.same) === 1) return json({ accepted: true, updated: false, duplicate: true }, 202, cors);
+        return json({ error: 'revision_conflict' }, 409, cors);
+      }
+      if (!result[1].results?.length) return json({ error: 'daily_budget' }, 429, { ...cors, 'Retry-After': '3600' });
+      return json({ accepted: true, updated: Number(result[3].results?.[0]?.submissions) > 1 }, 202, cors);
     }
     // Read only on explicit desk action, never by the portfolio poll; its own contract keeps /v1/portfolio closed.
     if (url.pathname === '/v1/github-evidence' && request.method === 'GET') {

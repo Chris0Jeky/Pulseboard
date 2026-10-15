@@ -196,12 +196,12 @@ test('the first stat batch of a day is refused when it alone exceeds the daily l
   }
 });
 
-test('migrations are idempotent and readiness tracks version 5', async t => {
+test('migrations are idempotent (0006 refuses a re-run) and readiness tracks version 6', async t => {
   const DB = database(t);
   const ready = await handle(new Request('https://collector.example/readyz'), statEnv(DB));
   assert.equal(ready.status, 200);
-  assert.equal((await ready.json()).schema, 5);
-  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 5);
+  assert.equal((await ready.json()).schema, 6);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 6);
   const dimensionColumns = (await DB.prepare("SELECT name FROM pragma_table_info('statistics_dimensions') ORDER BY cid").all()).results.map(r => r.name);
   assert.deepEqual(dimensionColumns, ['project', 'day', 'dimension', 'value', 'n'], 'no timestamp finer than the day');
   const withoutRowid = (await DB.prepare("SELECT sql FROM sqlite_master WHERE name='statistics_dimensions'").first()).sql;
@@ -241,14 +241,22 @@ test('migrations are idempotent and readiness tracks version 5', async t => {
   DB.exec(migration5);
   DB.exec(migration5);
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 5);
+  assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 503, 'schema 5 is not ready for a schema 6 Worker');
+  const migration6 = readFileSync(new URL('../migrations/0006-voice-revision.sql', import.meta.url), 'utf8');
+  DB.exec(migration6);
+  assert.throws(() => DB.exec(migration6), /duplicate column/, 'a re-run of 0006 fails and changes nothing');
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 6);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 1);
   assert.equal((await handle(new Request('https://collector.example/readyz'), statEnv(DB))).status, 200);
   DB.exec(migration);
   DB.exec(migration3);
   DB.exec(migration4);
-  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 5,
+  DB.exec(migration5);
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 6,
     'an old migration cannot downgrade a newer schema marker');
   // The documented rollback markers are exact: each moves one version down and nothing else.
+  DB.exec('UPDATE schema_version SET version=5 WHERE id=1 AND version=6');
+  assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 5);
   DB.exec('UPDATE schema_version SET version=4 WHERE id=1 AND version=5');
   assert.equal((await DB.prepare('SELECT version FROM schema_version WHERE id=1').first()).version, 4);
   DB.exec('UPDATE schema_version SET version=3 WHERE id=1 AND version=4');

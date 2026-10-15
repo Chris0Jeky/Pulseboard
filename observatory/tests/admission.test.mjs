@@ -65,7 +65,7 @@ test('readiness exposes admission and rejects an invalid allowlist', async t => 
   const DB = database(t);
   const good = await handle(new Request('https://desk.test/readyz'), { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi' });
   assert.equal(good.status, 200);
-  assert.deepEqual(await good.json(), { ready: true, schema: 5,
+  assert.deepEqual(await good.json(), { ready: true, schema: 6,
     collection: { enabled: true, configured: ['alibi'], admitted: ['alibi'], invalid: [] },
     statistics: { configured: false, admitted: [] }, product: { configured: false, admitted: [] }, voices: { configured: false, admitted: [] },
     probes: { configured: ['mdviewer', 'developer-lens', 'idleharbor', 'portfolio', 'wealthlens'],
@@ -74,7 +74,7 @@ test('readiness exposes admission and rejects an invalid allowlist', async t => 
   assert.deepEqual((await counted.json()).statistics, { configured: true, admitted: [] }, 'a malformed statistics list is visible as configured but admitting nothing');
   const bad = await handle(new Request('https://desk.test/readyz'), { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'alibi,Alibi' });
   assert.equal(bad.status, 503);
-  assert.deepEqual(await bad.json(), { ready: false, schema: 5,
+  assert.deepEqual(await bad.json(), { ready: false, schema: 6,
     collection: { enabled: true, configured: ['alibi', 'Alibi'], admitted: [], invalid: ['Alibi'] },
     statistics: { configured: false, admitted: [] }, product: { configured: false, admitted: [] }, voices: { configured: false, admitted: [] },
     probes: { configured: ['mdviewer', 'developer-lens', 'idleharbor', 'portfolio', 'wealthlens'],

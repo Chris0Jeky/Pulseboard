@@ -91,7 +91,7 @@ test('the window is by last update day and every list is capped with measured tr
   for (let i = 0; i < FEEDBACK_ROWS + 1; i++) await fb.bind('alibi', id(i), now - i * 1000, day(0), day(0), VOICE_KINDS[i % 5], `text ${i}`).run();
   await fb.bind('alibi', id(9000), now - 7 * DAY, day(7), day(7), 'bug', 'outside the 7-day window').run();
   await fb.bind('mdviewer', id(9001), now, day(0), day(0), 'bug', 'another project').run();
-  const sv = DB.prepare(`INSERT INTO voice_survey VALUES('alibi',?,?,?,?,?,?,'0.15.0',?,?,?,0,'mobile','GB',1)`);
+  const sv = DB.prepare(`INSERT INTO voice_survey VALUES('alibi',?,?,?,?,?,?,'0.15.0',?,?,?,0,'mobile','GB',1,NULL)`);
   for (let i = 0; i < COMMENT_ROWS + 1; i++) await sv.bind('alibi-taste-1', '', `r${i}`, now - 900 * DAY, now - i * 1000, day(0), '{"often":"daily","difficulty":"mixed"}', '{}', `comment ${i}`).run();
   // First answered long ago, updated inside the window: in. Updated before the window: out.
   await sv.bind('alibi-taste-1', '', 'old', now - 900 * DAY, now - 8 * DAY, day(8), '{"often":"weekly","difficulty":"mixed"}', '{}', 'stale').run();

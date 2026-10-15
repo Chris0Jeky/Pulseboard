@@ -1,6 +1,6 @@
 /** Voices admission contracts (docs/VOICES.md): `pulseboard.feedback/1` for POST /v1/feedback/<id> and
- *  `pulseboard.survey/1` for PUT /v1/survey/<id>. Both are player-initiated: nothing is sent unless the player presses
- *  Send, submits a survey or taps a rating. Shapes are closed (no other keys at any level) and validated against the
+ *  `pulseboard.survey/1` or `/2` (v1 plus an edit `revision`) for PUT /v1/survey/<id>. Both are player-initiated:
+ *  nothing is sent unless the player presses Send, submits a survey or taps a rating. Shapes are closed (no other keys at any level) and validated against the
  *  project's registry in src/surveys.mjs. Free text is cleaned, bounded and redacted on the server before storage;
  *  redaction never rejects. A survey key is hashed with the project id before storage and never stored or returned raw. */
 import { ADDRESS_PATTERNS, cutText } from './product-contract.mjs';
@@ -9,6 +9,10 @@ import { releaseAccepted } from './release-label.mjs';
 import { voiceRegistry } from './surveys.mjs';
 
 export const VOICE_VERSION = 1;
+/** `pulseboard.survey/2` adds `revision`, the producer's edit counter for one survey, subject and survey key: an integer
+ *  from 1 to SURVEY_REVISION_MAX that increases with every deliberate submission. v1 stays accepted unchanged. */
+export const SURVEY_VERSION = 2;
+export const SURVEY_REVISION_MAX = 2 ** 31 - 1;
 /** Per project and UTC day, overridable as `voiceLimit` in src/projects.mjs. */
 export const VOICE_DEFAULT_LIMIT = 300;
 /** Across every project, per UTC day. Sized well inside D1's 500 MB free-plan cap next to product events' 310 MB:
@@ -33,6 +37,7 @@ const DAY_TEXT = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86400000;
 const FEEDBACK_KEYS = Object.freeze(['v', 'id', 'release', 'kind', 'route', 'subject', 'text', 'written', 'context']);
 const SURVEY_KEYS = Object.freeze(['v', 'survey', 'subject', 'respondent', 'release', 'answers', 'meta', 'comment', 'context']);
+const SURVEY_V2_KEYS = Object.freeze([...SURVEY_KEYS, 'revision']);
 
 const plain = value => !!value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 /** Every listed key present and no other: a missing key and an extra key are both a contract failure. */
@@ -145,11 +150,14 @@ function canonicalMeta(meta, declared) {
   return out;
 }
 
-/** `pulseboard.survey/1`. Returns the record to store, with answers and meta as canonical JSON and the comment cleaned
- *  and redacted, or null. `respondent` is still the raw key here: hash it with respondentHash() before storage. */
+/** `pulseboard.survey/1` or `/2`. Returns the record to store, with answers and meta as canonical JSON, the comment
+ *  cleaned and redacted, and `revision` (null for v1), or null. `respondent` is still the raw key here: hash it with
+ *  respondentHash() before storage. */
 export function parseSurvey(body, project) {
   const registry = voiceRegistry(project);
-  if (!registry || !exact(body, SURVEY_KEYS) || body.v !== VOICE_VERSION) return null;
+  const keys = body?.v === SURVEY_VERSION ? SURVEY_V2_KEYS : body?.v === VOICE_VERSION ? SURVEY_KEYS : null;
+  if (!registry || !keys || !exact(body, keys)) return null;
+  if (keys === SURVEY_V2_KEYS && !(Number.isSafeInteger(body.revision) && body.revision >= 1 && body.revision <= SURVEY_REVISION_MAX)) return null;
   if (typeof body.survey !== 'string' || !Object.hasOwn(registry.surveys, body.survey)) return null;
   const survey = registry.surveys[body.survey];
   if (survey.subject === 'none' ? body.subject !== '' : typeof body.subject !== 'string' || !SUBJECT.test(body.subject)) return null;
@@ -162,7 +170,8 @@ export function parseSurvey(body, project) {
   if (!device) return null;
   const scrubbed = comment ? redactVoiceText(comment, COMMENT_MAX) : { text: '', redacted: 0 };
   return { survey: body.survey, subject: body.subject, respondent: body.respondent, release: body.release,
-    answers: JSON.stringify(answers), meta: JSON.stringify(meta), comment: scrubbed.text, redacted: scrubbed.redacted, device };
+    answers: JSON.stringify(answers), meta: JSON.stringify(meta), comment: scrubbed.text, redacted: scrubbed.redacted, device,
+    revision: body.v === SURVEY_VERSION ? body.revision : null };
 }
 export const validateSurvey = (body, project) => parseSurvey(body, project) !== null;
 

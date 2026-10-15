@@ -1,4 +1,4 @@
-# Voices: player feedback, surveys and puzzle ratings (contract v1)
+# Voices: player feedback, surveys and puzzle ratings (feedback v1, survey v1 and v2)
 
 Owner decision, 2026-09-27 (in chat; recorded in Alibi `HUMAN_TODO.md` and here as HUMAN_TODO q-30): player
 feedback and survey answers go to **Pulseboard**. Written feedback is stored only when a player presses Send. The
@@ -10,7 +10,7 @@ the Desk. Alibi implements the client half; both halves cite this file. Field na
 here are the shared contract and change only by a new version.
 
 Code: `src/voice-contract.mjs` (validation, cleaning, redaction, hashing), `src/surveys.mjs` (the closed registry),
-`src/worker.mjs` (routes, budget, retention), `src/voices.mjs` (read model), `migrations/0005-voices.sql` (schema 5),
+`src/worker.mjs` (routes, budget, retention), `src/voices.mjs` (read model), `migrations/0005-voices.sql` (schema 5), `migrations/0006-voice-revision.sql` (schema 6, survey v2),
 `public/desk-voices.mjs` and the Voices view in `public/dashboard.mjs` (Desk). Tests: `tests/voices-*.test.mjs` and
 `tests/desk-browser.py`.
 
@@ -105,7 +105,7 @@ browser, os`; `day` is the UTC receipt day and `received` the receipt time. The 
 `202 { accepted: true, duplicate: true }`, stores nothing (the first stored copy wins) and charges no budget, even when
 today's budget is full.
 
-## 2. Surveys and ratings: `PUT /v1/survey/<project>`, contract `pulseboard.survey/1`
+## 2. Surveys and ratings: `PUT /v1/survey/<project>`, contracts `pulseboard.survey/1` and `/2`
 
 ```json
 {
@@ -140,6 +140,46 @@ device, country, submissions`. An existing row is replaced in place (answers, me
 release, received, day, device, country) and `submissions` increments: `202 { accepted: true, updated: true }`. A
 player therefore counts once per survey and subject however often they resubmit. Every accepted write is charged,
 updates included.
+
+### Edit revision: `pulseboard.survey/2` (#218)
+
+v1 cannot tell a delayed older request from a newer edit: the last request to *arrive* wins, so a queued or retried
+old answer can replace the player's latest choice. v2 is v1 with `"v": 2` and one more required key:
+
+```json
+{ "v": 2, "...": "the nine v1 keys, unchanged", "revision": 7 }
+```
+
+- `revision` is the producer's edit counter for one survey, subject and survey key: a JSON integer from 1 to
+  2,147,483,647 (2^31 - 1). Anything else (0, negative, fractional, a string, `null`, beyond the bound or not a safe
+  integer) is `400 contract`, as are a v2 body without `revision` and a v1 body with one. v1 stays accepted unchanged.
+- Storage: `voice_survey.revision` (schema 6), `NULL` for a row last written by v1.
+
+| Incoming write against the stored row | Status and body | Stored row | Budget |
+|---|---|---|---|
+| no row; or stored `revision` is `NULL` (v1 as before, or a first v2 write) | `202 { accepted: true, updated }` | replaced, `submissions + 1` | charged |
+| v2, `revision` greater than stored | `202 { accepted: true, updated: true }` | replaced, `submissions + 1` | charged |
+| v2, equal `revision`, identical content | `202 { accepted: true, updated: false, duplicate: true }` | untouched | none |
+| v2, equal `revision`, different content | `409 { error: 'revision_conflict' }` | untouched | none |
+| v2 with a lower `revision`, or any v1 write, over a stored revision | `202 { accepted: true, updated: false, stale: true }` | untouched | none |
+
+"Identical content" is the stored `release`, `answers`, `meta`, `comment` and `device` after canonicalisation and
+redaction; server-derived country and receipt time are not compared. A duplicate or stale answer is `202` so a queue
+drops the request instead of retrying it, and it answers so even when today's budget is full. A conflict is the
+producer's bug (two different payloads under one revision): drop it like a `400`, do not retry it. Classification, both
+budget reservations and the upsert run in one D1 batch, so a held write never debits `<id>:voice` or `*:voice`;
+`429` is answered only for a write that would change the row. Once an identity has a revision, an unrevisioned write
+can no longer replace it: a v1 request still queued in an older client is older than any revisioned edit.
+
+Producer requirements (Alibi adopts this under its own session; until then it sends v1 and nothing changes):
+
+- Keep one counter per survey and subject next to the survey key, persisted before the request is queued, shared by
+  every tab (atomic increment), and increment it for every deliberate submit or rating change, including a deliberate
+  re-confirmation of the same answers.
+- A retry re-sends the exact queued payload with its original `revision`; never re-number a queued request.
+- Resetting the survey key starts a new identity: the counter may restart at 1.
+- Treat `409` like `400` (drop, keep a local note). Limits: protection lasts as long as the row (400-day retention
+  from the last update); a Worker rolled back below schema 6 ignores `revision` and is last-arrival-wins again.
 
 ### Alibi surveys (registry v1)
 
@@ -257,6 +297,12 @@ last update `day` is 400 or more dates old (365 and 400 dates are kept, includin
 2. Deploy the collector built from this change; `/readyz` must report schema 5 and `voices.admitted: ["alibi"]`.
 3. Release the Alibi client that sends Voices.
 
+Survey v2 (schema 6): apply `migrations/0006-voice-revision.sql` to production D1 (one nullable column and the marker;
+unlike earlier migrations a re-run fails on the existing column and changes nothing), then deploy (the deploy workflow
+refuses while production reports schema 5), confirm `/readyz` reports schema 6, and only then release an Alibi client
+that sends v2. Rolling back to a schema-5 Worker needs `UPDATE schema_version SET version=5 WHERE id=1 AND version=6`
+after the deploy; the column stays and that Worker ignores it.
+
 Rolling back to a schema-4 Worker needs `UPDATE schema_version SET version=4 WHERE id=1 AND version=5` after the
 deploy; the tables stay and nothing writes to them. Emptying `COLLECT_VOICE_PROJECTS` and redeploying stops intake
 without a schema change; the Alibi client keeps its queue on `503`.
@@ -273,8 +319,8 @@ without a schema change; the Alibi client keeps its queue on `503`.
   details), Send.
 - **Offline queue**: `localStorage` key `alibi:voices:queue:v1`, at most 20 items, each the exact payload plus attempts
   and next-try time. Flush on start (after first render, idle), on `online`, after enqueue, and on `visibilitychange` to
-  visible. Backoff 1 min, 5 min, 30 min, 2 h, then every 6 h. `202` removes; `400` removes and keeps a local "could not
-  be sent" note; network errors, `429`, `5xx` and `503` keep it; items older than 30 days are dropped. Settings shows
+  visible. Backoff 1 min, 5 min, 30 min, 2 h, then every 6 h. `202` removes; `400` (and, for survey v2, `409`) removes
+  and keeps a local "could not be sent" note; network errors, `429`, `5xx` and `503` keep it; items older than 30 days are dropped. Settings shows
   "N messages waiting to send" with delete. A queued survey or rating for the same survey and subject replaces the older
   queued one. The `alibi-device` IndexedDB schema is not touched.
 - **Survey key**: `localStorage` `alibi:voices:respondent:v1`, created on first survey or rating submit; Privacy
