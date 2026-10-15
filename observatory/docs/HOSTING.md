@@ -61,8 +61,8 @@ them. To stop intake without a schema change, empty `COLLECT_VOICE_PROJECTS` and
 run `npx wrangler d1 execute pulseboard-observatory --remote --file migrations/0006-voice-revision.sql` before
 deploying; it only adds the nullable `voice_survey.revision` column, and a second run fails on that column without
 changing anything. Rolling back to a schema-5 Worker needs `UPDATE schema_version SET version=5 WHERE id=1 AND version=6`
-after the deploy. Run the #112 statistics cleanup (`STATISTICS_PRECISION.md`) before this migration, or review its
-schema-5 gate first.
+after the deploy. The #112 statistics cleanup (`STATISTICS_PRECISION.md`) accepts schema 5 or 6, so it can run before or after
+this migration.
 Aggregate retention stays 14 days (`AGGREGATE_RETENTION_DAYS` in `src/statistics.mjs`) until no deployed
 host shows the old 14-day statistics notice; raising it to 400 is its own reviewed change. Deploy the schema-4 Worker only together with a Desk that accepts
 `pulseboard.statistics/4`: the Desk and the Worker ship from the same build, and a Desk that still

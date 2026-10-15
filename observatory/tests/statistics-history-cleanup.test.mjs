@@ -10,7 +10,7 @@ const now = Date.parse('2026-10-07T12:34:56.789Z');
 function database(t) {
   const db = openDatabase();
   db.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
-  // The reviewed procedure targets the schema-5 marker; schema 6 (#218) does not touch statistics but is refused too.
+  // The reviewed procedure targets schema 5 and 6: schema 6 (#218) only adds voice_survey.revision, statistics is unchanged.
   db.exec('UPDATE schema_version SET version=5');
   t.after(() => db.close());
   return db;
@@ -69,7 +69,7 @@ for (const [label, invalid] of [
   });
 }
 
-for (const version of [4, 6, null]) {
+for (const version of [4, 7, null]) {
   test(`historical cleanup refuses unexpected schema marker ${version}`, async t => {
     const db = database(t);
     await insert(db);
@@ -124,4 +124,15 @@ test('historical cleanup audit distinguishes empty, precise, cleaned and invalid
   assert.deepEqual(await audit(), { schemaVersion: 5, totalRows: 3, totalCount: 11, invalidRows: 1, preciseRows: 0 });
   db.exec('UPDATE schema_version SET version=6');
   assert.equal((await audit()).schemaVersion, 6);
+});
+
+test('historical cleanup also runs at schema 6, which leaves statistics unchanged', async t => {
+  const auditSql = readFileSync(new URL('../maintenance/statistics-received-audit.sql', import.meta.url), 'utf8');
+  const db = database(t);
+  const audit = async () => ({ ...await db.prepare(auditSql).first() });
+  await insert(db);
+  db.exec('UPDATE schema_version SET version=6');
+  assert.equal((await audit()).preciseRows, 1);
+  db.exec(cleanup);
+  assert.deepEqual(await audit(), { schemaVersion: 6, totalRows: 1, totalCount: 3, invalidRows: 0, preciseRows: 0 });
 });
