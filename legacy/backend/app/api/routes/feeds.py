@@ -50,6 +50,28 @@ def _validate_config(config: object) -> None:
         )
 
 
+def _validate_feed_config(feed_type: str, config: dict) -> None:
+    """Validate type-specific feed config."""
+    if feed_type != "http_json":
+        return
+    url = config.get("url")
+    if not isinstance(url, str) or not url.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="url is required and must be a non-empty string",
+        )
+    if "method" in config and not isinstance(config["method"], str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="method must be a string",
+        )
+    if "path" in config and not isinstance(config["path"], str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="path must be a string",
+        )
+
+
 class FeedTypeInfo(BaseModel):
     """Response schema for feed type metadata."""
 
@@ -107,6 +129,8 @@ async def create_feed(
         ) from exc
 
     _validate_config(parsed_config)
+    if isinstance(parsed_config, dict):
+        _validate_feed_config(feed.type, parsed_config)
 
     db_feed = FeedDefinition.model_validate(feed)
     session.add(db_feed)
@@ -162,6 +186,10 @@ async def update_feed(
 
     if "config_json" in update_data:
         _validate_config(parsed_update_config)
+        if isinstance(parsed_update_config, dict):
+            _validate_feed_config(
+                update_data.get("type", feed.type), parsed_update_config
+            )
 
     for field, value in update_data.items():
         setattr(feed, field, value)
