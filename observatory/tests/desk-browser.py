@@ -1,5 +1,5 @@
 """Desk interaction gate. Default uses real HTTP assets; --offline explicitly skips serving/CSP checks.
-Install optional test dependency: python -m pip install playwright==1.57.0
+Install optional test dependency: python -m pip install playwright==1.62.0
 Then: python -m playwright install chromium
 Run a local collector first, or use --offline. No external product probes or collection are enabled.
 """

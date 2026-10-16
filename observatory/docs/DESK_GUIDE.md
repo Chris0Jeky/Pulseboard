@@ -120,7 +120,7 @@ dependency, isolated from the runtime:
 ```bash
 python -m venv .browser-venv
 # Activate the venv using your shell's normal command.
-python -m pip install playwright==1.57.0
+python -m pip install playwright==1.62.0
 python -m playwright install chromium
 ```
 
