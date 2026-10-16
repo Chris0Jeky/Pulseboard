@@ -49,7 +49,7 @@ A future test regression, unsupported container toolchain, broken production ima
 
 The production build still warns that its main JavaScript chunk is above Vite's 500 kB warning threshold. That is a bundle-shaping and loading-performance concern, not a dependency-audit exception, and is tracked separately in issue #60.
 
-## 16 October 2026 ? Tailwind CSS v4 migration
+## 16 October 2026 - Tailwind CSS v4 migration
 
 The preceding lockfile refresh reduced the full-graph audit from 12 to seven findings. The remaining chain was rooted in Tailwind 3.4.x (braces, micromatch, chokidar, fast-glob, postcss-nested, postcss-selector-parser and tailwindcss); braces had no patched 3.x release.
 
@@ -57,7 +57,7 @@ The preceding lockfile refresh reduced the full-graph audit from 12 to seven fin
 
 1. Migrated to Tailwind CSS 4.3.3 and its official `@tailwindcss/postcss` integration, keeping `npm run build:css` and the checked-in generated stylesheet. The latest CLI was evaluated but still imported vulnerable braces through its Parcel watcher; the PostCSS integration removes that chain.
 2. Replaced JavaScript configuration with CSS-first theme, explicit source paths and the existing class-based dark variant. Removed the obsolete Tailwind config and autoprefixer-only PostCSS config; v4 handles prefixing.
-3. Updated template classes: `backdrop-blur-sm` ? `backdrop-blur-xs`, `rounded` ? `rounded-sm`, `focus:outline-none` ? `focus:outline-hidden`, `flex-shrink-0` ? `shrink-0`, and directional gradients ? `bg-linear-to-*/srgb`. Retained existing shadow-lg/shadow-2xl values and explicit two-pixel colored rings.
+3. Updated template classes: `backdrop-blur-sm` -> `backdrop-blur-xs`, `rounded` -> `rounded-sm`, `focus:outline-none` -> `focus:outline-hidden`, `flex-shrink-0` -> `shrink-0`, and directional gradients -> `bg-linear-to-*/srgb`. Retained existing shadow-lg/shadow-2xl values and explicit two-pixel colored rings.
 4. Preserved the used v3 color palette, default gray-200 borders, gray-400 placeholders, pointer cursors and sibling spacing. Added a compilation regression test for the migrated controls and defaults.
 
 No `--force`, advisory suppression, audit allowlist or dependency override was used.
