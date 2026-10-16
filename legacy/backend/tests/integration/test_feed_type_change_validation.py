@@ -3,10 +3,11 @@
 import json
 from uuid import UUID
 
+import pytest
+from app.models import FeedDefinition
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from app.models import FeedDefinition
 from .test_api import client_fixture, session_fixture  # noqa: F401
 
 
@@ -81,10 +82,37 @@ def test_patch_type_change_uses_compatible_stored_config(client: TestClient):
     assert json.loads(response.json()["config_json"]) == config
 
 
-def test_patch_type_change_accepts_crypto_default_config(client: TestClient):
+def test_patch_type_change_rejects_crypto_default_config(client: TestClient):
     created = client.post("/api/feeds", json={
         "type": "system_metrics", "name": "Default config", "enabled": False,
     })
     assert created.status_code == 201
     response = client.patch(f"/api/feeds/{created.json()['id']}", json={"type": "crypto_price"})
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize("config", [{}, {"coin_id": ""}, {"coin_id": "  "}, {"coin_id": 42}, {"coin_id": None}])
+@pytest.mark.parametrize("operation", ["create", "type_change"])
+def test_crypto_config_requires_nonempty_coin_id(client: TestClient, config, operation):
+    payload = {"type": "crypto_price", "config_json": json.dumps(config), "enabled": False}
+    if operation == "create":
+        response = client.post("/api/feeds", json={**payload, "name": "Crypto"})
+    else:
+        created = client.post("/api/feeds", json={
+            "type": "system_metrics", "name": "System", "enabled": False,
+        })
+        assert created.status_code == 201
+        response = client.patch(f"/api/feeds/{created.json()['id']}", json=payload)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "coin_id is required and must be a non-empty string"
+
+
+def test_patch_type_change_accepts_crypto_coin_id(client: TestClient):
+    created = client.post("/api/feeds", json={
+        "type": "system_metrics", "name": "System", "enabled": False,
+    })
+    assert created.status_code == 201
+    response = client.patch(f"/api/feeds/{created.json()['id']}", json={
+        "type": "crypto_price", "config_json": json.dumps({"coin_id": "bitcoin"}),
+    })
     assert response.status_code == 200
