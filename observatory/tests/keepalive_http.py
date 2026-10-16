@@ -30,6 +30,8 @@ class HttpsFixture:
         self.trace = deque(maxlen=64)
         self.tls_alerts = deque(maxlen=64)
         self.script = ''
+        self.navigation_complete = None
+        self.preflight_waiting = threading.Event()
         self._servers = []
         self._temporary = None
 
@@ -98,8 +100,14 @@ class HttpsFixture:
                 if role != 'collector' or self.path != '/v1/collect/mdviewer':
                     self.reply(404)
                     return
-                fixture.trace.append({'method': self.command, 'path': self.path})
+                entry = {'method': self.command, 'path': self.path}
+                fixture.trace.append(entry)
                 if self.command == 'OPTIONS':
+                    if fixture.navigation_complete is not None:
+                        fixture.preflight_waiting.set()
+                        if not fixture.navigation_complete.wait(10):
+                            return self.reply(504, cors=True)
+                        entry['afterNavigation'] = True
                     return self.reply(204, cors=True)
                 length = self.headers.get('Content-Length', '')
                 if not length.isdecimal():
