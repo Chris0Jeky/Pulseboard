@@ -419,6 +419,109 @@ class TestFeedAPI:
         session.refresh(feed)
         assert feed.config_json == original_config
 
+    @pytest.mark.parametrize(
+        ("config", "detail"),
+        [
+            ({"interval_sec": 5}, "url is required and must be a non-empty string"),
+            ({"url": ""}, "url is required and must be a non-empty string"),
+            ({"url": "   "}, "url is required and must be a non-empty string"),
+            ({"url": 123}, "url is required and must be a non-empty string"),
+            (
+                {"url": "https://example.com", "method": 123},
+                "method must be a string",
+            ),
+            (
+                {"url": "https://example.com", "path": 123},
+                "path must be a string",
+            ),
+        ],
+    )
+    def test_create_http_json_feed_rejects_bad_config(
+        self, client: TestClient, config: dict, detail: str
+    ):
+        """POST an http_json feed with a bad config must fail with 400."""
+        response = client.post(
+            "/api/feeds",
+            json={
+                "type": "http_json",
+                "name": "Bad HTTP Feed",
+                "config_json": json.dumps(config),
+                "enabled": False,
+            },
+        )
+
+        assert response.status_code == 400
+        assert detail in response.json()["detail"]
+        assert client.get("/api/feeds").json() == []
+
+    def test_create_http_json_feed_accepts_valid_config(self, client: TestClient):
+        """POST an http_json feed with a url must succeed."""
+        response = client.post(
+            "/api/feeds",
+            json={
+                "type": "http_json",
+                "name": "Good HTTP Feed",
+                "config_json": json.dumps(
+                    {"url": "https://example.com", "interval_sec": 5}
+                ),
+                "enabled": False,
+            },
+        )
+
+        assert response.status_code == 201
+
+    def test_update_http_json_feed_rejects_missing_url(
+        self, client: TestClient, session: Session
+    ):
+        """PATCH an http_json feed without a url must fail and leave config unchanged."""
+        original_config = json.dumps(
+            {"url": "https://example.com", "interval_sec": 5}
+        )
+        feed = FeedDefinition(
+            type="http_json", name="Patch HTTP Feed", config_json=original_config
+        )
+        session.add(feed)
+        session.commit()
+        session.refresh(feed)
+
+        response = client.patch(
+            f"/api/feeds/{feed.id}",
+            json={"config_json": json.dumps({"interval_sec": 5})},
+        )
+
+        assert response.status_code == 400
+        assert (
+            "url is required and must be a non-empty string"
+            in response.json()["detail"]
+        )
+        session.refresh(feed)
+        assert feed.config_json == original_config
+
+    def test_update_http_json_feed_accepts_valid_config(
+        self, client: TestClient, session: Session
+    ):
+        """PATCH an http_json feed with a url must succeed."""
+        feed = FeedDefinition(
+            type="http_json",
+            name="Patch HTTP Feed",
+            config_json=json.dumps({"url": "https://example.com"}),
+        )
+        session.add(feed)
+        session.commit()
+        session.refresh(feed)
+
+        new_config = json.dumps(
+            {"url": "https://example.com/other", "interval_sec": 5}
+        )
+        response = client.patch(
+            f"/api/feeds/{feed.id}",
+            json={"config_json": new_config},
+        )
+
+        assert response.status_code == 200
+        session.refresh(feed)
+        assert feed.config_json == new_config
+
     def test_list_feeds(self, client: TestClient, session: Session):
         """Test listing feeds."""
         feed1 = FeedDefinition(type="system_metrics", name="Feed 1", enabled=True)
