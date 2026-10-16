@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import { install, buildEmbed } from '../adapters/build-embed.mjs';
 import { validateEvent } from '../src/contracts.mjs';
 import { projects } from '../src/projects.mjs';
+import { openDatabase } from '../src/sqlite.mjs';
+import { handle } from '../src/worker.mjs';
 test('installer rejects mismatched endpoints', () => {
   assert.throws(() => buildEmbed('mdviewer', { endpoint: 'https://collector.test/v1/collect/alibi' }), /exact HTTPS/);
 });
@@ -35,6 +37,23 @@ test('Alibi standalone artifacts are gated even on the public origin', () => {
   const code = buildEmbed('alibi', { endpoint: 'https://collector.test/v1/collect-stat/alibi' });
   const context = { URL, document: { readyState: 'complete' }, location: { origin: 'https://alibi-after-hours-preview.commit-atlas.workers.dev', protocol: 'https:', pathname: '/' }, navigator: {}, ALIBI_CONFIG: { standalone: true } };
   vm.runInNewContext(code, context); assert.equal(context.PulseboardUsage, null);
+});
+test('collect refuses query strings without charging budget', async t => {
+  const DB = openDatabase();
+  DB.exec(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
+  t.after(() => DB.close());
+  const env = { DB, COLLECT_ENABLED: 'true', COLLECT_PROJECTS: 'mdviewer', READ_TOKEN: 'a'.repeat(64) };
+  const body = { events: [{ v: 1, id: crypto.randomUUID(), session: crypto.randomUUID(), seq: 1,
+    event: 'page.view', route: 'home', release: 'unattributed' }] };
+  const headers = { Origin: projects.mdviewer.origin, 'Content-Type': 'application/json' };
+  const queried = await handle(new Request('https://collector.example/v1/collect/mdviewer?x=1',
+    { method: 'POST', headers, body: JSON.stringify(body) }), env);
+  assert.equal(queried.status, 404);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM budget').first()).n, 0);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM events').first()).n, 0);
+  const clean = await handle(new Request('https://collector.example/v1/collect/mdviewer',
+    { method: 'POST', headers, body: JSON.stringify(body) }), env);
+  assert.equal(clean.status, 202);
 });
 test('UUID fields cannot exploit implicit string coercion', () => {
   const event = { v: 1, id: crypto.randomUUID(), session: crypto.randomUUID(), seq: 1, event: 'page.view', route: 'home', release: 'unattributed' };
