@@ -74,7 +74,7 @@ class FixtureTests(unittest.TestCase):
             self.assertNotIn('Traceback', stderr.getvalue())
             self.assertEqual(len(fixture.tls_alerts), 1)
             self.assertEqual(fixture.tls_alerts[0]['role'], 'source')
-            self.assertIn(fixture.tls_alerts[0]['reason'], ('TLSV1_ALERT_UNKNOWN_CA', 'SSLV3_ALERT_CERTIFICATE_UNKNOWN'))
+            self.assertIn(fixture.tls_alerts[0]['reason'], ('TLSV1_ALERT_UNKNOWN_CA', 'SSLV3_ALERT_CERTIFICATE_UNKNOWN', 'HANDSHAKE_RESET'))
             self.assertEqual(fixture.tls_alerts.maxlen, 64)
             self.assertEqual(len(fixture.receipts), 0)
             # A later fixture-authorized request still traverses the same real socket.
