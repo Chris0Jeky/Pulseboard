@@ -1,6 +1,6 @@
 # Legacy embed keepalive evidence (#122)
 
-Run from `observatory/` with Node 22.16+, OpenSSL and Playwright 1.57 Chromium:
+Run from `observatory/` with Node 22.16+, OpenSSL and Playwright 1.62 Chromium (pinned in #248; the receipts below record the 1.57 runs):
 
 ```sh
 python tests/keepalive-http-test.py
