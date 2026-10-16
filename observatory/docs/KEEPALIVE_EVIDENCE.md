@@ -120,11 +120,28 @@ it does not prove every historical occurrence had that cause, delivery after a
 browser crash, or the state of current production hosts. No blind retry, enlarged
 deadline, production behavior change or relaxed event-delivery assertion is used.
 
+## Certificate trust at the handshake (2026-10-16, host)
+
+The receipt gate merged in #233 passed hosted Linux CI and 50/50 runs in the
+Codex sandbox, but failed **10/10** on the Windows host DESKTOP-IHKOOJS (Python
+3.14, Playwright 1.62 Chromium) with the same missing-event assertion. The
+collector logged one certificate alert per TLS connection: Chromium rejected the
+self-signed handshake, then retried under the context's `ignore_https_errors`
+override. The unload keepalive request's connection got the alert and no retry,
+so its preflight never reached the collector socket. Launching the same run with
+`--ignore-certificate-errors` passed 3/3, isolating certificate trust.
+
+The fixture now publishes its temporary key's SPKI hash, and both browser cases
+launch Chromium with `--ignore-certificate-errors-spki-list=<hash>`, so the network
+stack trusts only that key during the handshake. `ignore_https_errors` is gone,
+and the delivery case asserts that the collector saw no TLS alert. The
+`keepalive: false` mutant still fails on the exact missing-event assertion, with
+the unload preflight reaching the socket after navigation and no POST following.
+
 ## TLS diagnostic follow-up
 
-Temporary self-signed certificates can produce server-side unknown-CA or
-certificate-unknown alerts before a browser uses its fixture-specific HTTPS
-exception. The helper retains only these two known SSL reasons and the fixture
+Temporary self-signed certificates produce server-side unknown-CA or
+certificate-unknown alerts when a client does not trust them. The helper retains only these two known SSL reasons and the fixture
 role in a 64-entry deque, emitting one `fixtureRecentTlsAlerts` summary on exit.
 It does not log client addresses, certificates, keys, headers or payloads there.
 Unexpected SSL or non-SSL server failures still print their normal tracebacks.

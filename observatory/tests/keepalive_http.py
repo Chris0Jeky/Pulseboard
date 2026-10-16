@@ -2,6 +2,8 @@
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import base64
+import hashlib
 import json
 import ssl
 import subprocess
@@ -45,6 +47,13 @@ class HttpsFixture:
                 '-keyout', str(key), '-out', str(cert), '-days', '1',
                 '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1',
             ], check=True, capture_output=True, timeout=15)
+            # Chromium's --ignore-certificate-errors-spki-list trusts this key in the
+            # network stack itself, so frame-less keepalive requests are trusted too.
+            der = subprocess.run(
+                ['openssl', 'pkey', '-in', str(key), '-pubout', '-outform', 'DER'],
+                check=True, capture_output=True, timeout=15,
+            ).stdout
+            self.spki = base64.b64encode(hashlib.sha256(der).digest()).decode()
             tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             tls.load_cert_chain(cert, key)
             self.source_origin = self._start('source', tls)
@@ -137,8 +146,7 @@ class HttpsFixture:
                 if isinstance(error, ssl.SSLError) and getattr(error, 'reason', None) in (
                     'TLSV1_ALERT_UNKNOWN_CA', 'SSLV3_ALERT_CERTIFICATE_UNKNOWN',
                 ):
-                    # Browsers may reject the temporary certificate before retrying
-                    # under the fixture context's explicit trust exception. Keep the
+                    # A client that does not trust the temporary certificate. Keep the
                     # observation, not a repeated traceback or client address.
                     fixture.tls_alerts.append({'role': role, 'reason': error.reason})
                     return

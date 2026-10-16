@@ -40,6 +40,13 @@ process.stdout.write(buildEmbed('mdviewer', {
     )
 
 
+def trust(fixture) -> str:
+    # Not ignore_https_errors: that override is applied after Chromium rejects the
+    # handshake, and on Windows the unload keepalive request was dropped at that
+    # rejection (a TLS alert, then nothing). Trust the fixture key at handshake time.
+    return f"--ignore-certificate-errors-spki-list={fixture.spki}"
+
+
 def events(receipts: list[dict]) -> list[dict]:
     result = []
     for receipt in list(receipts):
@@ -85,10 +92,10 @@ async def exercise(transport, fixture, chromium=None) -> None:
         browser = await playwright.chromium.launch(
             headless=True,
             **({"executable_path": chromium} if chromium else {}),
-            args=["--disable-blink-features=AutomationControlled"],
+            args=["--disable-blink-features=AutomationControlled", trust(fixture)],
         )
         try:
-            context = await browser.new_context(ignore_https_errors=True)
+            context = await browser.new_context()
             context.on("request", lambda request: trace("request", request))
             context.on("requestfinished", lambda request: trace("finished", request))
             context.on("requestfailed", lambda request: trace("failed", request))
@@ -156,6 +163,7 @@ async def exercise(transport, fixture, chromium=None) -> None:
             assert "cookie" not in receipt["headers"], receipt["headers"]
             assert "referer" not in receipt["headers"], receipt["headers"]
             assert not page_errors, page_errors
+            assert not fixture.tls_alerts, list(fixture.tls_alerts)
             preflights = [item for item in fixture.trace if item['method'] == 'OPTIONS']
             # The SDK uses cache:no-store, bypassing even the max-age 600 cache.
             assert len(preflights) == 2, list(fixture.trace)
@@ -192,9 +200,10 @@ async def cache_control(chromium=None):
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
                 headless=True, **({"executable_path": chromium} if chromium else {}),
+                args=[trust(fixture)],
             )
             try:
-                context = await browser.new_context(ignore_https_errors=True)
+                context = await browser.new_context()
                 page = await context.new_page()
                 await page.goto(fixture.source_origin, wait_until='load')
                 observed = []
