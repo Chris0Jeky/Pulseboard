@@ -72,6 +72,11 @@ async def websocket_dashboard(
                 data = await websocket.receive_text()
                 try:
                     message = json.loads(data)
+                    if not isinstance(message, dict) or not isinstance(
+                        message.get("type"), str
+                    ):
+                        logger.warning(f"Invalid message from client: {data}")
+                        continue
                     if message.get("type") == "ping":
                         try:
                             session.expire_all()
