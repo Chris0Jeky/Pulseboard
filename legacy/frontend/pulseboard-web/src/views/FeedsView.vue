@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen">
     <!-- Header -->
-    <div class="header-gradient border-b border-white/10 backdrop-blur-sm">
+    <div class="header-gradient border-b border-white/10 backdrop-blur-xs">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4">
@@ -16,7 +16,7 @@
             </router-link>
             <div>
               <div class="flex items-center gap-3 mb-1">
-                <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
+                <div class="w-10 h-10 bg-linear-to-br/srgb from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
                   <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                   </svg>
@@ -62,7 +62,7 @@
           <div class="flex items-start justify-between gap-4">
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-3 mb-3">
-                <div class="w-10 h-10 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-lg flex items-center justify-center border border-purple-500/30">
+                <div class="w-10 h-10 bg-linear-to-br/srgb from-purple-500/20 to-pink-600/20 rounded-lg flex items-center justify-center border border-purple-500/30">
                   <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
@@ -94,7 +94,7 @@
             <div class="flex flex-col gap-2 shrink-0">
               <button
                 @click="testFeedClick(feed)"
-                class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-green-500/30 inline-flex items-center justify-center gap-2"
+                class="bg-linear-to-r/srgb from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-green-500/30 inline-flex items-center justify-center gap-2"
                 :disabled="testing === feed.id"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,7 +123,7 @@
               </button>
               <button
                 @click="confirmDelete(feed)"
-                class="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30 inline-flex items-center justify-center gap-2"
+                class="bg-linear-to-r/srgb from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30 inline-flex items-center justify-center gap-2"
                 :disabled="deleting === feed.id"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,7 +137,7 @@
 
         <div v-if="feeds.length === 0" class="text-center py-20">
           <div class="max-w-md mx-auto">
-            <div class="w-16 h-16 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-2xl flex items-center justify-center border border-purple-500/30 mx-auto mb-4">
+            <div class="w-16 h-16 bg-linear-to-br/srgb from-purple-500/20 to-pink-600/20 rounded-2xl flex items-center justify-center border border-purple-500/30 mx-auto mb-4">
               <svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
               </svg>
@@ -157,12 +157,12 @@
       <!-- Create/Edit Dialog -->
       <div
         v-if="showCreateDialog || editingFeed"
-        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto"
+        class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 overflow-y-auto"
         @click.self="closeDialog"
       >
-        <div class="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-2xl w-full mx-4 my-8 shadow-2xl">
+        <div class="bg-linear-to-br/srgb from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-2xl w-full mx-4 my-8 shadow-2xl">
           <div class="flex items-center gap-3 mb-6">
-            <div class="w-12 h-12 bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-lg flex items-center justify-center border border-purple-500/30">
+            <div class="w-12 h-12 bg-linear-to-br/srgb from-purple-500/20 to-pink-600/20 rounded-lg flex items-center justify-center border border-purple-500/30">
               <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="editingFeed ? 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' : 'M12 4v16m8-8H4'" />
               </svg>
@@ -183,7 +183,7 @@
                   v-model="feedForm.name"
                   type="text"
                   required
-                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                   placeholder="My Feed"
                 />
               </div>
@@ -197,7 +197,7 @@
                   v-model="feedForm.type"
                   required
                   :disabled="!!editingFeed || feedTypes.length === 0"
-                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                   @change="updateConfigTemplate"
                 >
                   <option value="" disabled>Select type...</option>
@@ -216,7 +216,7 @@
                   v-model="feedForm.config_json"
                   rows="8"
                   required
-                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white font-mono text-sm focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                   placeholder='{"interval_sec": 5}'
                 />
                 <p v-if="configError" class="text-red-400 text-sm mt-1">
@@ -233,7 +233,7 @@
                   v-model="feedForm.enabled"
                   type="checkbox"
                   id="feed-enabled"
-                  class="w-4 h-4 text-primary-600 bg-gray-700 border-gray-600 rounded focus:ring-primary-500"
+                  class="w-4 h-4 text-primary-600 bg-gray-700 border-gray-600 rounded-sm focus:ring-primary-500"
                 />
                 <label for="feed-enabled" class="ml-2 text-sm text-gray-300">
                   Enable feed immediately
@@ -267,10 +267,10 @@
       <!-- Delete Confirmation -->
       <div
         v-if="feedToDelete"
-        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+        class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50"
         @click.self="feedToDelete = null"
       >
-        <div class="bg-gradient-to-br from-gray-800/90 to-gray-900/90 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div class="bg-linear-to-br/srgb from-gray-800/90 to-gray-900/90 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
           <div class="flex items-center gap-3 mb-4">
             <div class="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center border border-red-500/20">
               <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -286,7 +286,7 @@
           <div class="flex gap-3">
             <button
               @click="deleteFeed"
-              class="flex-1 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium px-4 py-2.5 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30"
+              class="flex-1 bg-linear-to-r/srgb from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium px-4 py-2.5 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30"
             >
               Delete
             </button>
@@ -303,10 +303,10 @@
       <!-- Test Result Dialog -->
       <div
         v-if="testResult"
-        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto"
+        class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 overflow-y-auto"
         @click.self="testResult = null"
       >
-        <div class="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-3xl w-full mx-4 my-8 shadow-2xl">
+        <div class="bg-linear-to-br/srgb from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-3xl w-full mx-4 my-8 shadow-2xl">
           <div class="flex items-center gap-3 mb-6">
             <div
               class="w-12 h-12 rounded-lg flex items-center justify-center border"
