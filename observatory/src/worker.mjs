@@ -408,6 +408,7 @@ export async function handle(request, env) {
     }
     const match = /^\/v1\/collect\/([a-z0-9-]+)$/.exec(url.pathname);
     if (!match) return json({ error: 'not_found' }, 404);
+    if (url.search) return json({ error: 'not_found' }, 404);
     const id = match[1], project = Object.hasOwn(projects, id) ? projects[id] : null;
     if (!project || !project.origin || request.headers.get('origin') !== project.origin) return json({ error: 'origin' }, 403);
     cors = { 'Access-Control-Allow-Origin': project.origin, 'Vary': 'Origin' };
