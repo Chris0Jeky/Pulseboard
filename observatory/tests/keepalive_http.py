@@ -105,7 +105,7 @@ class HttpsFixture:
                 if self.command == 'OPTIONS':
                     if fixture.navigation_complete is not None:
                         fixture.preflight_waiting.set()
-                        if not fixture.navigation_complete.wait(5):
+                        if not fixture.navigation_complete.wait(10):
                             return self.reply(504, cors=True)
                         entry['afterNavigation'] = True
                     return self.reply(204, cors=True)
