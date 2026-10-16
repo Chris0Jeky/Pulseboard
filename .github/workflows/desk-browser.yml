@@ -28,7 +28,7 @@ jobs:
       - name: Install isolated browser test tools
         run: |
           python3 -m venv .browser-venv
-          .browser-venv/bin/pip install playwright==1.57.0
+          .browser-venv/bin/pip install playwright==1.62.0
           .browser-venv/bin/playwright install --with-deps chromium
       - name: Exercise the real local server and deterministic failure scenarios
         working-directory: observatory
