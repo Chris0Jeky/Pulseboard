@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = 1791028800000
-CORPUS_HASH = 'dfe57fddc4f412b4ff2511528802651297283719469e4d4bac77028d6d909241'
+CORPUS_HASH = '9a932c80eb3df399ee9db029535851137b57cbea195832d4dc15d210d937a060'
 
 
 def load_module(path, name):

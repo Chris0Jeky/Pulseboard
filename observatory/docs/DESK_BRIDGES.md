@@ -9,7 +9,7 @@
 | Developer Lens -> Desk | Strict reader for `pulseboard.lens-projection/1` | Native Lens exporter for this new contract |
 | GitHub -> Desk | Server-side connector for a reviewed numeric-id mapping, `pulseboard.github-evidence/1`, release notebook | An owner-approved mapping (q-9: Alibi) and a server-side token |
 | Desk -> CommitAtlas / status card | Selected, expiring `pulseboard.public-pulse/1` export | Upstream renderer / consumer |
-| Desk -> Taskdeck / agent | Reviewed v1 and explicit identified v2 JSON; review-gated local proposal receiver | Native Taskdeck/Agent-HQ integration and consumer migration |
+| Desk -> Taskdeck / agent | Reviewed v2 JSON by default, explicit legacy v1; v1/v2 local proposal receiver | Native Taskdeck/Agent-HQ integration and consumer migration |
 | Legacy feeds / OTel -> Desk | Architecture seam only | Bounded adapter implementation |
 
 These are not automatic account connections. Selecting a file does not follow its
@@ -163,21 +163,66 @@ unsupervised source of incident paging.
 
 ## Review handoffs
 
-`pulseboard.handoff/1` records one rule observation, its evidence, proposed next
+`pulseboard.handoff/1` and `/2` record one rule observation, its evidence, proposed next
 check, source mode, window, rule version and whether the desk's last refresh had
 failed (`stale`, always present). It is deliberately tool-neutral.
 Taskdeck could create a proposal card with an evidence attachment; an in-repo
 agent could first verify that the observation still holds. Neither destination
 should treat the packet as approval to edit, merge, deploy or contact users.
 
-## Identified handoffs (explicit v2 export)
+## Identified handoffs (v2, issue #169)
 
-An alert's evidence drawer offers **Prepare identified handoff (v2)** beside the
-original v1 task handoff. The v2 path preserves all v1 fields and adds the stable
-subject fingerprint defined in [HANDOFF_RECEIVER.md](HANDOFF_RECEIVER.md). It is
-explicitly selected: the original button and synchronous `makeHandoff` remain v1
-until downstream consumers are reconciled. Do not simply change schema strings
-in a legacy consumer or treat the fingerprint as authentication.
+`await makeHandoff(snapshot, signal, stale)` in `public/desk-model.mjs` now emits
+`pulseboard.handoff/2`. The default **Prepare a task handoff** action uses it.
+The exact wire change from v1 is the schema string and one added top-level field,
+`fingerprint`, a string of 12 lowercase hexadecimal characters. Every v1 field
+keeps its name, type and value: `mode`, `generatedAt` (integer epoch milliseconds),
+`stale`, `destination`, `title`, `project`, `observation`, `evidence` (object),
+`nextCheck`, `rule`, `window` and `boundaries`. The displayed title is not rewritten.
+
+The fingerprint is computed as:
+
+```js
+const normalizedTitle = title.toLowerCase().trim().replace(/\s+/gu, ' ');
+const input = JSON.stringify([project, rule.id, rule.version, normalizedTitle]);
+// SHA-256 of UTF-8 input, lowercase hex, first 12 characters.
+```
+
+Serialization has no optional whitespace or trailing newline. JSON tuple boundaries
+prevent ambiguous concatenation; a portfolio-level `project` is JSON `null`, distinct
+from a project named `portfolio`. Project, rule id and rule version are used exactly
+as supplied, without case or whitespace normalization. Title normalization uses
+locale-independent ECMAScript `toLowerCase`, removes leading/trailing ECMAScript
+whitespace and replaces each run matched by ECMAScript `\s` (including line breaks
+and nonbreaking spaces) with one ASCII space. Numbers, dates and punctuation are
+preserved. There is no Unicode normalization, transliteration or full Unicode
+case folding: composed and decomposed accents may have different identities.
+For example, `["alibi","monitor.down","desk-rules/1","alibi is failing its site check"]`
+produces `54707edc343d`.
+
+Window, generation time, evidence, stale flag and mode are excluded. The same
+normalized problem across refreshes and 1/7/14-day windows has the same fingerprint;
+changing project, rule id, rule version or normalized title changes the hash input.
+Desk signal `key` includes an evidence hash and changes with measurements. Signal
+`id` contains only project and rule and would merge different titles, so neither
+replaces the proposed four-part identity. The full digest is retained as
+`signalSha256` in receiver receipts to detect a short-hash collision; neither hash
+is authentication or authorization. Demo/live storage remains separately partitioned.
+
+The async `makeIdentifiedHandoff` API uses the same producer. For an older consumer,
+**Prepare legacy handoff (v1)** and synchronous `makeLegacyHandoff` in
+`public/desk-handoff-export.mjs` preserve the original v1 envelope with no fingerprint.
+The in-repo parser, previews, proposal reconstruction and CLI accept both versions:
+v1 identity is derived from its fields, and v2's supplied fingerprint must match.
+Unknown versions, extra fields and incorrect v2 fingerprints are refused.
+
+This completes the default-producer transition from the earlier opt-in v2 prototype,
+whose subject hash omitted the title. Those prototype v2 fingerprints and stored
+subject receipts are incompatible with the #169 identity; the receiver does not
+silently accept alternate hashes or migrate/overwrite old records. Keep original
+reviewed files and reconcile any previously imported prototype records separately.
+External consumers must implement this formula and the real numeric/object field
+types before using v2; accepting v1 here does not prove native consumer compatibility.
 
 The identified file goes through the same exact-file preview and review checkbox
 as every other Desk export. Hash preparation is asynchronous: closing/replacing
@@ -196,4 +241,4 @@ in HANDOFF_RECEIVER.md; #22 remains open for native integration and reviewed upd
 the downloaded bytes with the preview, then invokes the real local CLI to prove
 no-write preview, synthetic gating, exact proposed fields and duplicate import.
 It also holds native hashing to prove late-result cancellation. Its `--offline`
-mode only checks the control and legacy export, not the identified-file roundtrip.
+mode only checks the control and explicit legacy export, not the identified-file roundtrip.

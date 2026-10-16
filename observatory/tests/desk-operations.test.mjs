@@ -61,7 +61,7 @@ for(const [label,readTime,failed] of [['failed refresh',now,true],['expired snap
     const snapshot=await fixture(t),note=unmatched(buildSignals(snapshot,readTime,failed));
     assert.ok(note); assert.equal(note.evidence.lastKnown,true);
     assert.match(note.title,/last-known/); assert.match(note.next,/Refresh/);
-    const handoff=makeHandoff(snapshot,note,failed);
+    const handoff=await makeHandoff(snapshot,note,failed);
     const review=await previewHandoff(JSON.stringify(handoff),{targetProject:'alibi',now:readTime});
     assert.notEqual(review.freshness,'current');
     assert.equal(review.proposal.fields.evidence.lastKnown,true);

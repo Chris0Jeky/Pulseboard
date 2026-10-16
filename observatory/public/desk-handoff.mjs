@@ -89,7 +89,7 @@ export async function parseHandoff(text) {
   return packet;
 }
 
-/** Explicit v2 export; the existing makeHandoff default stays v1 during consumer migration. */
+/** Receiver-validated v2 export; makeHandoff also defaults to v2. */
 export async function makeIdentifiedHandoff(snapshot, signal, stale = false) {
   return parseHandoff(JSON.stringify(await buildIdentifiedHandoff(snapshot, signal, stale)));
 }

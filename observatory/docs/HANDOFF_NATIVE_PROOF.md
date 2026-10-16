@@ -15,6 +15,11 @@ Agent-HQ already owns native conformance tests in `tests/test_intake_producer.py
 added in its PR #149. Its ordinary repository suite discovers them. They use the
 exact public synthetic corpus introduced by Pulseboard #193, with SHA-256
 `dfe57fddc4f412b4ff2511528802651297283719469e4d4bac77028d6d909241`.
+That is the historical title-free identity baseline. Issue #169 updates the producer
+corpus to SHA-256 `9a932c80eb3df399ee9db029535851137b57cbea195832d4dc15d210d937a060`
+and the title-inclusive identity defined in [DESK_BRIDGES.md](DESK_BRIDGES.md#identified-handoffs-v2-issue-169).
+The paired runner now requires that current corpus. Prior native results do not
+establish acceptance of this corrected contract; the native consumer needs a fresh run.
 Do not add a second consumer workflow just to duplicate those tests. Report their
 actual execution result: merged test code, checkout failures and skipped jobs do
 not establish that native tests passed. Keep private diagnostics in that repository.

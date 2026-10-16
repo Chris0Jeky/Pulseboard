@@ -111,7 +111,7 @@ test('small named-operation samples produce a synthetic review-only handoff', as
     retries: 0,
     minimum: 20,
   });
-  const handoff = makeHandoff(snapshot, signal);
+  const handoff = await makeHandoff(snapshot, signal);
   assert.equal(handoff.mode, 'demo');
   assert.equal(handoff.destination, 'review-before-import');
   assert.equal(handoff.project, 'alibi');

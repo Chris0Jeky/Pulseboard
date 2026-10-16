@@ -25,7 +25,7 @@ test('the shared corpus uses actual v1/v2 producers for every window and both pr
     assert.equal(typeof packet.evidence, 'object');
     assert.equal(packet.window.end - packet.window.start, packet.window.days * 86400000);
     assert.equal(entry.fileSha256, sha(entry.text));
-    const full = sha(JSON.stringify([packet.project, packet.rule.id, packet.rule.version]));
+    const full = sha(JSON.stringify([packet.project, packet.rule.id, packet.rule.version, packet.title.toLowerCase().trim().replace(/\s+/gu, ' ')]));
     assert.equal(entry.signalSha256, full);
     assert.equal(entry.fingerprint, full.slice(0, 12));
     if (packet.schema === 'pulseboard.handoff/2') assert.equal(packet.fingerprint, entry.fingerprint);

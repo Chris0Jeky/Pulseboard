@@ -49,9 +49,11 @@ does not rewrite the pinned source. Preparing a handoff recalculates the operati
 note's freshness against its pinned snapshot; it never substitutes the new poll's
 counts. Missingness in a v2 reading remains null in the review evidence.
 
-The existing **Prepare a task handoff** action still emits v1. **Prepare identified
-handoff (v2)** adds stable subject identity for compatible receivers; changed counts
-resurface the local review key without becoming a different subject. Preview does
+**Prepare a task handoff** emits v2 with the problem fingerprint defined in
+[DESK_BRIDGES.md](DESK_BRIDGES.md#identified-handoffs-v2-issue-169). **Prepare legacy handoff (v1)**
+retains v1 for older receivers. Changed counts resurface the local review key without
+changing the fingerprint when the normalized title is unchanged. A title qualified as
+last-known has a different fingerprint from its current-reading title. Preview does
 not download or import. Download requires the existing review checkbox and writes
 exactly the previewed bytes. The receiver still previews by default and grants no
 execution permissions. Synthetic labels survive this route. Public pulse export

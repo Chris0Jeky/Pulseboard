@@ -1,5 +1,5 @@
 import { DAY, sum, count, percent, fraction, monitorState, monitorDisplay, buildSignals, compareReleases, reviewState, makeBrief, makeHandoff, releaseLabel } from './desk-model.mjs';
-import { makeIdentifiedHandoff } from './desk-handoff-export.mjs';
+import { makeLegacyHandoff } from './desk-handoff-export.mjs';
 import { makeDemo, makeGithubDemo, makeProductDemo, makeProductEventsDemo, SCENARIOS } from './desk-demo.mjs';
 import { BRIDGE_MAX_BYTES, parseBridge, makePublicPulse, readLimitedJson, assertPortfolio } from './desk-bridge.mjs';
 import { READ_TIMEOUT_MS, requestPortfolio } from './desk-network.mjs';
@@ -146,7 +146,7 @@ function signalDetail(signal, evidenceSnapshot = state.snapshot, evidenceStale =
   const exportStale = () => evidenceStale || state.stale;
   const exportSignal = () => signal.version === 'operation-evidence/1'
     ? buildSignals(evidenceSnapshot, Date.now(), exportStale()).find(s => s.id === signal.id) || signal : signal;
-  const identified = button('Prepare identified handoff (v2)', async () => {
+  const identified = button('Prepare a task handoff ↗', async () => {
     // Capture the read epoch per preparation, not when the drawer first opened.
     // A hidden-tab cancellation invalidates pending hashing, not a later click.
     const evidenceEpoch = state.epoch;
@@ -154,7 +154,7 @@ function signalDetail(signal, evidenceSnapshot = state.snapshot, evidenceStale =
       && document.querySelectorAll('dialog[open]').length === 1;
     identified.disabled = true;
     try {
-      const packet = await makeIdentifiedHandoff(evidenceSnapshot, exportSignal(), exportStale());
+      const packet = await makeHandoff(evidenceSnapshot, exportSignal(), exportStale());
       // Hashing is asynchronous. Closing/replacing the drawer or disconnecting invalidates this preparation.
       if (!current()) return;
       $('#detail-dialog').close();
@@ -162,18 +162,18 @@ function signalDetail(signal, evidenceSnapshot = state.snapshot, evidenceStale =
     } catch {
       if (current()) notify('Could not prepare the identified handoff. The original v1 export remains available.');
     } finally { identified.disabled = false; }
-  });
+  }, 'primary');
   $('#detail').replaceChildren(e('h2', { id: 'detail-title' }, signal.title), e('p', { class: 'muted' }, signal.detail),
     e('div', { class: 'subline' }, `${signal.severity.toUpperCase()} / ${signal.rule} / ${signal.version}`),
     e('section', { class: 'drawer-section' }, e('h3', {}, 'The evidence'), e('pre', { class: 'code-evidence', tabindex: '0' }, JSON.stringify(signal.evidence, null, 2))),
     signal.rule.startsWith('operation.') && evidenceSnapshot.projects.some(p => p.id === signal.project)
       ? button('Inspect operation evidence', () => projectDetail(evidenceSnapshot.projects.find(p => p.id === signal.project), evidenceSnapshot, exportStale())) : null,
     e('section', { class: 'drawer-section' }, e('h3', {}, 'A sensible next check'), e('p', {}, signal.next),
-      button('Prepare a task handoff ↗', () => {
+      identified, button('Prepare legacy handoff (v1)', () => {
         $('#detail-dialog').close();
-        preview(JSON.stringify(makeHandoff(evidenceSnapshot, exportSignal(), exportStale()), null, 2), `pulseboard-${evidenceSnapshot.mode}-handoff.json`, 'application/json');
-      }, 'primary'), identified,
-      e('p', { class: 'tiny muted' }, 'V2 adds a stable observation identity for compatible receivers. The original task handoff remains v1. Neither file grants execution permission.')),
+        preview(JSON.stringify(makeLegacyHandoff(evidenceSnapshot, exportSignal(), exportStale()), null, 2), `pulseboard-${evidenceSnapshot.mode}-handoff.json`, 'application/json');
+      }),
+      e('p', { class: 'tiny muted' }, 'Task handoffs use v2 with a stable problem fingerprint. Choose legacy v1 for older receivers. Neither file grants execution permission.')),
     e('p', { class: 'tiny muted' }, 'Rules are deterministic. A signal is an observation to inspect, not a diagnosis, productivity score, or instruction to deploy.'));
   showDialog('#detail-dialog');
   $('#detail-title').tabIndex = -1; $('#detail-title').focus();

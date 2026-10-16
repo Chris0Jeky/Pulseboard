@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeDemo } from '../public/desk-demo.mjs';
 import { buildSignals, makeHandoff } from '../public/desk-model.mjs';
-import { makeIdentifiedHandoff as browserExport } from '../public/desk-handoff-export.mjs';
+import { makeIdentifiedHandoff as browserExport, makeLegacyHandoff } from '../public/desk-handoff-export.mjs';
 import { makeIdentifiedHandoff as checkedExport, parseHandoff } from '../public/desk-handoff.mjs';
 
 const NOW = Date.UTC(2026, 9, 3, 12);
@@ -15,8 +15,9 @@ test('the small browser producer emits receiver-valid v2 for every demo rule and
       const packet = await browserExport(snapshot, signal);
       assert.deepEqual(await parseHandoff(JSON.stringify(packet)), packet);
       assert.deepEqual(packet, await checkedExport(snapshot, signal));
+      assert.deepEqual(packet, await makeHandoff(snapshot, signal));
       const { schema, fingerprint, ...fields } = packet;
-      const { schema: _v1, ...original } = makeHandoff(snapshot, signal);
+      const { schema: _v1, ...original } = makeLegacyHandoff(snapshot, signal);
       assert.equal(schema, 'pulseboard.handoff/2');
       assert.match(fingerprint, /^[a-f0-9]{12}$/);
       assert.deepEqual(fields, original);
@@ -29,8 +30,8 @@ test('the small browser producer emits receiver-valid v2 for every demo rule and
 test('the producer freezes evidence and window before asynchronous hashing', async () => {
   const snapshot = makeDemo('release', { now: NOW });
   const signal = buildSignals(snapshot, NOW)[0];
-  const expected = structuredClone(makeHandoff(snapshot, signal, true));
-  const preparing = browserExport(snapshot, signal, true);
+  const expected = structuredClone(makeLegacyHandoff(snapshot, signal, true));
+  const preparing = makeHandoff(snapshot, signal, true);
   snapshot.window.start = 0;
   signal.evidence.mutated = true;
   signal.detail = 'changed during preparation';

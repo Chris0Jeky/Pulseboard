@@ -5,7 +5,8 @@ import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from 'node:fs/promis
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { makeDemo } from '../public/desk-demo.mjs';
-import { makeHandoff, buildSignals } from '../public/desk-model.mjs';
+import { buildSignals } from '../public/desk-model.mjs';
+import { makeLegacyHandoff } from '../public/desk-handoff-export.mjs';
 import { makeIdentifiedHandoff } from '../public/desk-handoff.mjs';
 import { receiveHandoff } from '../adapters/receive-handoff.mjs';
 
@@ -15,7 +16,7 @@ async function setup(t, v2 = false) {
   t.after(() => rm(dir, { recursive: true, force: true }));
   const snapshot = makeDemo('release', { now: NOW });
   const signal = buildSignals(snapshot, NOW).find(row => row.project === 'alibi');
-  const packet = v2 ? await makeIdentifiedHandoff(snapshot, signal) : makeHandoff(snapshot, signal);
+  const packet = v2 ? await makeIdentifiedHandoff(snapshot, signal) : makeLegacyHandoff(snapshot, signal);
   const input = join(dir, 'input.json'), outputDir = join(dir, 'proposals');
   await mkdir(outputDir); await writeFile(input, JSON.stringify(packet, null, 2));
   const options = { input, outputDir, targetProject: 'alibi', now: NOW };

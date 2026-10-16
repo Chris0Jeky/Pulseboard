@@ -120,7 +120,7 @@ async def run(args):
         await page.evaluate('operationVisibility(true); operationVisibility(false)')
         await page.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
         await expect(page.locator('#refresh')).to_be_enabled()
-        await page.get_by_role('button', name='Prepare a task handoff ↗' if args.offline else 'Prepare identified handoff (v2)', exact=True).click()
+        await page.get_by_role('button', name='Prepare legacy handoff (v1)' if args.offline else 'Prepare a task handoff ↗', exact=True).click()
         await expect(page.locator('#export-dialog')).to_be_visible()
         text = await page.locator('#export-preview').text_content()
         packet = json.loads(text)
@@ -150,7 +150,7 @@ async def run(args):
         await expect(section).to_contain_text('LAST-KNOWN')
         await section.get_by_role('button', name='Review unmatched outcomes', exact=True).click()
         await expect(page.locator('#detail-title')).to_contain_text('last-known')
-        await page.get_by_role('button', name='Prepare a task handoff ↗', exact=True).click()
+        await page.get_by_role('button', name='Prepare legacy handoff (v1)', exact=True).click()
         await expect(page.locator('#export-dialog')).to_be_visible()
         stale = json.loads(await page.locator('#export-preview').text_content())
         assert stale['stale'] is True and stale['evidence']['lastKnown'] is True
@@ -188,7 +188,7 @@ async def run(args):
             await section.scroll_into_view_if_needed()
             await page.screenshot(path=args.screenshot)
         await section.get_by_role('button', name='Review unmatched outcomes', exact=True).click()
-        await page.get_by_role('button', name='Prepare a task handoff ↗', exact=True).click()
+        await page.get_by_role('button', name='Prepare legacy handoff (v1)', exact=True).click()
         assert json.loads(await page.locator('#export-preview').text_content())['mode'] == 'demo'
         await expect(page.locator('#export-warning')).to_contain_text('SYNTHETIC DEMO')
         assert len(downloads) == 1
@@ -212,7 +212,7 @@ async def run(args):
                 return new Uint8Array(32).buffer;
               };
             }''')
-            identified = page.get_by_role('button', name='Prepare identified handoff (v2)', exact=True)
+            identified = page.get_by_role('button', name='Prepare a task handoff ↗', exact=True)
             await identified.click()
             await page.wait_for_function('typeof window.releaseDigest === "function"')
             await page.evaluate('operationVisibility(true); operationVisibility(false); releaseDigest()')

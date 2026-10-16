@@ -1,4 +1,5 @@
 /** Pulseboard Desk v1. Pure decision helpers shared by the UI and tests. GPL-3.0-only. */
+import { makeIdentifiedHandoff } from './desk-handoff-export.mjs';
 export const DAY = 86_400_000;
 export const RULE_VERSION = 'desk-rules/1';
 export const MIN_OUTCOMES = 20;
@@ -176,9 +177,5 @@ export function makeBrief(snapshot, signals, stale = false) {
     'This is an operator note, not an instruction to merge, deploy, page anyone, or publish private data.', ''].join('\n');
 }
 export function makeHandoff(snapshot, signal, stale = false) {
-  return { schema: 'pulseboard.handoff/1', mode: snapshot.mode, generatedAt: snapshot.generatedAt, stale: stale === true,
-    destination: 'review-before-import', title: signal.title, project: signal.project,
-    observation: signal.detail, evidence: signal.evidence, nextCheck: signal.next,
-    rule: { id: signal.rule, version: signal.version }, window: snapshot.window,
-    boundaries: ['No automatic task creation or execution.', 'Contains aggregates, not event rows.', 'Review before sharing.'] };
+  return makeIdentifiedHandoff(snapshot, signal, stale);
 }

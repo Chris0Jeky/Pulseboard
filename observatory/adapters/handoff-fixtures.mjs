@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeDemo } from '../public/desk-demo.mjs';
 import { buildSignals, makeHandoff } from '../public/desk-model.mjs';
-import { handoffIdentity, makeIdentifiedHandoff } from '../public/desk-handoff-export.mjs';
+import { handoffIdentity, makeLegacyHandoff } from '../public/desk-handoff-export.mjs';
 
 const NOW = Date.UTC(2026, 9, 3, 12);
 const digest = text => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -21,8 +21,8 @@ export async function buildHandoffFixtures() {
         : row.project === 'alibi' && row.rule === 'monitor.down');
       if (!signal) throw new Error('Synthetic producer observation is unavailable');
       for (const version of [1, 2]) {
-        const packet = version === 1 ? makeHandoff(snapshot, signal, stale)
-          : await makeIdentifiedHandoff(snapshot, signal, stale);
+        const packet = version === 1 ? makeLegacyHandoff(snapshot, signal, stale)
+          : await makeHandoff(snapshot, signal, stale);
         const text = JSON.stringify(packet, null, 2) + '\n';
         cases.push({ id: `${scope}-${days}d-v${version}`, text, fileSha256: digest(text),
           ...await handoffIdentity(packet) });

@@ -3,6 +3,7 @@ Default: HTTP assets/native WebCrypto. --offline checks the new control and lega
 """
 import argparse
 import asyncio
+import hashlib
 import importlib.util
 import json
 import os
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('desk_browser', ROOT / 'tests/desk-browser.py')
 DESK = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(DESK)
-IDENTIFIED = 'Prepare identified handoff (v2)'
+IDENTIFIED = 'Prepare a task handoff ↗'
 
 
 async def open_signal(page):
@@ -71,8 +72,8 @@ async def run(args):
         await page.locator('#demo').click()
         await open_signal(page)
         await expect(page.get_by_role('button', name=IDENTIFIED, exact=True)).to_be_visible()
-        # The original action is still exactly the v1 contract; cancellation creates no download.
-        await page.get_by_role('button', name='Prepare a task handoff ↗', exact=True).click()
+        # The explicit legacy action keeps v1 available; cancellation creates no download.
+        await page.get_by_role('button', name='Prepare legacy handoff (v1)', exact=True).click()
         legacy = json.loads(await page.locator('#export-preview').text_content())
         assert legacy['schema'] == 'pulseboard.handoff/1'
         await page.keyboard.press('Escape')
@@ -88,6 +89,9 @@ async def run(args):
         text = await page.locator('#export-preview').text_content()
         packet = json.loads(text)
         assert packet['schema'] == 'pulseboard.handoff/2' and len(packet['fingerprint']) == 12
+        identity = [packet['project'], packet['rule']['id'], packet['rule']['version'], ' '.join(packet['title'].lower().split())]
+        expected = hashlib.sha256(json.dumps(identity, ensure_ascii=False, separators=(',', ':')).encode('utf8')).hexdigest()[:12]
+        assert packet['fingerprint'] == expected
         assert {k: v for k, v in packet.items() if k not in ['schema', 'fingerprint']} == {k: v for k, v in legacy.items() if k != 'schema'}
         await expect(page.locator('#export-warning')).to_contain_text('SYNTHETIC DEMO')
         await expect(page.locator('#download-export')).to_be_disabled()

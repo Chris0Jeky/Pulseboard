@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { makeDemo } from '../public/desk-demo.mjs';
-import { makeHandoff, buildSignals } from '../public/desk-model.mjs';
+import { buildSignals } from '../public/desk-model.mjs';
+import { makeLegacyHandoff } from '../public/desk-handoff-export.mjs';
 import { receiveHandoff, readBoundedFile } from '../adapters/receive-handoff.mjs';
 import { MAX_HANDOFF_BYTES } from '../public/desk-handoff.mjs';
 
@@ -17,7 +18,7 @@ async function setup(t) {
   t.after(() => rm(dir, { recursive: true, force: true }));
   const snapshot = makeDemo('release', { now: NOW });
   const signal = buildSignals(snapshot, NOW).find(row => row.project === 'alibi');
-  const packet = makeHandoff(snapshot, signal);
+  const packet = makeLegacyHandoff(snapshot, signal);
   const input = join(dir, 'handoff.json'), outputDir = join(dir, 'proposals');
   await writeFile(input, JSON.stringify(packet));
   const options = { input, outputDir, targetProject: 'alibi', now: NOW };
@@ -71,7 +72,7 @@ test('duplicates and later observations never overwrite accepted evidence', asyn
   await mkdir(x.outputDir);
   const first = await receiveHandoff(options), original = await readFile(first.path, 'utf8');
   assert.equal((await receiveHandoff(options)).status, 'duplicate');
-  x.packet.evidence = { failures: 17 }; x.packet.title = 'Wording changed after another observation';
+  x.packet.evidence = { failures: 17 };
   await writeFile(x.input, JSON.stringify(x.packet));
   const repeated = await receiveHandoff(await approve(x.options));
   assert.equal(repeated.status, 'repeat-observation');

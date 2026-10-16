@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { makeDemo } from '../public/desk-demo.mjs';
 import { buildSignals, makeHandoff } from '../public/desk-model.mjs';
+import { makeLegacyHandoff } from '../public/desk-handoff-export.mjs';
 import { parseHandoff, handoffIdentity, makeIdentifiedHandoff, previewHandoff, MAX_HANDOFF_BYTES } from '../public/desk-handoff.mjs';
 
 const NOW = Date.UTC(2026, 9, 3, 12), DAY = 86400000;
@@ -12,7 +13,7 @@ function fixture() {
   const snapshot = makeDemo('release', { now: NOW, days: 7 });
   const signal = buildSignals(snapshot, NOW).find(row => row.project === 'alibi');
   assert.ok(signal);
-  return { snapshot, signal, packet: makeHandoff(snapshot, signal) };
+  return { snapshot, signal, packet: makeLegacyHandoff(snapshot, signal) };
 }
 const text = packet => JSON.stringify(packet);
 
@@ -31,30 +32,30 @@ test('real v1 producer with numeric timestamp and structured evidence previews w
   assert.ok(preview.warnings.some(w => w.includes('unsigned')));
 });
 
-test('explicit v2 production preserves v1 fields and has a deterministic Desk-native identity', async () => {
+test('v2 production preserves v1 fields and has the specified deterministic problem identity', async () => {
   const { snapshot, signal, packet } = fixture();
   const v2 = await makeIdentifiedHandoff(snapshot, signal);
   const { fingerprint, schema, ...fields } = v2;
   const { schema: _, ...v1Fields } = packet;
   assert.equal(schema, 'pulseboard.handoff/2');
   assert.deepEqual(fields, v1Fields);
-  const expected = sha(JSON.stringify([packet.project, packet.rule.id, packet.rule.version]));
+  const expected = sha(JSON.stringify([packet.project, packet.rule.id, packet.rule.version, packet.title.toLowerCase().trim().replace(/\s+/gu, ' ')]));
   assert.equal(fingerprint, expected.slice(0, 12));
   assert.deepEqual(await handoffIdentity(packet), { fingerprint, signalSha256: expected });
   assert.deepEqual(await parseHandoff(text(v2)), v2);
-  assert.equal(makeHandoff(snapshot, signal).schema, 'pulseboard.handoff/1', 'legacy default stays compatible');
+  assert.deepEqual(await makeHandoff(snapshot, signal), v2, 'the default exporter uses the same v2 contract');
 });
 
-test('repeat identity ignores wording, time and evidence but distinguishes project and rule version', async () => {
+test('repeat identity ignores title case and whitespace, time and evidence but distinguishes project, rule and title', async () => {
   const { packet } = fixture();
   const repeated = structuredClone(packet);
-  repeated.title = 'Different wording after a refresh';
+  repeated.title = ' \t' + packet.title.toUpperCase().replaceAll(' ', '\n  ') + ' ';
   repeated.evidence = { failures: 10 };
   repeated.generatedAt += DAY;
   repeated.window.start += DAY;
   repeated.window.end += DAY;
   assert.deepEqual(await handoffIdentity(repeated), await handoffIdentity(packet));
-  for (const change of [p => { p.project = 'mdviewer'; }, p => { p.rule.id += '.other'; }, p => { p.rule.version += '-2'; }]) {
+  for (const change of [p => { p.project = 'mdviewer'; }, p => { p.rule.id += '.other'; }, p => { p.rule.version += '-2'; }, p => { p.title += ' changed'; }]) {
     const changed = structuredClone(packet); change(changed);
     assert.notDeepEqual(await handoffIdentity(changed), await handoffIdentity(packet));
   }

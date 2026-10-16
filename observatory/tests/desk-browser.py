@@ -24,7 +24,7 @@ def offline_html():
     # Preserve the new module's private scope in the legacy offline concatenation harness.
     handoff = re.sub(r'^import .*?;\n', '', (PUBLIC / 'desk-handoff-export.mjs').read_text(), flags=re.M)
     handoff = re.sub(r'\bexport (?=(?:async )?(?:const|function|class))', '', handoff)
-    source = 'const {makeIdentifiedHandoff} = (() => {\n' + handoff + '\nreturn {makeIdentifiedHandoff}; })();\n' + source
+    source = 'const {makeIdentifiedHandoff, makeLegacyHandoff} = (() => {\n' + handoff + '\nreturn {makeIdentifiedHandoff, makeLegacyHandoff}; })();\n' + source
     source = re.sub(r'^import .*?;\n', '', source, flags=re.M)
     source = re.sub(r'\bexport (?=(?:async )?(?:const|function|class))', '', source)
     html = html.replace('<script type="module" src="/desk-dialog.mjs"></script>', '')

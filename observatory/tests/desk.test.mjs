@@ -129,24 +129,24 @@ test('acknowledgements are scoped by evidence fingerprint and demo/live mode', (
   assert.equal(reviewState(signal, reviews, now + 1001), 'open');
   s.mode = 'live'; assert.equal(reviewState(buildSignals(s, now)[0], reviews, now), 'open');
 });
-test('brief and handoff retain synthetic markings and review-only boundaries', () => {
+test('brief and handoff retain synthetic markings and review-only boundaries', async () => {
   const s = makeDemo('release', { now }), signals = buildSignals(s, now);
   assert.match(makeBrief(s, signals), /SYNTHETIC DEMO/);
-  const packet = makeHandoff(s, signals[0]); assert.equal(packet.mode, 'demo');
+  const packet = await makeHandoff(s, signals[0]); assert.equal(packet.mode, 'demo');
   assert.ok(packet.boundaries.includes('No automatic task creation or execution.'));
 });
-test('an export taken after a failed refresh is marked as last-good, not current health', () => {
+test('an export taken after a failed refresh is marked as last-good, not current health', async () => {
   const s = makeDemo('release', { now }), signals = buildSignals(s, now);
   const brief = makeBrief(s, signals, true), lines = brief.split('\n');
   assert.equal(lines[lines.indexOf(`SYNTHETIC DEMO. Generated ${new Date(s.generatedAt).toISOString()}.`) + 1],
     'REFRESH FAILED. Last-good snapshot; current health unknown.');
-  assert.equal(makeHandoff(s, signals[0], true).stale, true);
+  assert.equal((await makeHandoff(s, signals[0], true)).stale, true);
 });
-test('a fresh export carries no failed-refresh marker but still states the flag', () => {
+test('a fresh export carries no failed-refresh marker but still states the flag', async () => {
   const s = makeDemo('release', { now }), signals = buildSignals(s, now);
   assert.doesNotMatch(makeBrief(s, signals), /REFRESH FAILED/);
   assert.doesNotMatch(makeBrief(s, signals, false), /REFRESH FAILED/);
-  assert.equal(makeHandoff(s, signals[0]).stale, false);
+  assert.equal((await makeHandoff(s, signals[0])).stale, false);
 });
 test('portfolio endpoint authenticates before querying', async () => {
   const r = await handle(new Request('https://desk.test/v1/portfolio'), { READ_TOKEN: 'x'.repeat(32) });

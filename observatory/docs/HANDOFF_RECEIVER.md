@@ -42,10 +42,13 @@ No part of this path publishes data to the public Desk export or collector.
 | --- | --- |
 | `reviewedFileSha256` | SHA-256 of the exact UTF-8 input bytes; even whitespace changes require review again. |
 | `contentSha256` | SHA-256 of deterministic JSON with recursively sorted object keys; array order remains significant. |
-| `signalSha256` / `fingerprint` | SHA-256 of UTF-8 `JSON.stringify([project, rule.id, rule.version])`; the fingerprint is its first 12 lowercase hex characters. |
+| `signalSha256` / `fingerprint` | SHA-256 of UTF-8 `JSON.stringify([project, rule.id, rule.version, normalizedTitle])`; the fingerprint is its first 12 lowercase hex characters. |
 
-The Desk-native subject tuple omits title, evidence, window, timestamp and stale flag so refreshes
-and wording changes do not create new subjects. `null` is different from a project named `portfolio`.
+The issue #169 subject tuple uses `title.toLowerCase().trim().replace(/\s+/gu, ' ')`.
+Numbers, dates, punctuation and Unicode composition remain significant; project and rule strings
+are exact. See [DESK_BRIDGES.md](DESK_BRIDGES.md#identified-handoffs-v2-issue-169) for the complete
+wire definition and test vector. Evidence, window, timestamp and stale flag are omitted so
+refreshes of the same normalized title do not create new subjects. `null` differs from `portfolio`.
 **Mode and destination project partition receiver storage**, so demo and live data, or separately
 mapped portfolio observations, cannot fold into the same card. A full signal digest is checked
 before accepting a short-fingerprint collision as a repeat. All hashes are unsigned identifiers,
@@ -64,17 +67,21 @@ an explicit reviewed update, not silently replace accepted evidence.
 
 ## Producer compatibility and bounds
 
-`makeHandoff` remains the synchronous **v1** exporter. The async
-`makeIdentifiedHandoff(snapshot, signal, stale)` in `public/desk-handoff.mjs` produces **v2**, preserving
-all v1 fields and adding the verified fingerprint. The receiver accepts both real contracts.
-The default Desk export is deliberately not switched until consumers support them.
+`await makeHandoff(snapshot, signal, stale)` defaults to **v2**; the async
+`makeIdentifiedHandoff` APIs produce the same contract (the version in `public/desk-handoff.mjs`
+also validates it). All v1 fields are preserved with the added fingerprint.
+Synchronous `makeLegacyHandoff` in `public/desk-handoff-export.mjs` and the explicit legacy button
+still emit **v1**. The receiver accepts both versions. Earlier opt-in v2 packets and retained
+proposals using the title-free prototype hash are incompatible with the corrected #169 identity;
+no automatic migration or overwrite is attempted. Original v1 handoff files remain readable.
 
 Current Agent-HQ `scripts/intake.py`, inspected at `6d296c69c19830973dbedb8ce66dcda70ebf9f5f`,
 accepts only schema 1 and expects string `generatedAt` and `evidence`. Real Desk exports have a
 numeric millisecond timestamp and structured aggregate evidence. Its title/casefold-based fallback
-fingerprint is also not this new subject identity. Do not claim compatibility by renaming schema 1
-to 2. Coordinate a separately tested consumer change with real producer fixtures before switching
-that path. Native Taskdeck import, estate-console proposal staging and re-observation remain #22 work.
+fingerprint is also not this exact subject identity. This is a historical consumer inspection,
+not current native-conformance evidence. Do not claim compatibility by renaming schema 1 to 2.
+Use the legacy export until that consumer is independently tested against the current producer
+fixtures. Native Taskdeck import, estate-console proposal staging and re-observation remain #22 work.
 
 Input is strict UTF-8 JSON, at most 256 KiB. Only exact contract fields and `live`/`demo` modes are
 accepted. Duplicate JSON keys (including escaped aliases), prototype-shaped keys, unknown fields,
