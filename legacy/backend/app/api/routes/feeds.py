@@ -52,6 +52,13 @@ def _validate_config(config: object) -> None:
 
 def _validate_feed_config(feed_type: str, config: dict) -> None:
     """Validate type-specific feed config."""
+    if feed_type == "crypto_price":
+        coin_id = config.get("coin_id")
+        if not isinstance(coin_id, str) or not coin_id.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="coin_id is required and must be a non-empty string",
+            )
     if feed_type != "http_json":
         return
     url = config.get("url")
