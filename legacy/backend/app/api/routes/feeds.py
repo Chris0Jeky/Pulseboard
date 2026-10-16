@@ -184,7 +184,16 @@ async def update_feed(
                 detail="Invalid JSON in config_json",
             ) from exc
 
-    if "config_json" in update_data:
+    if "type" in update_data and "config_json" not in update_data:
+        try:
+            parsed_update_config = json.loads(feed.config_json)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON in config_json",
+            ) from exc
+
+    if "config_json" in update_data or "type" in update_data:
         _validate_config(parsed_update_config)
         if isinstance(parsed_update_config, dict):
             _validate_feed_config(
