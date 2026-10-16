@@ -120,11 +120,46 @@ it does not prove every historical occurrence had that cause, delivery after a
 browser crash, or the state of current production hosts. No blind retry, enlarged
 deadline, production behavior change or relaxed event-delivery assertion is used.
 
+## Certificate trust at the handshake (2026-10-16, host)
+
+The receipt gate merged in #233 passed hosted Linux CI (Playwright 1.57) and 50/50
+runs in the Codex sandbox, but failed on the Windows host DESKTOP-IHKOOJS with the
+same missing-event assertion (10/10 reported, 6/6 reproduced here) under Python 3.14
+and Playwright 1.62, whose headless Chromium is 151.0.7922.34. With Playwright 1.57
+(Chromium 143.0.7499.4), the unchanged test passed 3/3 on the same host.
+
+Both browsers drew one certificate alert from the collector for each TLS connection,
+because Chromium rejects the self-signed handshake first and then retries under the
+context's `ignore_https_errors` override. Under Chromium 143, the unload keepalive
+request retried and arrived (four collector alerts). Under Chromium 151, it got the
+alert and its preflight never reached the socket (three collector alerts). The exact
+Chromium change was not traced. Launching the unchanged run with
+`--ignore-certificate-errors` passed 3/3 under Chromium 151, which isolates
+certificate trust as the cause.
+
+The fixture now publishes its temporary key's SPKI hash, and both browser cases
+launch Chromium with `--ignore-certificate-errors-spki-list=<hash>`, so the network
+stack trusts only that key during the handshake. `ignore_https_errors` is gone,
+and the delivery case asserts that neither fixture origin saw a TLS alert. The
+`keepalive: false` mutant still fails on the exact missing-event assertion, with
+the unload preflight reaching the socket after navigation and no POST following.
+
+Host receipts, each a run of consecutive full `sdk-keepalive-browser.py` processes
+with no failure and no TLS alert (two deliveries of exactly 194 bytes and one cache
+control per run): 50/50 at `af01af9` and 50/50 again at `b48a816` under Playwright
+1.62, and 10/10 at `af01af9` under Playwright 1.57. The mutant failed both SDK
+cases under each version. `tests/keepalive-http-test.py` passed 20/20 complete
+suites at `b48a816`. Hosted Linux CI (Playwright 1.57) passed at `b48a816`.
+
 ## TLS diagnostic follow-up
 
-Temporary self-signed certificates can produce server-side unknown-CA or
-certificate-unknown alerts before a browser uses its fixture-specific HTTPS
-exception. The helper retains only these two known SSL reasons and the fixture
+Temporary self-signed certificates produce server-side unknown-CA or
+certificate-unknown alerts when a client does not trust them. On Windows, the
+rejection test's server instead saw a `ConnectionResetError` before the handshake
+completed in 8/30 host runs, consistent with the client's reset discarding its
+unread alert. The helper records any reset before handshake completion as
+`HANDSHAKE_RESET`, without inferring its cause; later resets keep their traceback.
+The helper retains only these three known reasons and the fixture
 role in a 64-entry deque, emitting one `fixtureRecentTlsAlerts` summary on exit.
 It does not log client addresses, certificates, keys, headers or payloads there.
 Unexpected SSL or non-SSL server failures still print their normal tracebacks.
