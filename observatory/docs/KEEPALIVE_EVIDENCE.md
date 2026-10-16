@@ -122,14 +122,20 @@ deadline, production behavior change or relaxed event-delivery assertion is used
 
 ## Certificate trust at the handshake (2026-10-16, host)
 
-The receipt gate merged in #233 passed hosted Linux CI and 50/50 runs in the
-Codex sandbox, but failed **10/10** on the Windows host DESKTOP-IHKOOJS (Python
-3.14, Playwright 1.62 Chromium) with the same missing-event assertion. The
-collector logged one certificate alert per TLS connection: Chromium rejected the
-self-signed handshake, then retried under the context's `ignore_https_errors`
-override. The unload keepalive request's connection got the alert and no retry,
-so its preflight never reached the collector socket. Launching the same run with
-`--ignore-certificate-errors` passed 3/3, isolating certificate trust.
+The receipt gate merged in #233 passed hosted Linux CI (Playwright 1.57) and 50/50
+runs in the Codex sandbox, but failed on the Windows host DESKTOP-IHKOOJS with the
+same missing-event assertion (10/10 reported, 6/6 reproduced here) under Python 3.14
+and Playwright 1.62, whose headless Chromium is 151.0.7922.34. With Playwright 1.57
+(Chromium 143.0.7499.4), the unchanged test passed 3/3 on the same host.
+
+Both browsers drew one certificate alert from the collector for each TLS connection,
+because Chromium rejects the self-signed handshake first and then retries under the
+context's `ignore_https_errors` override. Under Chromium 143, the unload keepalive
+request retried and arrived (four collector alerts). Under Chromium 151, it got the
+alert and its preflight never reached the socket (three collector alerts). The exact
+Chromium change was not traced. Launching the unchanged run with
+`--ignore-certificate-errors` passed 3/3 under Chromium 151, which isolates
+certificate trust as the cause.
 
 The fixture now publishes its temporary key's SPKI hash, and both browser cases
 launch Chromium with `--ignore-certificate-errors-spki-list=<hash>`, so the network
@@ -138,10 +144,16 @@ and the delivery case asserts that the collector saw no TLS alert. The
 `keepalive: false` mutant still fails on the exact missing-event assertion, with
 the unload preflight reaching the socket after navigation and no POST following.
 
+Host receipts at `af01af9` and its documentation follow-up: 50 consecutive full runs
+under Playwright 1.62 with no failures and no TLS alert (100 deliveries of exactly
+194 bytes and 50 cache controls), and 10/10 under Playwright 1.57. The mutant failed
+both SDK cases under each version. `tests/keepalive-http-test.py` passed 7/7.
+
 ## TLS diagnostic follow-up
 
 Temporary self-signed certificates produce server-side unknown-CA or
-certificate-unknown alerts when a client does not trust them. The helper retains only these two known SSL reasons and the fixture
+certificate-unknown alerts when a client does not trust them.
+The helper retains only these two known SSL reasons and the fixture
 role in a 64-entry deque, emitting one `fixtureRecentTlsAlerts` summary on exit.
 It does not log client addresses, certificates, keys, headers or payloads there.
 Unexpected SSL or non-SSL server failures still print their normal tracebacks.

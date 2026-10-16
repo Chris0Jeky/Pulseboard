@@ -150,6 +150,11 @@ class HttpsFixture:
                     # observation, not a repeated traceback or client address.
                     fixture.tls_alerts.append({'role': role, 'reason': error.reason})
                     return
+                if isinstance(error, ConnectionResetError) and request.version() is None:
+                    # The same rejection on Windows when the client's reset discards
+                    # its unread alert: the handshake never completed.
+                    fixture.tls_alerts.append({'role': role, 'reason': 'HANDSHAKE_RESET'})
+                    return
                 super().handle_error(request, client_address)
 
         server = FixtureServer(('127.0.0.1', 0), Handler)

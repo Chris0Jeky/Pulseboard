@@ -41,8 +41,8 @@ process.stdout.write(buildEmbed('mdviewer', {
 
 
 def trust(fixture) -> str:
-    # Not ignore_https_errors: that override is applied after Chromium rejects the
-    # handshake, and on Windows the unload keepalive request was dropped at that
+    # Not ignore_https_errors: that override applies after Chromium rejects the
+    # handshake, and Chromium 151 drops the unload keepalive request at that
     # rejection (a TLS alert, then nothing). Trust the fixture key at handshake time.
     return f"--ignore-certificate-errors-spki-list={fixture.spki}"
 
