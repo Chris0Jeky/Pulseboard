@@ -45,7 +45,7 @@ class FixtureTests(unittest.TestCase):
                 urlopen(request, context=ssl._create_unverified_context(), timeout=3)
             self.assertEqual(error.exception.code, 504)
             error.exception.close()
-            fixture.navigation_complete.wait.assert_called_once_with(5)
+            fixture.navigation_complete.wait.assert_called_once_with(10)
             self.assertNotIn('afterNavigation', fixture.trace[-1])
             self.assertEqual(len(fixture.receipts), 0)
 
