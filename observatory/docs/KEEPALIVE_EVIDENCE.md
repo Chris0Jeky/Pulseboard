@@ -140,20 +140,26 @@ certificate trust as the cause.
 The fixture now publishes its temporary key's SPKI hash, and both browser cases
 launch Chromium with `--ignore-certificate-errors-spki-list=<hash>`, so the network
 stack trusts only that key during the handshake. `ignore_https_errors` is gone,
-and the delivery case asserts that the collector saw no TLS alert. The
+and the delivery case asserts that neither fixture origin saw a TLS alert. The
 `keepalive: false` mutant still fails on the exact missing-event assertion, with
 the unload preflight reaching the socket after navigation and no POST following.
 
-Host receipts at `af01af9` and its documentation follow-up: 50 consecutive full runs
-under Playwright 1.62 with no failures and no TLS alert (100 deliveries of exactly
-194 bytes and 50 cache controls), and 10/10 under Playwright 1.57. The mutant failed
-both SDK cases under each version. `tests/keepalive-http-test.py` passed 7/7.
+Host receipts, each a run of consecutive full `sdk-keepalive-browser.py` processes
+with no failure and no TLS alert (two deliveries of exactly 194 bytes and one cache
+control per run): 50/50 at `af01af9` and 50/50 again at `b48a816` under Playwright
+1.62, and 10/10 at `af01af9` under Playwright 1.57. The mutant failed both SDK
+cases under each version. `tests/keepalive-http-test.py` passed 20/20 complete
+suites at `b48a816`. Hosted Linux CI (Playwright 1.57) passed at `b48a816`.
 
 ## TLS diagnostic follow-up
 
 Temporary self-signed certificates produce server-side unknown-CA or
-certificate-unknown alerts when a client does not trust them.
-The helper retains only these two known SSL reasons and the fixture
+certificate-unknown alerts when a client does not trust them. On Windows, the
+rejection test's server instead saw a `ConnectionResetError` before the handshake
+completed in 8/30 host runs, consistent with the client's reset discarding its
+unread alert. The helper records any reset before handshake completion as
+`HANDSHAKE_RESET`, without inferring its cause; later resets keep their traceback.
+The helper retains only these three known reasons and the fixture
 role in a 64-entry deque, emitting one `fixtureRecentTlsAlerts` summary on exit.
 It does not log client addresses, certificates, keys, headers or payloads there.
 Unexpected SSL or non-SSL server failures still print their normal tracebacks.
