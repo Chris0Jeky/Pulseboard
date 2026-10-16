@@ -3,10 +3,12 @@ import json
 import io
 import threading
 from contextlib import redirect_stderr
+from concurrent.futures import ThreadPoolExecutor
 from http.client import HTTPSConnection
 import ssl
 import unittest
-from urllib.error import URLError
+from unittest.mock import Mock
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 
@@ -14,6 +16,39 @@ from keepalive_http import HttpsFixture, safe_url
 
 
 class FixtureTests(unittest.TestCase):
+    def test_unload_preflight_waits_for_observed_navigation(self):
+        with HttpsFixture(max_age=0) as fixture:
+            fixture.navigation_complete = threading.Event()
+
+            def preflight():
+                request = Request(fixture.collector_origin + '/v1/collect/mdviewer', method='OPTIONS')
+                with urlopen(request, context=ssl._create_unverified_context(), timeout=3) as response:
+                    return response.status
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pending = pool.submit(preflight)
+                try:
+                    self.assertTrue(fixture.preflight_waiting.wait(3), 'preflight never reached the socket')
+                    self.assertFalse(pending.done(), 'preflight escaped before navigation was observed')
+                finally:
+                    fixture.navigation_complete.set()
+                self.assertEqual(pending.result(timeout=3), 204)
+            self.assertTrue(fixture.trace[-1]['afterNavigation'])
+            self.assertEqual(len(fixture.receipts), 0)
+
+    def test_unobserved_navigation_refuses_the_preflight(self):
+        with HttpsFixture(max_age=0) as fixture:
+            fixture.navigation_complete = Mock()
+            fixture.navigation_complete.wait.return_value = False
+            request = Request(fixture.collector_origin + '/v1/collect/mdviewer', method='OPTIONS')
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request, context=ssl._create_unverified_context(), timeout=3)
+            self.assertEqual(error.exception.code, 504)
+            error.exception.close()
+            fixture.navigation_complete.wait.assert_called_once_with(10)
+            self.assertNotIn('afterNavigation', fixture.trace[-1])
+            self.assertEqual(len(fixture.receipts), 0)
+
     def test_diagnostic_urls_drop_credentials_query_and_fragment(self):
         self.assertEqual(safe_url('https://user:secret@example.test/path?token=secret#private'), 'https://example.test/path')
         self.assertEqual(len(safe_url('https://example.test/' + 'a' * 500)), 240)

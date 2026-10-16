@@ -7,9 +7,8 @@ python tests/keepalive-http-test.py
 python tests/sdk-keepalive-browser.py
 ```
 
-The gate uses the actual generated legacy MDviewer embed, not SDK v3. Intercepted
-requests prove that Playwright saw the submission; only the two loopback HTTPS
-cases prove that the synthetic collector received bytes over a socket. No live
+The gate uses the actual generated legacy MDviewer embed, not SDK v3. Both
+loopback HTTPS cases require the synthetic collector to receive bytes over a socket. No live
 product or production collector is contacted. The endpoint/origin override is
 in-memory in the test builder, not a registry or host artifact change.
 
@@ -17,6 +16,80 @@ Each SDK case opts in, waits for the first batch's successful settlement, clicks
 a navigation link, and requires exactly `export.print_requested` in the received
 batch within five seconds, with no cookie or referrer and the expected Origin.
 This tests a queued pagehide batch, not interruption of an unfinished first send.
+
+## Reproduced interception race (2026-10-16, #122)
+
+Starting at `8f14259` in `pb-122`, the unchanged intercepted case failed **29/30**
+independent runs using Python 3.14.3, Playwright 1.57.0, its bundled Chromium 143
+headless shell and Node 24.13.1 on Windows. The assertion was exactly:
+
+```text
+AssertionError: timed out waiting for export.print_requested; received []
+```
+
+The initial page view arrived and settled. A diagnostic run confirmed that the
+SDK had one queued event at pagehide and called fetch with `keepalive: true` and
+the expected body. Chromium issued the unload preflight, then reported
+`net::ERR_ABORTED` during document replacement. The routed collector never
+received that POST. Waiting for the initial POST's `requestfinished` event did
+not repair it (5/5 failures).
+
+The discriminating control used the same real HTTPS fixture and unchanged SDK:
+direct sockets passed 5/5; adding only a pass-through
+`context.route(endpoint, lambda route: route.continue_())` reproduced the missing
+event in 3/3 runs. This attributes the reproduced missing-event failure to
+Chromium/Playwright interception during unload, rather than an SDK disposal or
+queueing error. The precise upstream scheduling defect is not identified.
+Playwright 1.57 also
+[handles intercepted preflights internally](https://github.com/microsoft/playwright/blob/v1.57.0/packages/playwright-core/src/server/chromium/crNetworkManager.ts),
+so the old route handler's OPTIONS branch was not a reliable preflight diagnostic.
+
+The delivery gate now uses real sockets throughout; `--transport intercepted`
+is removed. This replaces the unreliable delivery oracle, rather than retiring
+the legacy SDK proof. Each HTTPS collector withholds the unload preflight
+response until the replacement page's `#arrived` element is visibly present.
+That observable navigation releases a threading event; no elapsed delay releases
+the preflight. Missing navigation refuses the preflight with 504. The received
+batch must still contain exactly the queued event within the original five-second
+receipt deadline, with the original Origin, byte, cookie and referrer assertions.
+Startup likewise waits for the mounted SDK instead of a 250 ms sleep.
+
+A generated-script mutant replacing `keepalive: true` with `false` fails with
+the same missing-event assertion against this delayed real preflight. This checks
+that the replacement gate detects a real loss of unload delivery; an ordinary
+fetch cannot satisfy it just by reaching the collector before navigation.
+Production SDK sources and generated host artifacts are unchanged.
+
+### Local verification receipts
+
+At base `8f1425965168ca20617a3c644981d5127e308761`, with the uncommitted fix:
+
+- **0/50 failures** in consecutive complete `sdk-keepalive-browser.py` processes:
+  100 SDK unload deliveries (50 at each max-age), all exactly 194 bytes, and
+  50 independent cache controls observing cumulative preflight counts 1, 1, 2, 3.
+  Each run starts fresh browsers; no failed run is retried or discarded.
+- `tests/keepalive-http-test.py`: **7/7 passed**, including blocked-preflight
+  release and refusal. The no-keepalive mutant failed the exact delivery assertion.
+- The real local-server browser suite passed: Desk **17 checks**, interactions,
+  release fold, handoff, operations, Alibi journey and error coverage.
+- `scripts/agent/check.ps1`: whitespace checks passed; Node tests had **811 passed,
+  10 failed, 2 skipped**. An unchanged-HEAD snapshot retaining the checkout's line
+  endings reproduced the same ten failure names: seven Windows symlink `EPERM`
+  failures and three LF-only workflow parsing assertions against CRLF input.
+  These are outside this fix. The harness audit also retained its pre-existing
+  UNPROVEN server-rule bypass measurement; it is not a fully green gate.
+
+Ignored local evidence remains under `.cache/`: `baseline-157/` (30 original
+runs and exact failing assertions), `socket-157/`, `socket-intercept-157/`,
+`diagnostic-157/`, `candidate-finished/`, `mutant.log`, `fixed-50/` (50 full logs
+and `summary.json`), `baseline-suite.log`, `agent-check.log`, and
+`related-*-browser.log`. The repetition driver was
+`.browser-venv/Scripts/python.exe .cache/keepalive-runs.py fixed-50 50` from the
+worktree root; it launches the default full test in a separate process each time.
+OpenSSL was supplied on the child PATH from `C:/Program Files/Git/usr/bin`.
+No CI, production delivery, crash delivery or legacy-host retirement was verified.
+`HUMAN_TODO.md` is unchanged; this fix needs no owner action. No commit or push
+was made, and the issue was not modified remotely.
 
 ## Correct the cache assumption, not the SDK
 
@@ -34,18 +107,18 @@ requests share one preflight, then two no-store requests each add another.
 That control tests browser caching, NOT SDK navigation delivery. It neither
 modifies the SDK nor claims its normal requests use the cache.
 
-`--transport` selects `intercepted`, `http-cold`, `http-max-age-600`, or
+`--transport` selects `http-cold`, `http-max-age-600`, or
 `cache-control`. `--chromium` selects an existing browser. Every case uses a new
 browser; HTTPS certificates and listeners are temporary and loopback-only.
 Collector receipt and network traces are bounded. Browser request-failed events
 may still accompany a socket-confirmed delivery during navigation; the receipt
 is the delivery evidence, not a browser event alone.
 
-Passing this gate does not identify the historical intermittent failure's root
-cause, prove delivery after a browser crash, or certify current production hosts.
-#122 remains open until the missing-event failure is reproduced and attributed,
-or the final legacy host is verified retired. No blind retry, enlarged deadline,
-production behavior change or relaxed event-delivery assertion is used here.
+The passing evidence through #207 did not establish the original failure's cause.
+The investigation above attributes the locally reproduced failure to interception;
+it does not prove every historical occurrence had that cause, delivery after a
+browser crash, or the state of current production hosts. No blind retry, enlarged
+deadline, production behavior change or relaxed event-delivery assertion is used.
 
 ## TLS diagnostic follow-up
 
