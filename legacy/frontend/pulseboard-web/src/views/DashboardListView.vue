@@ -1,12 +1,12 @@
 <template>
   <div class="min-h-screen">
     <!-- Hero Header -->
-    <div class="header-gradient border-b border-white/10 backdrop-blur-sm">
+    <div class="header-gradient border-b border-white/10 backdrop-blur-xs">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div class="flex items-center justify-between">
           <div>
             <div class="flex items-center gap-3 mb-2">
-              <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <div class="w-10 h-10 bg-linear-to-br/srgb from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
@@ -72,7 +72,7 @@
               :to="{ name: 'dashboard-live', params: { id: dashboard.id } }"
               class="flex items-center gap-3 flex-1 min-w-0"
             >
-              <div class="w-10 h-10 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-lg flex items-center justify-center border border-blue-500/30">
+              <div class="w-10 h-10 bg-linear-to-br/srgb from-blue-500/20 to-purple-600/20 rounded-lg flex items-center justify-center border border-blue-500/30">
                 <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
                 </svg>
@@ -128,12 +128,12 @@
       <!-- Create dialog -->
       <div
         v-if="showCreateDialog"
-        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+        class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50"
         @click.self="showCreateDialog = false"
       >
-        <div class="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div class="bg-linear-to-br/srgb from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
           <div class="flex items-center gap-3 mb-6">
-            <div class="w-12 h-12 bg-gradient-to-br from-blue-500/20 to-purple-600/20 rounded-lg flex items-center justify-center border border-blue-500/30">
+            <div class="w-12 h-12 bg-linear-to-br/srgb from-blue-500/20 to-purple-600/20 rounded-lg flex items-center justify-center border border-blue-500/30">
               <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
@@ -150,7 +150,7 @@
                 v-model="newDashboard.name"
                 type="text"
                 required
-                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 placeholder="My Dashboard"
               />
             </div>
@@ -162,7 +162,7 @@
               <textarea
                 v-model="newDashboard.description"
                 rows="3"
-                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 placeholder="Optional description..."
               />
             </div>
@@ -189,10 +189,10 @@
       <!-- Delete Confirmation Dialog -->
       <div
         v-if="dashboardToDelete"
-        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50"
+        class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50"
         @click.self="dashboardToDelete = null"
       >
-        <div class="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div class="bg-linear-to-br/srgb from-gray-800/95 to-gray-900/95 border border-white/10 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
           <div class="flex items-center gap-3 mb-4">
             <div class="w-12 h-12 bg-red-500/10 rounded-lg flex items-center justify-center border border-red-500/20">
               <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -208,7 +208,7 @@
           <div class="flex gap-3">
             <button
               @click="confirmDelete"
-              class="flex-1 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium px-4 py-2.5 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30"
+              class="flex-1 bg-linear-to-r/srgb from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-medium px-4 py-2.5 rounded-lg transition-all transform hover:-translate-y-0.5 shadow-lg hover:shadow-red-500/30"
               :disabled="deleting"
             >
               {{ deleting ? 'Deleting...' : 'Delete' }}
