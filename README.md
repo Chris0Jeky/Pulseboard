@@ -159,7 +159,7 @@ That serves `http://localhost:5173`. The original user guide is [legacy/WORKBENC
 | --- | --- |
 | Desk runtime | Node.js `>=22.16` (`node:sqlite` locally; experimental warning on 22.x is expected) |
 | Desk UI | Native ESM, HTML and SVG in `observatory/public/`. No bundler. |
-| Production data | Cloudflare Worker, static assets, D1. Schema version **5** (`SCHEMA_VERSION` in `src/worker.mjs`). Wrangler `4.130.0`. |
+| Production data | Cloudflare Worker, static assets, D1. Schema version **6** (`SCHEMA_VERSION` in `src/worker.mjs`). Wrangler `4.130.0`. |
 | SDK | Dependency-free `observatory/sdk/pulseboard-sdk.mjs`, built per host. |
 | Workbench API | FastAPI, Uvicorn, SQLModel, Pydantic. Python `>=3.11`. |
 | Workbench UI | Vue 3, TypeScript, Pinia, Vue Router, ECharts, Vite, Tailwind. |
@@ -169,7 +169,7 @@ Retention, from `maintain()` in `src/worker.mjs`: legacy session events 14 days,
 
 ## Status and roadmap
 
-Checked against production `GET /readyz` on 12 October 2026, which matched `observatory/wrangler.jsonc`:
+Checked against production `GET /readyz` on 22 October 2026, which matched `observatory/wrangler.jsonc`:
 
 | Switch | Production value |
 | --- | --- |
@@ -180,7 +180,7 @@ Checked against production `GET /readyz` on 12 October 2026, which matched `obse
 | `COLLECT_VOICE_PROJECTS` | `alibi` |
 | `WATCH_ENABLED` | `false` |
 | Probes | seven public origins, cron `*/15 * * * *` |
-| Readiness | schema 5, `ready: true` |
+| Readiness | schema 6, `ready: true` |
 
 Taskdeck is registered as local-only: no public origin, no probe, not on a collect list. Adding a host to a collect list is an owner decision, not cleanup. Publishing an SDK does not by itself turn collection on.
 

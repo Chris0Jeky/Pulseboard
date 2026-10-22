@@ -67,7 +67,7 @@ Aggregate retention stays 14 days (`AGGREGATE_RETENTION_DAYS` in `src/statistics
 host shows the old 14-day statistics notice; raising it to 400 is its own reviewed change. Deploy the schema-4 Worker only together with a Desk that accepts
 `pulseboard.statistics/4`: the Desk and the Worker ship from the same build, and a Desk that still
 validates `/3` refuses the Usage read. Confirm `/readyz`
-returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103, 4 since collector v4, 5 since Voices). The `/v1/collect-stat/<id>` route is
+returns the schema the deployed Worker expects (2 for the 0002 build, 3 since #103, 4 since collector v4, 5 since Voices, 6 since #218). The `/v1/collect-stat/<id>` route is
 disabled for every id not listed in `COLLECT_STAT_PROJECTS` (an exact comma list since #102; it was exactly `alibi` before). Production now
 admits that project following issue #89's browser, notice and opt-out checks;
 the deployment and first accepted payload are recorded below. Alibi's client
