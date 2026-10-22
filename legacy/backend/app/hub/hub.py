@@ -67,6 +67,7 @@ class DataHub:
 
         # Dashboard -> Feed IDs mapping (which feeds does each dashboard use)
         self.dashboard_feeds: Dict[UUID, Set[UUID]] = defaultdict(set)
+        self._connection_feeds: Dict[WebSocket, Set[UUID]] = {}
 
         # Keep cancellation-resistant transport tasks alive until they actually settle.
         # They cannot regain membership or block deletion after the close deadline.
@@ -119,7 +120,10 @@ class DataHub:
 
         # Send to all dashboards concurrently so one stalled dashboard cannot delay others.
         results = await asyncio.gather(
-            *(self._send_to_dashboard(d, message_json) for d in relevant_dashboards),
+            *(
+                self._send_to_dashboard(d, message_json, event.feed_id)
+                for d in relevant_dashboards
+            ),
             return_exceptions=True,
         )
         for dashboard_id, result in zip(relevant_dashboards, results, strict=True):
@@ -128,7 +132,9 @@ class DataHub:
                     f"Failed to broadcast to dashboard {dashboard_id}", exc_info=result
                 )
 
-    async def _send_to_dashboard(self, dashboard_id: UUID, message: str) -> None:
+    async def _send_to_dashboard(
+        self, dashboard_id: UUID, message: str, feed_id: UUID | None = None
+    ) -> None:
         """
         Send message to all connections of a dashboard.
 
@@ -138,7 +144,9 @@ class DataHub:
         """
         snapshot = list(self.connections.get(dashboard_id, []))
         sends = {
-            asyncio.create_task(self._send_one(dashboard_id, websocket, message)): websocket
+            asyncio.create_task(
+                self._send_one(dashboard_id, websocket, message, feed_id)
+            ): websocket
             for websocket in snapshot
         }
         if not sends:
@@ -170,9 +178,19 @@ class DataHub:
         for ws in disconnected:
             await self.unregister_connection(dashboard_id, ws)
 
-    async def _send_one(self, dashboard_id: UUID, websocket: WebSocket, message: str) -> bool:
+    async def _send_one(
+        self,
+        dashboard_id: UUID,
+        websocket: WebSocket,
+        message: str,
+        feed_id: UUID | None = None,
+    ) -> bool:
         """Send to one socket; False if it failed. Skips sockets unregistered meanwhile."""
         if websocket not in self.connections.get(dashboard_id, []):
+            return True
+        if feed_id is not None and feed_id not in self._connection_feeds.get(
+            websocket, set()
+        ):
             return True
         try:
             await websocket.send_text(message)
@@ -198,13 +216,13 @@ class DataHub:
         Args:
             dashboard_id: Dashboard identifier
             websocket: WebSocket connection
-            feed_ids: Set of feed IDs used by this dashboard
+            feed_ids: Set of feed IDs used by this connection
         """
         # Add connection
         self.connections[dashboard_id].append(websocket)
 
-        # Update dashboard -> feeds mapping
-        self.dashboard_feeds[dashboard_id].update(feed_ids)
+        self._connection_feeds[websocket] = set(feed_ids)
+        self._update_dashboard_feeds(dashboard_id)
 
         self.logger.info(
             f"Registered connection for dashboard {dashboard_id} with {len(feed_ids)} feeds"
@@ -217,17 +235,23 @@ class DataHub:
         self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
     ) -> None:
         """
-        Replace a connected dashboard's feed set and send state for added feeds.
+        Replace one connection's feed set and send state for its added feeds.
 
         No-op when the dashboard has no registered connections.
         """
         if websocket not in self.connections.get(dashboard_id, []):
             return
 
-        previous = self.dashboard_feeds.get(dashboard_id, set())
-        self.dashboard_feeds[dashboard_id] = set(feed_ids)
+        previous = self._connection_feeds[websocket]
+        self._connection_feeds[websocket] = set(feed_ids)
+        self._update_dashboard_feeds(dashboard_id)
 
         await self._send_initial_state(dashboard_id, websocket, set(feed_ids) - previous)
+
+    def _update_dashboard_feeds(self, dashboard_id: UUID) -> None:
+        self.dashboard_feeds[dashboard_id] = set().union(
+            *(self._connection_feeds[ws] for ws in self.connections[dashboard_id])
+        )
 
     async def _send_initial_state(
         self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
@@ -254,6 +278,8 @@ class DataHub:
         """Revoke all membership before awaiting best-effort socket closure."""
         connections = self.connections.pop(dashboard_id, [])
         self.dashboard_feeds.pop(dashboard_id, None)
+        for websocket in connections:
+            self._connection_feeds.pop(websocket, None)
         if not connections:
             return
         tasks = {
@@ -296,6 +322,9 @@ class DataHub:
         connections = self.connections.get(dashboard_id, [])
         if websocket in connections:
             connections.remove(websocket)
+            self._connection_feeds.pop(websocket, None)
+            if connections:
+                self._update_dashboard_feeds(dashboard_id)
             self.logger.info(f"Unregistered connection for dashboard {dashboard_id}")
 
         # Clean up empty connection lists

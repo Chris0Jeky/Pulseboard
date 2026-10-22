@@ -53,10 +53,12 @@ class HttpJsonFeed(BaseFeed):
                 # Simple dot notation path support (e.g., "data.metrics.cpu")
                 parts = path.split(".")
                 for part in parts:
-                    if isinstance(data, dict):
-                        data = data.get(part, {})
-                    else:
-                        break
+                    if not isinstance(data, dict) or part not in data:
+                        return {
+                            "status": "missing",
+                            "error": f"JSON path not found: {path}",
+                        }
+                    data = data[part]
 
             # Ensure we return a dict
             if not isinstance(data, dict):
