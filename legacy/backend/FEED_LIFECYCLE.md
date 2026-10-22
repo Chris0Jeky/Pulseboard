@@ -50,11 +50,17 @@ cleanup errors. Propagated caller cancellation interrupts the sweep and leaves
 uncompleted instances owned for an explicit later attempt. Previously collected
 errors do not turn cancellation into a successful return.
 
-This is a finite snapshot, not a shutdown admission fence. Concurrent new starts
-are not prohibited, a plugin that never settles can still block later attempts,
-and there is no automatic retry, detached task, forced termination or new timeout.
-The existing success log applies to this completed sweep, not to concurrent new
-work. Whole-application shutdown coordination remains separate work under #75.
+Shutdown is also an admission fence (#249): `stop_all_feeds` sets a
+`_shutting_down` flag, waits for every in-flight start, restart or stop to release
+its lifecycle lock, and only then takes its snapshot. Later starts and restarts are
+refused with a warning, and the flag is never reset, so a manager is not reused
+after shutdown. A plugin that never settles can still block the sweep (now before
+any feed is stopped), and there is no automatic retry or forced termination.
+
+Broadcast sends are bounded separately: the hub gives each socket send
+`SEND_TIMEOUT_SECONDS` (5 s), then cancels it, unregisters the socket and closes it
+best-effort in the background, so one stalled client cannot block other clients
+or the publishing feed.
 
 ## Verification
 

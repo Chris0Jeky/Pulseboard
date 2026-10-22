@@ -143,7 +143,14 @@ class DataHub:
         }
         if not sends:
             return
-        done, pending = await asyncio.wait(sends, timeout=SEND_TIMEOUT_SECONDS)
+        try:
+            done, pending = await asyncio.wait(sends, timeout=SEND_TIMEOUT_SECONDS)
+        except BaseException:
+            # The publisher was cancelled mid-wait: asyncio.wait does not cancel its
+            # children, so do it here rather than leave sends running unbounded.
+            for task in sends:
+                task.cancel()
+            raise
 
         disconnected = [ws for task, ws in sends.items() if task in done and not task.result()]
         for task in pending:

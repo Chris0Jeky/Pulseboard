@@ -3,6 +3,8 @@
 import asyncio
 from uuid import uuid4
 
+import pytest
+
 from app.hub import hub as hub_module
 from app.hub.hub import DataHub
 
@@ -71,3 +73,20 @@ async def test_stalled_dashboard_does_not_block_other_dashboard(monkeypatch):
     await asyncio.wait_for(hub.publish_feed_event(feed_id, {"v": 1}), timeout=1.0)
 
     assert len(healthy.messages) == 1
+
+
+async def test_cancelled_publish_cancels_its_pending_sends():
+    hub = DataHub()
+    dashboard_id = uuid4()
+    stalled = _Stalled()
+    await hub.register_connection(dashboard_id, stalled, set())
+
+    publisher = asyncio.create_task(hub._send_to_dashboard(dashboard_id, "m"))
+    await asyncio.sleep(0.01)
+    publisher.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await publisher
+    await asyncio.sleep(0)
+
+    current = asyncio.current_task()
+    assert [t for t in asyncio.all_tasks() if t is not current] == []
