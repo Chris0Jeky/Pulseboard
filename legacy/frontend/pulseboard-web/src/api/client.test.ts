@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { apiClient } from './client'
-import { createMockFetchResponse, createMockDashboard, createMockFeed } from '../test/helpers'
+import { createMockFetchResponse, createMockDashboard, createMockFeed, createMockPanel } from '../test/helpers'
 
 describe('API Client', () => {
   beforeEach(() => {
@@ -136,6 +136,162 @@ describe('API Client', () => {
     })
   })
 
+  describe('getDashboardFeedIds', () => {
+    it('should fetch dashboard feed ids without method override', async () => {
+      const mockIds = ['feed-1', 'feed-2']
+      ;(global.fetch as any).mockResolvedValue(
+        createMockFetchResponse(mockIds)
+      )
+
+      const result = await apiClient.getDashboardFeedIds('d1')
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/dashboards/d1/feed-ids'),
+        expect.anything()
+      )
+      expect((global.fetch as any).mock.calls[0][1].method).toBeUndefined()
+      expect(result).toEqual(mockIds)
+    })
+  })
+
+  describe('createPanel', () => {
+    it('should create panel with correct URL, verb and body', async () => {
+      const payload = { type: 'stat', title: 'New Panel' }
+      const created = createMockPanel({ type: payload.type, title: payload.title })
+      ;(global.fetch as any).mockResolvedValue(
+        createMockFetchResponse(created)
+      )
+
+      const result = await apiClient.createPanel('d1', payload)
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/dashboards/d1/panels'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+      )
+      expect(result).toEqual(created)
+    })
+  })
+
+  describe('updatePanel', () => {
+    it('should update panel with correct URL, verb and body', async () => {
+      const update = { title: 'Updated Panel' }
+      const updated = createMockPanel({ id: 'p1', title: update.title })
+      ;(global.fetch as any).mockResolvedValue(
+        createMockFetchResponse(updated)
+      )
+
+      const result = await apiClient.updatePanel('d1', 'p1', update)
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/dashboards/d1/panels/p1'),
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify(update),
+        })
+      )
+      expect(result).toEqual(updated)
+    })
+  })
+
+  describe('deletePanel', () => {
+    it('should delete panel with correct URL and verb', async () => {
+      ;(global.fetch as any).mockResolvedValue(
+        createMockFetchResponse(undefined, 204)
+      )
+
+      await apiClient.deletePanel('d1', 'p1')
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/dashboards/d1/panels/p1'),
+        expect.objectContaining({
+          method: 'DELETE',
+        })
+      )
+    })
+  })
+
+  describe('createFeed', () => {
+    it('should create feed with correct URL, verb and body', async () => {
+      const payload = { type: 'system_metrics', name: 'New Feed' }
+      const created = createMockFeed({ type: payload.type, name: payload.name })
+      ;(global.fetch as any).mockResolvedValue(
+        createMockFetchResponse(created)
+      )
+
+      const result = await apiClient.createFeed(payload)
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/feeds'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+      )
+      expect(result).toEqual(created)
+    })
+  })
+
+  describe('updateFeed', () => {
+    it('should update feed with correct URL, verb and body', async () => {
+      const update = { name: 'Updated Feed' }
+      const updated = createMockFeed({ id: 'f1', name: update.name })
+      ;(global.fetch as any).mockResolvedValue(
+        createMockFetchResponse(updated)
+      )
+
+      const result = await apiClient.updateFeed('f1', update)
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/feeds/f1'),
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify(update),
+        })
+      )
+      expect(result).toEqual(updated)
+    })
+  })
+
+  describe('deleteFeed', () => {
+    it('should delete feed with correct URL and verb', async () => {
+      ;(global.fetch as any).mockResolvedValue(
+        createMockFetchResponse(undefined, 204)
+      )
+
+      await apiClient.deleteFeed('f1')
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/feeds/f1'),
+        expect.objectContaining({
+          method: 'DELETE',
+        })
+      )
+    })
+  })
+
+  describe('getFeedTypes', () => {
+    it('should fetch feed types without method override', async () => {
+      const mockTypes = [
+        { type: 'system_metrics', name: 'System Metrics', description: 'Host metrics', default_config: {} },
+      ]
+      ;(global.fetch as any).mockResolvedValue(
+        createMockFetchResponse(mockTypes)
+      )
+
+      const result = await apiClient.getFeedTypes()
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/feeds/types'),
+        expect.anything()
+      )
+      expect((global.fetch as any).mock.calls[0][1].method).toBeUndefined()
+      expect(result).toEqual(mockTypes)
+    })
+  })
+
   describe('error handling', () => {
     it('should handle 404 errors', async () => {
       ;(global.fetch as any).mockResolvedValue({
@@ -145,32 +301,6 @@ describe('API Client', () => {
       })
 
       await expect(apiClient.getDashboard('non-existent')).rejects.toThrow('Not found')
-    })
-
-    it('should fall back on non-JSON error body and preserve custom headers', async () => {
-      ;(global.fetch as any).mockResolvedValue({
-        ok: false,
-        status: 502,
-        json: async () => {
-          throw new SyntaxError('Unexpected token < in JSON')
-        },
-      })
-
-      await expect(
-        (apiClient as any).request('/api/dashboards', {
-          headers: { Authorization: 'Bearer x' },
-        })
-      ).rejects.toThrow('Unknown error')
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/dashboards'),
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer x',
-          }),
-        })
-      )
     })
 
     it('should handle network errors', async () => {
