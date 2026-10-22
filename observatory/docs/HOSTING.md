@@ -176,8 +176,8 @@ the site passes.
 
 `.github/workflows/deploy-observatory.yml` deploys the production Worker after every push to `main` that touches
 `observatory/` (merges included), and on demand from the Actions tab. It runs `npm ci` and `npm test`, checks the
-production schema, runs `npx wrangler deploy --env=""`, then waits for `/readyz` to report ready; the run summary
-names the new version.
+production schema, runs `npx wrangler deploy --env=""`, then checks `/readyz` with `scripts/check-readyz.mjs`;
+the run summary names the new version.
 
 - It needs the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. The account id was set on
   2026-09-27; the owner set the token the same day (HUMAN_TODO q-27). Without both, the job skips with a notice.
@@ -187,8 +187,12 @@ names the new version.
 - Before deploying it reads `schema_version` from production D1 and stops unless it equals `SCHEMA_VERSION` in
   `src/worker.mjs`. After a schema change, apply the migration by hand first, then re-run the workflow. Security
   Watch tables (`watch/schema.sql`) are not versioned this way; apply them by hand before turning Watch on.
-- If `/readyz` does not report ready, the job fails; roll back with `npx wrangler rollback` (see the rollback limits
-  in the usage plan v2 receipt below).
+- Post-deploy acceptance requires `ready: true`, the exported `SCHEMA_VERSION`, collection enabled and admitted
+  lists matching the top-level production `vars` in `wrangler.jsonc` (not preview), no invalid collection ids,
+  and no unconfigured probes. Lists compare as sets. The CLI also accepts a saved JSON file:
+  `node scripts/check-readyz.mjs readyz.json` from `observatory/`, or reads JSON from stdin without an argument.
+  If acceptance fails after retries, the job reports the problems in an error annotation and the step summary;
+  roll back with `npx wrangler rollback` (see the rollback limits in the usage plan v2 receipt below).
 - Admission lists in `wrangler.jsonc` still change only by owner decision; the workflow deploys whatever `main` holds.
 
 ## Read token: rotate, copy, recover
