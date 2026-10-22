@@ -4,7 +4,6 @@ import asyncio
 from uuid import uuid4
 
 import pytest
-
 from app.hub import hub as hub_module
 from app.hub.hub import DataHub
 
