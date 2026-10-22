@@ -34,7 +34,7 @@ async def test_dashboard_revocation_cleans_all_sockets_and_preserves_other_dashb
     assert deleted not in hub.connections
 
 
-async def test_deletion_during_broadcast_skips_remaining_snapshot_connections():
+async def test_deletion_during_broadcast_sends_nothing_after_revocation():
     hub = DataHub()
     deleted, other, feed = uuid4(), uuid4(), uuid4()
     first, second, healthy = Socket(), Socket(), Socket()
@@ -50,12 +50,18 @@ async def test_deletion_during_broadcast_skips_remaining_snapshot_connections():
     publishing = asyncio.create_task(hub.publish_feed_event(feed, {"value": 1}))
     try:
         await asyncio.wait_for(entered.wait(), timeout=2)
+        # Sends are concurrent: the sibling and other dashboard are already served
+        # while the first socket is still blocked.
+        second.send_text.assert_awaited_once()
+        healthy.send_text.assert_awaited_once()
         await hub.disconnect_dashboard(deleted)
     finally:
         release.set()
         await publishing
-    second.send_text.assert_not_awaited()
-    healthy.send_text.assert_awaited_once()
+    # The revoked sockets receive nothing further and the later publish skips them.
+    await hub.publish_feed_event(feed, {"value": 2})
+    second.send_text.assert_awaited_once()
+    assert healthy.send_text.await_count == 2
 
 
 async def test_deletion_during_initial_state_stops_remaining_cached_events():
