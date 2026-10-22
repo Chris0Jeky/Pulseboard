@@ -41,6 +41,8 @@ class FeedManager:
         # Holders and waiters retain their lock; idle entries disappear rather than
         # leaking one permanent lock for every feed ever deleted. One event loop only.
         self._lifecycle_locks: WeakValueDictionary[UUID, Lock] = WeakValueDictionary()
+        # Set once global shutdown begins; no feed may start after that.
+        self._shutting_down = False
         self.logger = logging.getLogger(__name__)
 
     async def load_feeds(self, session: Session) -> None:
@@ -80,6 +82,10 @@ class FeedManager:
 
     async def _start_feed(self, feed_def: FeedDefinition) -> None:
         """Start while the caller holds this feed's lifecycle lock."""
+        if self._shutting_down:
+            self.logger.warning(f"Not starting feed {feed_def.id}: manager is shutting down")
+            return
+
         if feed_def.id in self.feeds and self.feeds[feed_def.id].is_running():
             self.logger.warning(f"Feed {feed_def.id} is already running")
             return
@@ -140,6 +146,14 @@ class FeedManager:
     async def stop_all_feeds(self) -> None:
         """Attempt each managed feed; aggregate ordinary cleanup failures."""
         self.logger.info("Stopping all feeds")
+        self._shutting_down = True
+
+        # A start or restart already past the fence holds its feed's lifecycle lock and may
+        # register a feed after any snapshot taken now. Wait those operations out first;
+        # every later one sees the flag and refuses to start.
+        for lock in list(self._lifecycle_locks.values()):
+            async with lock:
+                pass
 
         failures: list[Exception] = []
         for feed_id in list(self.feeds.keys()):

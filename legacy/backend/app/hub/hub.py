@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 # One deadline for the entire revoked dashboard, not one delay per socket.
 CLOSE_TIMEOUT_SECONDS = 1.0
+# A client that cannot accept one message within this deadline is dropped.
+SEND_TIMEOUT_SECONDS = 5.0
 
 
 class DataHub:
@@ -68,7 +70,7 @@ class DataHub:
 
         # Keep cancellation-resistant transport tasks alive until they actually settle.
         # They cannot regain membership or block deletion after the close deadline.
-        self._closing_tasks: set[asyncio.Task[None]] = set()
+        self._closing_tasks: set[asyncio.Task[Any]] = set()
         self.logger = logging.getLogger(__name__)
 
     async def publish_feed_event(self, feed_id: UUID, payload: Dict[str, Any]) -> None:
@@ -115,13 +117,15 @@ class DataHub:
         message = FeedEventMessage.from_feed_event(event)
         message_json = message.model_dump_json()
 
-        # Send to all connections of relevant dashboards
-        for dashboard_id in relevant_dashboards:
-            try:
-                await self._send_to_dashboard(dashboard_id, message_json)
-            except Exception:
-                self.logger.exception(
-                    f"Failed to broadcast to dashboard {dashboard_id}"
+        # Send to all dashboards concurrently so one stalled dashboard cannot delay others.
+        results = await asyncio.gather(
+            *(self._send_to_dashboard(d, message_json) for d in relevant_dashboards),
+            return_exceptions=True,
+        )
+        for dashboard_id, result in zip(relevant_dashboards, results, strict=True):
+            if isinstance(result, Exception):
+                self.logger.error(
+                    f"Failed to broadcast to dashboard {dashboard_id}", exc_info=result
                 )
 
     async def _send_to_dashboard(self, dashboard_id: UUID, message: str) -> None:
@@ -133,24 +137,57 @@ class DataHub:
             message: JSON message to send
         """
         snapshot = list(self.connections.get(dashboard_id, []))
-        disconnected = []
+        sends = {
+            asyncio.create_task(self._send_one(dashboard_id, websocket, message)): websocket
+            for websocket in snapshot
+        }
+        if not sends:
+            return
+        try:
+            done, pending = await asyncio.wait(sends, timeout=SEND_TIMEOUT_SECONDS)
+        except BaseException:
+            # The publisher was cancelled mid-wait: asyncio.wait does not cancel its
+            # children, so do it here rather than leave sends running unbounded.
+            for task in sends:
+                task.cancel()
+            raise
 
-        for websocket in snapshot:
-            if websocket not in self.connections.get(dashboard_id, []):
-                continue
-            try:
-                await websocket.send_text(message)
-            except Exception as e:
-                self.logger.warning(
-                    f"Failed to send to connection for dashboard {dashboard_id}: {e}"
-                )
-                disconnected.append(websocket)
+        disconnected = [ws for task, ws in sends.items() if task in done and not task.result()]
+        for task in pending:
+            self.logger.warning(
+                f"Send timed out for a connection of dashboard {dashboard_id}"
+            )
+            # Do not await the cancelled send: a stalled transport may suppress
+            # cancellation. Keep the task referenced until it actually settles.
+            task.cancel()
+            self._closing_tasks.add(task)
+            task.add_done_callback(self._closing_tasks.discard)
+            disconnected.append(sends[task])
+            self._spawn_close(dashboard_id, sends[task])
 
-        # Remove failed websockets if still present. The list may have changed
-        # while awaiting sends, so re-resolve it via unregister_connection,
-        # which also cleans up dashboards left with no connections.
+        # Re-resolve via unregister_connection, which also cleans up
+        # dashboards left with no connections.
         for ws in disconnected:
             await self.unregister_connection(dashboard_id, ws)
+
+    async def _send_one(self, dashboard_id: UUID, websocket: WebSocket, message: str) -> bool:
+        """Send to one socket; False if it failed. Skips sockets unregistered meanwhile."""
+        if websocket not in self.connections.get(dashboard_id, []):
+            return True
+        try:
+            await websocket.send_text(message)
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to send to connection for dashboard {dashboard_id}: {e}"
+            )
+            return False
+        return True
+
+    def _spawn_close(self, dashboard_id: UUID, websocket: WebSocket) -> None:
+        """Best-effort close of a dropped socket without blocking the caller."""
+        task = asyncio.create_task(self._close_revoked_connection(dashboard_id, websocket))
+        self._closing_tasks.add(task)
+        task.add_done_callback(self._closing_tasks.discard)
 
     async def register_connection(
         self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
