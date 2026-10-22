@@ -3,11 +3,20 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SCHEMA_VERSION } from '../src/worker.mjs';
+import { collectionAdmission, productAdmission, voiceAdmission } from '../src/admission.mjs';
+import { statAdmission } from '../src/stat-contract.mjs';
 
-/** JSON with line/block comments; quoted strings (including escaped quotes) stay intact. */
+/** JSON with comments and trailing commas; quoted strings (including escaped quotes) stay intact. */
 export function parseJsonc(source) {
-  return JSON.parse(source.replace(/("(?:\\[\s\S]|[^"\\])*")|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
-    (match, string) => string ?? ' '));
+  const uncommented = source.replace(/("(?:\\[\s\S]|[^"\\])*")|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
+    (match, string) => string ?? ' ');
+  return JSON.parse(uncommented.replace(/("(?:\\[\s\S]|[^"\\])*")|,(?=\s*[}\]])/g,
+    (match, string, offset) => {
+      if (string !== undefined) return string;
+      // Leave missing values and array holes invalid JSON.
+      const previous = uncommented.slice(0, offset).trimEnd().at(-1);
+      return previous && !'[{:,'.includes(previous) ? '' : match;
+    }));
 }
 
 const channels = {
@@ -17,15 +26,17 @@ const channels = {
 
 /** Read only top-level production vars, never env.preview or process environment. */
 export function productionExpected(config) {
-  const vars = config?.vars;
-  if (!['true', 'false'].includes(vars?.COLLECT_ENABLED)
-    || Object.values(channels).some(key => typeof vars?.[key] !== 'string')) {
-    throw new Error('Production collection vars are missing or invalid');
-  }
+  const vars = config?.vars ?? {};
+  const admission = collectionAdmission(vars);
+  const collecting = admission.enabled && admission.valid;
   return {
-    schema: SCHEMA_VERSION, enabled: vars.COLLECT_ENABLED === 'true',
-    ...Object.fromEntries(Object.entries(channels).map(([channel, key]) =>
-      [channel, vars[key].split(',').map(id => id.trim()).filter(Boolean)])),
+    schema: SCHEMA_VERSION, enabled: admission.enabled,
+    collection: admission.admitted,
+    statistics: collecting ? statAdmission(vars) : [],
+    product: collecting ? productAdmission(vars) : [],
+    voices: collecting ? voiceAdmission(vars) : [],
+    configured: Object.fromEntries(Object.entries(channels).map(([channel, key]) =>
+      [channel, channel === 'collection' ? admission.configured : typeof vars[key] === 'string' && vars[key] !== ''])),
   };
 }
 
@@ -34,7 +45,7 @@ const sameSet = (actual, expected) => Array.isArray(actual)
   && new Set(actual).size === new Set(expected).size
   && expected.every(id => actual.includes(id));
 
-/** Pure validator. body is parsed JSON or JSON text; expected has schema, enabled and four id lists. */
+/** Pure validator. body is parsed JSON or JSON text; expected comes from productionExpected. */
 export function checkReadyz(body, expected) {
   if (typeof body === 'string') {
     try { body = JSON.parse(body); }
@@ -48,6 +59,10 @@ export function checkReadyz(body, expected) {
     problems.push(`collection.enabled must match COLLECT_ENABLED (${expected.enabled})`);
   }
   for (const [channel, key] of Object.entries(channels)) {
+    const configured = expected.configured[channel];
+    if (channel === 'collection' ? !sameSet(body[channel]?.configured, configured) : body[channel]?.configured !== configured) {
+      problems.push(`${channel}.configured must match ${key}`);
+    }
     if (!sameSet(body[channel]?.admitted, expected[channel])) {
       problems.push(`${channel}.admitted must match ${key} (expected: ${expected[channel].join(', ') || 'empty'})`);
     }

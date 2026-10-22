@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { checkReadyz, parseJsonc, productionExpected } from '../scripts/check-readyz.mjs';
-import { SCHEMA_VERSION } from '../src/worker.mjs';
+import { handle, SCHEMA_VERSION } from '../src/worker.mjs';
 
 const config = parseJsonc(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
 const expected = productionExpected(config);
@@ -17,6 +17,73 @@ const productionBody = () => ({
   product: { configured: true, admitted: [...hosts] },
   voices: { configured: true, admitted: ['alibi'] },
   probes: { configured: [...hosts], unconfigured: [] },
+});
+
+// Exercise the real handler without storage or network access.
+async function workerReadiness(vars) {
+  const response = await handle(new Request('https://example.test/readyz'), {
+    ...vars,
+    DB: { prepare: () => ({ all: async () => ({ results: [] }), first: async () => ({ version: SCHEMA_VERSION }) }) },
+    ALIBI: { fetch() {} },
+    COMMITATLAS: { fetch() {} },
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+test('disabled collection with retained lists matches Worker admission and configured fields', async () => {
+  const vars = { ...config.vars, COLLECT_ENABLED: 'false' };
+  const body = await workerReadiness(vars), off = productionExpected({ vars });
+  assert.equal(body.ready, true);
+  for (const channel of ['collection', 'statistics', 'product', 'voices']) assert.deepEqual(body[channel].admitted, []);
+  assert.deepEqual(checkReadyz(body, off), []);
+  for (const channel of ['collection', 'statistics', 'product', 'voices']) {
+    const wrong = structuredClone(body);
+    wrong[channel].configured = channel === 'collection' ? [] : false;
+    assert.ok(checkReadyz(wrong, off).some(problem => problem.startsWith(`${channel}.configured`)));
+  }
+});
+
+test('omitted optional channel vars match the healthy Worker response', async () => {
+  for (const key of ['COLLECT_PROJECTS', 'COLLECT_STAT_PROJECTS', 'COLLECT_PRODUCT_PROJECTS', 'COLLECT_VOICE_PROJECTS']) {
+    const vars = { ...config.vars }; delete vars[key];
+    const body = await workerReadiness(vars);
+    assert.deepEqual(checkReadyz(body, productionExpected({ vars })), []);
+  }
+});
+
+test('missing or invalid COLLECT_ENABLED disables admission without making the Worker unready', async () => {
+  for (const value of [undefined, '', 'invalid', 'TRUE', true]) {
+    const vars = { ...config.vars, COLLECT_ENABLED: value };
+    if (value === undefined) delete vars.COLLECT_ENABLED;
+    const body = await workerReadiness(vars);
+    assert.equal(body.collection.enabled, false);
+    assert.deepEqual(checkReadyz(body, productionExpected({ vars })), []);
+  }
+  assert.deepEqual(checkReadyz(await workerReadiness({}), productionExpected({ env: config.env })), []);
+});
+
+test('channel parsing matches the Worker exact-list and voice-registry rules', async () => {
+  for (const [key, value] of [
+    ['COLLECT_STAT_PROJECTS', ' alibi'], ['COLLECT_PRODUCT_PROJECTS', 'alibi,alibi'],
+    ['COLLECT_VOICE_PROJECTS', 'portfolio'], ['COLLECT_VOICE_PROJECTS', ''],
+  ]) {
+    const vars = { ...config.vars, [key]: value };
+    assert.deepEqual(checkReadyz(await workerReadiness(vars), productionExpected({ vars })), []);
+  }
+});
+
+test('JSONC trailing commas work outside strings, including comments and nested containers', () => {
+  const source = String.raw`{
+    "marker": ",}", "quoted": "escaped \" ,]", "url": "https://example.test/,}",
+    "nested": [{"ids": ["alibi", /* before closing array */],},], // before closing object
+  }`;
+  assert.deepEqual(parseJsonc(source), {
+    marker: ',}', quoted: 'escaped " ,]', url: 'https://example.test/,}', nested: [{ ids: ['alibi'] }],
+  });
+  for (const invalid of ['{"n":,}', '[,]', '[1,,]', '{"n":1,,}']) {
+    assert.throws(() => parseJsonc(invalid), SyntaxError);
+  }
 });
 
 test('current production readiness passes against production vars and the exported schema', () => {
@@ -100,10 +167,13 @@ test('expected configuration uses only production, trims lists and supports coll
   const vars = { COLLECT_ENABLED: 'false', COLLECT_PROJECTS: '', COLLECT_STAT_PROJECTS: '', COLLECT_PRODUCT_PROJECTS: '', COLLECT_VOICE_PROJECTS: '' };
   const off = productionExpected({ vars, env: config.env });
   const body = productionBody(); body.collection.enabled = false;
-  for (const channel of ['collection', 'statistics', 'product', 'voices']) body[channel].admitted = [];
+  for (const channel of ['collection', 'statistics', 'product', 'voices']) {
+    body[channel].admitted = [];
+    body[channel].configured = channel === 'collection' ? [] : false;
+  }
   assert.deepEqual(checkReadyz(body, off), []);
-  assert.deepEqual(productionExpected({ vars: { ...vars, COLLECT_PROJECTS: ' alibi, mdviewer ' } }).collection, ['alibi', 'mdviewer']);
-  assert.throws(() => productionExpected({ env: config.env }), /Production collection vars/);
+  assert.deepEqual(productionExpected({ vars: { ...vars, COLLECT_PROJECTS: ' alibi, mdviewer ' } }).configured.collection, ['alibi', 'mdviewer']);
+  assert.equal(productionExpected({ env: config.env }).enabled, false);
 });
 
 test('CLI accepts stdin and rejects malformed JSON without a stack trace', () => {

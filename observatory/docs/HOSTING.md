@@ -187,9 +187,11 @@ the run summary names the new version.
 - Before deploying it reads `schema_version` from production D1 and stops unless it equals `SCHEMA_VERSION` in
   `src/worker.mjs`. After a schema change, apply the migration by hand first, then re-run the workflow. Security
   Watch tables (`watch/schema.sql`) are not versioned this way; apply them by hand before turning Watch on.
-- Post-deploy acceptance requires `ready: true`, the exported `SCHEMA_VERSION`, collection enabled and admitted
-  lists matching the top-level production `vars` in `wrangler.jsonc` (not preview), no invalid collection ids,
-  and no unconfigured probes. Lists compare as sets. The CLI also accepts a saved JSON file:
+- Post-deploy acceptance requires `ready: true`, the exported `SCHEMA_VERSION`, and the `collection.enabled` value,
+  configured fields and admitted lists matching the Worker's interpretation of the top-level production `vars`
+  in `wrangler.jsonc` (not preview), no invalid collection ids, and no unconfigured probes. Only the exact string
+  `"true"` enables collection; otherwise all admitted lists are empty, even when configured lists remain set.
+  Omitted channel vars are unconfigured/empty. Lists compare as sets. The CLI also accepts a saved JSON file:
   `node scripts/check-readyz.mjs readyz.json` from `observatory/`, or reads JSON from stdin without an argument.
   If acceptance fails after retries, the job reports the problems in an error annotation and the step summary;
   roll back with `npx wrangler rollback` (see the rollback limits in the usage plan v2 receipt below).
