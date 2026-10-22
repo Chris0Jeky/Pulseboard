@@ -181,10 +181,13 @@ class TestHttpJsonFeed:
         ):
             assert await feed.fetch_data() == {"value": 7}
 
-    async def test_path_missing_key_returns_empty_dict(self, mock_hub):
-        """A path with a missing key resolves to {} instead of raising."""
+    @pytest.mark.parametrize(
+        "payload", [{}, {"data": {}}, {"data": None}, {"data": []}, {"data": 7}]
+    )
+    async def test_unresolved_path_returns_missing_status(self, mock_hub, payload):
+        """A missing key or non-object intermediate must be explicit missing data."""
         captured = {}
-        mock_cm, _ = _http_json_client({"data": {"metrics": {}}}, captured)
+        mock_cm, _ = _http_json_client(payload, captured)
         feed = HttpJsonFeed(
             uuid4(),
             {"url": "https://example.com/data", "path": "data.absent"},
@@ -193,19 +196,53 @@ class TestHttpJsonFeed:
         with patch(
             "app.feeds.http_json.httpx.AsyncClient", return_value=mock_cm
         ):
-            assert await feed.fetch_data() == {}
+            assert await feed.fetch_data() == {
+                "status": "missing",
+                "error": "JSON path not found: data.absent",
+            }
 
-    async def test_path_through_non_dict_stops(self, mock_hub):
-        """A path crossing a non-dict value stops and wraps the value."""
+    @pytest.mark.parametrize("value", [{}, None, [], 0, False])
+    async def test_resolved_empty_or_scalar_value_is_preserved(self, mock_hub, value):
+        """Present values must not be mistaken for an unresolved path."""
         captured = {}
-        mock_cm, _ = _http_json_client({"a": [1, 2]}, captured)
+        mock_cm, _ = _http_json_client({"a": value}, captured)
         feed = HttpJsonFeed(
-            uuid4(), {"url": "https://example.com/data", "path": "a.b"}, mock_hub
+            uuid4(), {"url": "https://example.com/data", "path": "a"}, mock_hub
         )
         with patch(
             "app.feeds.http_json.httpx.AsyncClient", return_value=mock_cm
         ):
-            assert await feed.fetch_data() == {"value": [1, 2]}
+            expected = value if isinstance(value, dict) else {"value": value}
+            assert await feed.fetch_data() == expected
+
+    async def test_unresolved_path_publishes_missing_status(self, mock_hub, monkeypatch):
+        """Exercise the run loop with a fake HTTP client and no real sleep."""
+        mock_cm, _ = _http_json_client({"data": {}}, {})
+        feed = HttpJsonFeed(
+            uuid4(),
+            {"url": "https://example.com/data", "path": "data.absent"},
+            mock_hub,
+        )
+        sleeps = 0
+
+        async def fake_sleep(_):
+            nonlocal sleeps
+            sleeps += 1
+            if sleeps > 1:
+                feed._stop_requested = True
+
+        async def publish_once(*_):
+            feed._stop_requested = True
+
+        monkeypatch.setattr("app.feeds.base.asyncio.sleep", fake_sleep)
+        mock_hub.publish_feed_event.side_effect = publish_once
+        with patch("app.feeds.http_json.httpx.AsyncClient", return_value=mock_cm):
+            await feed.run()
+
+        mock_hub.publish_feed_event.assert_awaited_once_with(
+            feed.feed_id,
+            {"status": "missing", "error": "JSON path not found: data.absent"},
+        )
 
     async def test_non_dict_body_wrapped(self, mock_hub):
         """A list JSON body must be wrapped as {"value": [...]}."""
