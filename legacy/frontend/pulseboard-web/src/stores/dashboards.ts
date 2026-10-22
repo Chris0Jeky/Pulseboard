@@ -122,6 +122,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
   async function cloneDashboard(id: string) {
     loading.value = true
     error.value = null
+    let createdId: string | undefined
 
     try {
       // Get the source dashboard with all panels
@@ -132,6 +133,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         name: `${source.name} (Copy)`,
         description: source.description || undefined,
       })
+      createdId = clonedDashboard.id
 
       // Clone all panels
       for (const panel of source.panels || []) {
@@ -156,6 +158,13 @@ export const useDashboardsStore = defineStore('dashboards', () => {
       notifications.success(`Dashboard "${source.name}" cloned successfully`)
       return clonedWithPanels
     } catch (e) {
+      if (createdId !== undefined) {
+        try {
+          await apiClient.deleteDashboard(createdId)
+        } catch (cleanupError) {
+          console.error('Failed to clean up half-built dashboard clone:', cleanupError)
+        }
+      }
       error.value = e instanceof Error ? e.message : 'Failed to clone dashboard'
       notifications.error(error.value)
       throw e

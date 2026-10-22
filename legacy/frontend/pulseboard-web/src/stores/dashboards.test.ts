@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useDashboardsStore } from './dashboards'
+import { useNotificationsStore } from './notifications'
 import { createTestPinia, createMockDashboard, createMockPanel, createMockFetchResponse } from '../test/helpers'
 import apiClient from '../api/client'
 
@@ -172,6 +173,92 @@ describe('Dashboards Store', () => {
       expect(apiClient.getDashboard).toHaveBeenCalledWith('cloned-id')
       expect(result).toEqual(clonedWithPanels)
       expect(store.dashboards).toContainEqual(clonedWithPanels)
+    })
+
+    it('should delete the half-built clone when the 2nd createPanel fails', async () => {
+      const store = useDashboardsStore()
+      const notificationsStore = useNotificationsStore()
+      const panel1 = createMockPanel({ id: 'panel-1', title: 'Panel 1' })
+      const panel2 = createMockPanel({ id: 'panel-2', title: 'Panel 2' })
+      const source = createMockDashboard({
+        id: 'orig-id',
+        name: 'Orig',
+        description: 'Orig description',
+        panels: [panel1, panel2],
+      })
+      const clonedDashboard = createMockDashboard({ id: 'cloned-id', name: 'Orig (Copy)' })
+      const originalError = new Error('second panel failed')
+
+      vi.spyOn(apiClient, 'getDashboard').mockResolvedValueOnce(source)
+      vi.spyOn(apiClient, 'createDashboard').mockResolvedValue(clonedDashboard)
+      vi.spyOn(apiClient, 'createPanel')
+        .mockResolvedValueOnce(panel1)
+        .mockRejectedValueOnce(originalError)
+      vi.spyOn(apiClient, 'deleteDashboard').mockResolvedValue(undefined)
+
+      await expect(store.cloneDashboard('orig-id')).rejects.toBe(originalError)
+
+      expect(apiClient.deleteDashboard).toHaveBeenCalledTimes(1)
+      expect(apiClient.deleteDashboard).toHaveBeenCalledWith('cloned-id')
+      expect(store.dashboards).toEqual([])
+      expect(notificationsStore.notifications).toHaveLength(1)
+      expect(notificationsStore.notifications[0]?.type).toBe('error')
+      expect(notificationsStore.notifications[0]?.message).toBe('second panel failed')
+    })
+
+    it('should not call deleteDashboard when createDashboard itself fails', async () => {
+      const store = useDashboardsStore()
+      const panel1 = createMockPanel({ id: 'panel-1', title: 'Panel 1' })
+      const panel2 = createMockPanel({ id: 'panel-2', title: 'Panel 2' })
+      const source = createMockDashboard({
+        id: 'orig-id',
+        name: 'Orig',
+        description: 'Orig description',
+        panels: [panel1, panel2],
+      })
+      const createError = new Error('create failed')
+
+      vi.spyOn(apiClient, 'getDashboard').mockResolvedValueOnce(source)
+      vi.spyOn(apiClient, 'createDashboard').mockRejectedValue(createError)
+      vi.spyOn(apiClient, 'createPanel').mockResolvedValue(panel1)
+      vi.spyOn(apiClient, 'deleteDashboard').mockResolvedValue(undefined)
+
+      await expect(store.cloneDashboard('orig-id')).rejects.toBe(createError)
+
+      expect(apiClient.deleteDashboard).not.toHaveBeenCalled()
+      expect(store.dashboards).toEqual([])
+    })
+
+    it('should still throw the original error when cleanup deleteDashboard fails', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const store = useDashboardsStore()
+        const panel1 = createMockPanel({ id: 'panel-1', title: 'Panel 1' })
+        const panel2 = createMockPanel({ id: 'panel-2', title: 'Panel 2' })
+        const source = createMockDashboard({
+          id: 'orig-id',
+          name: 'Orig',
+          description: 'Orig description',
+          panels: [panel1, panel2],
+        })
+        const clonedDashboard = createMockDashboard({ id: 'cloned-id', name: 'Orig (Copy)' })
+        const originalError = new Error('second panel failed')
+
+        vi.spyOn(apiClient, 'getDashboard').mockResolvedValueOnce(source)
+        vi.spyOn(apiClient, 'createDashboard').mockResolvedValue(clonedDashboard)
+        vi.spyOn(apiClient, 'createPanel')
+          .mockResolvedValueOnce(panel1)
+          .mockRejectedValueOnce(originalError)
+        vi.spyOn(apiClient, 'deleteDashboard').mockRejectedValue(new Error('cleanup failed'))
+
+        await expect(store.cloneDashboard('orig-id')).rejects.toBe(originalError)
+
+        expect(apiClient.deleteDashboard).toHaveBeenCalledTimes(1)
+        expect(apiClient.deleteDashboard).toHaveBeenCalledWith('cloned-id')
+        expect(store.dashboards).toEqual([])
+      } finally {
+        consoleSpy.mockRestore()
+      }
     })
   })
 
