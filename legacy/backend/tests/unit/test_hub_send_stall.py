@@ -34,10 +34,10 @@ class _Stalled(_Healthy):
         self.closed_with = code
 
 
-def _wire(hub, feed_id, *sockets):
+async def _wire(hub, feed_id, *sockets):
     dashboard_id = uuid4()
-    hub.connections[dashboard_id].extend(sockets)
-    hub.dashboard_feeds[dashboard_id].add(feed_id)
+    for websocket in sockets:
+        await hub.register_connection(dashboard_id, websocket, {feed_id})
     return dashboard_id
 
 
@@ -46,7 +46,7 @@ async def test_stalled_send_does_not_block_healthy_sockets(monkeypatch):
     hub = DataHub()
     feed_id = uuid4()
     stalled, healthy = _Stalled(), _Healthy()
-    dashboard_id = _wire(hub, feed_id, stalled, healthy)
+    dashboard_id = await _wire(hub, feed_id, stalled, healthy)
 
     await asyncio.wait_for(hub.publish_feed_event(feed_id, {"v": 1}), timeout=1.0)
 
@@ -66,8 +66,8 @@ async def test_stalled_dashboard_does_not_block_other_dashboard(monkeypatch):
     hub = DataHub()
     feed_id = uuid4()
     stalled, healthy = _Stalled(), _Healthy()
-    _wire(hub, feed_id, stalled)
-    _wire(hub, feed_id, healthy)
+    await _wire(hub, feed_id, stalled)
+    await _wire(hub, feed_id, healthy)
 
     await asyncio.wait_for(hub.publish_feed_event(feed_id, {"v": 1}), timeout=1.0)
 

@@ -102,12 +102,21 @@ jobs:
           sleep 15
           for attempt in 1 2 3 4 5 6; do
             body="$(curl -q -fsS --max-time 15 https://pulseboard-observatory.commit-atlas.workers.dev/readyz || true)"
-            if printf '%s' "$body" | grep -q '"ready":true'; then
+            if problems="$(printf '%s' "$body" | node observatory/scripts/check-readyz.mjs 2>&1)"; then
               echo "### Deployed \`${version:0:8}\` from \`${GITHUB_SHA:0:7}\`" >> "$GITHUB_STEP_SUMMARY"
               echo "/readyz: \`$body\`" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             sleep 10
           done
-          echo "::error title=Collector not ready::/readyz did not report ready after deploying ${version}. Roll back with npx wrangler rollback (observatory/docs/HOSTING.md)."
+          {
+            echo "### Collector acceptance failed after deploying \`${version:0:8}\`"
+            printf '%s\n' "$problems"
+            echo 'Roll back with npx wrangler rollback (observatory/docs/HOSTING.md).'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Escape annotation data so every problem stays in this one error command.
+          problems="${problems//'%'/'%25'}"
+          problems="${problems//$'\r'/'%0D'}"
+          problems="${problems//$'\n'/'%0A'}"
+          echo "::error title=Collector not ready::/readyz failed acceptance after deploying ${version}: ${problems}. Roll back with npx wrangler rollback (observatory/docs/HOSTING.md)."
           exit 1
