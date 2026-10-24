@@ -316,10 +316,9 @@ class TestDataHub:
         ws_c = _FakeWebSocket()
         ws_d2 = _FakeWebSocket()
 
-        hub.connections[dashboard1_id].extend([ws_a, ws_b, ws_c])
-        hub.dashboard_feeds[dashboard1_id].add(feed_id)
-        hub.connections[dashboard2_id].append(ws_d2)
-        hub.dashboard_feeds[dashboard2_id].add(feed_id)
+        for ws in (ws_a, ws_b, ws_c):
+            await hub.register_connection(dashboard1_id, ws, {feed_id})
+        await hub.register_connection(dashboard2_id, ws_d2, {feed_id})
 
         # Must not raise.
         await hub.publish_feed_event(feed_id, {"v": 1})
@@ -336,8 +335,8 @@ class TestDataHub:
         ws_broken = _FailingFakeWebSocket(Exception("Connection closed"))
         ws_working = _FakeWebSocket()
 
-        hub.connections[dashboard_id].extend([ws_broken, ws_working])
-        hub.dashboard_feeds[dashboard_id].add(feed_id)
+        await hub.register_connection(dashboard_id, ws_broken, {feed_id})
+        await hub.register_connection(dashboard_id, ws_working, {feed_id})
 
         await hub.publish_feed_event(feed_id, {"value": 1})
 
@@ -357,8 +356,7 @@ class TestDataHub:
 
         ws_broken = _FailingFakeWebSocket(Exception("Connection closed"))
 
-        hub.connections[dashboard_id].append(ws_broken)
-        hub.dashboard_feeds[dashboard_id].add(feed_id)
+        await hub.register_connection(dashboard_id, ws_broken, {feed_id})
 
         await hub.publish_feed_event(feed_id, {"value": 1})
 
