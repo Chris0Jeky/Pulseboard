@@ -30,6 +30,11 @@ startup resources, or detect a plugin that suppresses cancellation and falsely
 reports success. Global shutdown coordination and cross-process ownership remain
 separate work, as does the backend's local-only exposure/authentication boundary.
 
+Stored `config_json` must decode to an object before the manager constructs or
+starts a feed (#253). Start and restart raise `ValueError` for non-object JSON;
+bulk loading logs the rejected row and continues with the other enabled feeds.
+Rejected rows are left unchanged in the database for explicit repair.
+
 ## Bulk shutdown failures
 
 `stop_all_feeds()` snapshots the currently managed IDs and tries their cleanup
