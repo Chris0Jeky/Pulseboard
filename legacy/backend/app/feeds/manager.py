@@ -104,6 +104,9 @@ class FeedManager:
         except json.JSONDecodeError as exc:
             raise ValueError(f"Invalid config JSON for feed {feed_def.id}: {exc}") from exc
 
+        if not isinstance(config, dict):
+            raise ValueError("config_json must be a JSON object")
+
         feed = feed_class(feed_id=feed_def.id, config=config, hub=self.hub)
         await feed.start()
         self.feeds[feed_def.id] = feed
