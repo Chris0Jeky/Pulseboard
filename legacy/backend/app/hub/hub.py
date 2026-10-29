@@ -56,6 +56,9 @@ class DataHub:
 
         # Latest event per feed
         self.latest: Dict[UUID, FeedEvent] = {}
+        # Internal ordering only: no sequence field is added to the wire message.
+        self._publish_sequence = 0
+        self._latest_sequences: Dict[UUID, int] = {}
 
         # Bound high-rate publishers even when every event is still inside the time window.
         self.history: Dict[UUID, Deque[FeedEvent]] = defaultdict(
@@ -69,6 +72,7 @@ class DataHub:
         self.dashboard_feeds: Dict[UUID, Set[UUID]] = defaultdict(set)
         self._connection_feeds: Dict[WebSocket, Set[UUID]] = {}
         self._send_locks: Dict[WebSocket, asyncio.Lock] = {}
+        self._connection_sequences: Dict[WebSocket, Dict[UUID, int]] = {}
 
         # Keep cancellation-resistant transport tasks alive until they actually settle.
         # They cannot regain membership or block deletion after the close deadline.
@@ -88,6 +92,8 @@ class DataHub:
 
         # Update latest
         self.latest[feed_id] = event
+        self._publish_sequence += 1
+        self._latest_sequences[feed_id] = self._publish_sequence
 
         # Add to history
         history_deque = self.history[feed_id]
@@ -118,11 +124,16 @@ class DataHub:
         # Create message
         message = FeedEventMessage.from_feed_event(event)
         message_json = message.model_dump_json()
+        sequence = (
+            self._latest_sequences.get(event.feed_id)
+            if self.latest.get(event.feed_id) is event
+            else None
+        )
 
         # Send to all dashboards concurrently so one stalled dashboard cannot delay others.
         results = await asyncio.gather(
             *(
-                self._send_to_dashboard(d, message_json, event.feed_id)
+                self._send_to_dashboard(d, message_json, event.feed_id, sequence)
                 for d in relevant_dashboards
             ),
             return_exceptions=True,
@@ -134,7 +145,11 @@ class DataHub:
                 )
 
     async def _send_to_dashboard(
-        self, dashboard_id: UUID, message: str, feed_id: UUID | None = None
+        self,
+        dashboard_id: UUID,
+        message: str,
+        feed_id: UUID | None = None,
+        sequence: int | None = None,
     ) -> None:
         """
         Send message to all connections of a dashboard.
@@ -146,7 +161,7 @@ class DataHub:
         snapshot = list(self.connections.get(dashboard_id, []))
         sends = {
             asyncio.create_task(
-                self._send_one(dashboard_id, websocket, message, feed_id)
+                self._send_one(dashboard_id, websocket, message, feed_id, sequence)
             ): websocket
             for websocket in snapshot
         }
@@ -185,6 +200,7 @@ class DataHub:
         websocket: WebSocket,
         message: str,
         feed_id: UUID | None = None,
+        sequence: int | None = None,
     ) -> bool:
         """Send to one socket; False if it failed. Skips sockets unregistered meanwhile."""
         if websocket not in self.connections.get(dashboard_id, []):
@@ -193,7 +209,9 @@ class DataHub:
         async with lock:
             if self._send_locks.get(websocket) is not lock:
                 return True
-            return await self._send_unlocked(dashboard_id, websocket, message, feed_id)
+            return await self._send_unlocked(
+                dashboard_id, websocket, message, feed_id, sequence
+            )
 
     async def _send_unlocked(
         self,
@@ -201,6 +219,7 @@ class DataHub:
         websocket: WebSocket,
         message: str,
         feed_id: UUID | None = None,
+        sequence: int | None = None,
     ) -> bool:
         """Recheck membership and subscriptions after acquiring the socket's send lock."""
         if websocket not in self.connections.get(dashboard_id, []):
@@ -209,6 +228,12 @@ class DataHub:
             websocket, set()
         ):
             return True
+        sequences = self._connection_sequences.setdefault(websocket, {})
+        if feed_id is not None and sequence is not None:
+            # A delayed live send may queue behind an initial snapshot that already
+            # includes it or a newer publication. Never move that feed backwards.
+            if sequence <= sequences.get(feed_id, 0):
+                return True
         try:
             await websocket.send_text(message)
         except Exception as e:
@@ -216,6 +241,15 @@ class DataHub:
                 f"Failed to send to connection for dashboard {dashboard_id}: {e}"
             )
             return False
+        if (
+            feed_id is not None
+            and sequence is not None
+            and self._connection_sequences.get(websocket) is sequences
+            and feed_id in self._connection_feeds.get(websocket, set())
+        ):
+            # Failed sends never advance the watermark. An unregistered/replaced
+            # connection's in-flight send must not update its replacement's state.
+            sequences[feed_id] = max(sequence, sequences.get(feed_id, 0))
         return True
 
     def _spawn_close(self, dashboard_id: UUID, websocket: WebSocket) -> None:
@@ -261,6 +295,10 @@ class DataHub:
 
         previous = self._connection_feeds[websocket]
         self._connection_feeds[websocket] = set(feed_ids)
+        sequences = self._connection_sequences.get(websocket, {})
+        for feed_id in list(sequences):
+            if feed_id not in self._connection_feeds[websocket]:
+                del sequences[feed_id]
         self._update_dashboard_feeds(dashboard_id)
 
         await self._send_initial_state(dashboard_id, websocket, set(feed_ids) - previous)
@@ -303,17 +341,21 @@ class DataHub:
         async with lock:
             if self._send_locks.get(websocket) is not lock:
                 return True
+            snapshot = []
             for feed_id in feed_ids:
-                # Read the cache under the same lock as live sends: do not capture
-                # an old value and then queue it behind a newer live delivery.
                 event = self.latest.get(feed_id)
                 if event is not None:
                     message = FeedEventMessage.from_feed_event(event)
-                    # Preserve initial-state semantics: a transient send error is
-                    # logged, but the remaining cached feeds are still attempted.
-                    await self._send_unlocked(
-                        dashboard_id, websocket, message.model_dump_json(), feed_id
+                    snapshot.append(
+                        (feed_id, message.model_dump_json(), self._latest_sequences.get(feed_id))
                     )
+            # Freeze every cached message before the first send yields. Otherwise
+            # live updates queued during A can change B's cached value mid-batch.
+            for feed_id, message_json, sequence in snapshot:
+                # Preserve transient-error continuation for the remaining feeds.
+                await self._send_unlocked(
+                    dashboard_id, websocket, message_json, feed_id, sequence
+                )
         return True
 
     async def disconnect_dashboard(self, dashboard_id: UUID) -> None:
@@ -323,6 +365,7 @@ class DataHub:
         for websocket in connections:
             self._connection_feeds.pop(websocket, None)
             self._send_locks.pop(websocket, None)
+            self._connection_sequences.pop(websocket, None)
         if not connections:
             return
         tasks = {
@@ -367,6 +410,7 @@ class DataHub:
             connections.remove(websocket)
             self._connection_feeds.pop(websocket, None)
             self._send_locks.pop(websocket, None)
+            self._connection_sequences.pop(websocket, None)
             if connections:
                 self._update_dashboard_feeds(dashboard_id)
             self.logger.info(f"Unregistered connection for dashboard {dashboard_id}")
@@ -427,6 +471,7 @@ class DataHub:
         """
         if feed_id in self.latest:
             del self.latest[feed_id]
+        self._latest_sequences.pop(feed_id, None)
         if feed_id in self.history:
             del self.history[feed_id]
 

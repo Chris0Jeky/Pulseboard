@@ -29,12 +29,21 @@ cancellation-resistant send is retained until it settles, without awaiting it.
 An ordinary initial-send exception retains the existing behavior: log the error,
 keep the connection and attempt the remaining cached feeds in their input order.
 
-Initial batches and live messages share a per-connection send lock. Cached values
-are read while holding that lock, and membership/subscription checks run after lock
-acquisition. A cached send already in flight therefore completes before a newer
-live send can reach that transport. Other connections retain their independent
-sends and deadlines. Removing a connection also discards its lock; queued work
-cannot use an old lock after that connection is registered again.
+Initial batches and live messages share a per-connection send lock. The batch
+serializes all its cached messages while holding that lock, before the first send
+yields. A stalled send for feed A cannot therefore cause the batch to read a newer
+cached B after B's live updates have already queued. Membership/subscription checks
+run after lock acquisition. Other connections retain independent sends/deadlines.
+
+Each publication receives an internal monotonic number; it is not added to the
+wire format. A per-connection, per-feed watermark advances only after a successful
+send. Delayed live updates already covered by a newer delivered snapshot or live
+message are skipped. This also handles an initial batch queued behind an existing
+send: a snapshot may include newer state before older live tasks acquire the lock.
+Failed sends do not advance the watermark. Unsubscribing prunes that feed's delivery
+metadata; disconnecting discards the connection's metadata and lock. Queued work
+cannot use an old lock after that connection is registered again. These structures
+track existing latest feeds and subscriptions; they do not bound total feed count.
 
 This serializes hub sends on a connection. It does not promise exactly-once
 delivery, ordering between different connections, physical termination of a
@@ -58,3 +67,10 @@ four registration/refresh cases exceeded the deadline (cooperative and resistant
 sends), and both ordering cases delivered `[2, 1]` instead of `[1, 2]`. Additional
 caller-cancellation cases check membership/lock revocation and cancellation
 propagation. Full backend CI separately checks the production route wiring.
+
+The multi-feed review regressions hold cached A while live B=1/B=2 queue, for both
+registration and refresh (the fixture chooses a valid A-first traversal of the
+unordered refresh feed set). They require cached B=0 before B=1/B=2. A separate
+case queues the initial batch behind a live send and checks that newer cached B
+cannot be followed by an older queued B. All use explicit task/event barriers and
+synthetic transports, without real sockets, listeners or live feeds.
