@@ -21,8 +21,9 @@ The usage plan (`USAGE_PLAN.md`) stores no cross-visit identifier and no free te
 
 - Nothing is sent unless the player acts: presses Send on a message, submits a survey, or taps a rating. Automatic
   prompts only *ask*; they never send.
-- Written feedback carries no identifier at all. The server removes e-mail addresses, IP addresses, URLs and
-  phone-number-like runs from the text (best effort) and counts removals.
+- Written feedback carries no user or survey key. Each message retains a per-message UUID v4 for idempotency
+  (retries of the same message do not create another record). The server removes e-mail addresses, IP addresses,
+  URLs and phone-number-like runs from the text (best effort) and counts removals.
 - Surveys and ratings carry a random **survey key** (UUID v4) created on the device the first time the player submits
   one. Its only purpose is to let the same installation replace its own earlier answer. It is never sent with usage
   counts, diagnostics or journeys, and the collector stores only `SHA-256(project + ':' + key)`, never the raw key.
