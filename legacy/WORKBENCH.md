@@ -23,6 +23,13 @@ Pulseboard is a web-first, real-time dashboard platform that lets users monitor 
   - HTTP JSON (poll any JSON API)
   - Crypto Prices (real-time cryptocurrency prices via CoinGecko)
 
+## Missing feed data
+
+Stat and time-series panels clear their displayed reading/trend or plotted buffer when the latest
+feed payload explicitly reports `status: "missing"`. They show its error text, or `No data` when
+no usable text is supplied, and resume on a valid numeric sample. Stored feed history is retained.
+This does not infer outages from silence or resolve cached-message delivery ordering.
+
 ## Tech Stack
 
 ### Backend

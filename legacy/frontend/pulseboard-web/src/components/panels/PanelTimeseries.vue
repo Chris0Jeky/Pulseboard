@@ -57,6 +57,15 @@ const dataPoints = ref<Array<{ timestamp: string; value: number }>>([])
 const fieldName = computed(() => props.options?.field || 'value')
 const maxDataPoints = 50 // Keep last 50 points
 
+function applyMissingPayload(payload: Record<string, unknown>): boolean {
+  if (payload.status !== 'missing') return false
+  dataPoints.value = []
+  error.value = typeof payload.error === 'string' && payload.error.trim()
+    ? payload.error
+    : 'No data'
+  return true
+}
+
 // Watch for feed updates
 watch(
   () => liveDataStore.latest,
@@ -69,6 +78,7 @@ watch(
     const feedData = liveDataStore.latest[feedId]
 
     if (feedData && feedData.payload) {
+      if (applyMissingPayload(feedData.payload)) return
       const newValue = feedData.payload[fieldName.value]
 
       if (typeof newValue === 'number') {
@@ -97,6 +107,8 @@ watch(
       const feedId = props.feedIds[0]
       if (!feedId) return
 
+      const latest = liveDataStore.getLatest(feedId)
+      if (latest && applyMissingPayload(latest.payload)) return
       const history = liveDataStore.getHistory(feedId)
 
       if (history.length > 0) {
