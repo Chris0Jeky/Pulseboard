@@ -112,7 +112,10 @@ watch(
       const history = liveDataStore.getHistory(feedId)
 
       if (history.length > 0) {
+        // Preserve the live buffer reset when restoring retained history.
+        const afterMissing = history.map(event => event.payload.status).lastIndexOf('missing') + 1
         dataPoints.value = history
+          .slice(afterMissing)
           .slice(-maxDataPoints)
           .map((event) => ({
             timestamp: new Date(event.ts).toLocaleTimeString(),
