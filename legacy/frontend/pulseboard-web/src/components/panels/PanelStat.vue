@@ -68,6 +68,15 @@ watch(
     const feedData = liveDataStore.latest[feedId]
 
     if (feedData && feedData.payload) {
+      if (feedData.payload.status === 'missing') {
+        value.value = null
+        previousValue.value = null
+        error.value = typeof feedData.payload.error === 'string' && feedData.payload.error.trim()
+          ? feedData.payload.error
+          : 'No data'
+        return
+      }
+
       const newValue = feedData.payload[fieldName.value]
 
       if (typeof newValue === 'number') {
