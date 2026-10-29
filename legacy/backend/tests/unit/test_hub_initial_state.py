@@ -103,3 +103,27 @@ async def test_cached_initial_value_cannot_arrive_after_new_live_value(monkeypat
         websocket.release.set()
         tasks = [operation] + ([publisher] if publisher is not None else [])
         await asyncio.wait_for(asyncio.gather(*tasks), 1)
+
+
+@pytest.mark.parametrize("resist_cancel", [False, True], ids=["cooperative", "resistant"])
+async def test_cancelled_initial_state_revokes_membership_and_cancels_send(resist_cancel):
+    hub = DataHub()
+    dashboard, feed = uuid4(), uuid4()
+    await hub.publish_feed_event(feed, {"value": 1})
+    websocket = HeldFirstSend(resist_cancel)
+    operation = await initial_operation(hub, dashboard, websocket, feed, False)
+    try:
+        await asyncio.wait_for(websocket.started.wait(), 1)
+        operation.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(operation, 1)
+        assert websocket not in hub.connections.get(dashboard, [])
+        assert websocket not in hub._connection_feeds
+        assert websocket not in hub._send_locks
+        await asyncio.sleep(0)
+        assert websocket.closed
+    finally:
+        websocket.release.set()
+        await asyncio.gather(operation, return_exceptions=True)
+        if hub._closing_tasks:
+            await asyncio.wait_for(asyncio.gather(*hub._closing_tasks), 1)

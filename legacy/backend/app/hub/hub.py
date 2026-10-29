@@ -68,6 +68,7 @@ class DataHub:
         # Dashboard -> Feed IDs mapping (which feeds does each dashboard use)
         self.dashboard_feeds: Dict[UUID, Set[UUID]] = defaultdict(set)
         self._connection_feeds: Dict[WebSocket, Set[UUID]] = {}
+        self._send_locks: Dict[WebSocket, asyncio.Lock] = {}
 
         # Keep cancellation-resistant transport tasks alive until they actually settle.
         # They cannot regain membership or block deletion after the close deadline.
@@ -188,6 +189,22 @@ class DataHub:
         """Send to one socket; False if it failed. Skips sockets unregistered meanwhile."""
         if websocket not in self.connections.get(dashboard_id, []):
             return True
+        lock = self._send_locks.setdefault(websocket, asyncio.Lock())
+        async with lock:
+            if self._send_locks.get(websocket) is not lock:
+                return True
+            return await self._send_unlocked(dashboard_id, websocket, message, feed_id)
+
+    async def _send_unlocked(
+        self,
+        dashboard_id: UUID,
+        websocket: WebSocket,
+        message: str,
+        feed_id: UUID | None = None,
+    ) -> bool:
+        """Recheck membership and subscriptions after acquiring the socket's send lock."""
+        if websocket not in self.connections.get(dashboard_id, []):
+            return True
         if feed_id is not None and feed_id not in self._connection_feeds.get(
             websocket, set()
         ):
@@ -256,23 +273,47 @@ class DataHub:
     async def _send_initial_state(
         self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
     ) -> None:
-        """
-        Send initial state (latest events) to a newly connected client.
+        """Bound the whole initial batch, including time queued behind another send."""
+        cached_feeds = feed_ids & self.latest.keys()
+        if not cached_feeds:
+            return
+        task = asyncio.create_task(
+            self._send_initial_batch(dashboard_id, websocket, cached_feeds)
+        )
+        completed = False
+        try:
+            done, _ = await asyncio.wait({task}, timeout=SEND_TIMEOUT_SECONDS)
+            completed = bool(done) and task.result()
+        finally:
+            if not completed:
+                # Cancellation-resistant transports must not hold registration or refresh.
+                if not task.done():
+                    task.cancel()
+                    self._closing_tasks.add(task)
+                    task.add_done_callback(self._closing_tasks.discard)
+                await self.unregister_connection(dashboard_id, websocket)
+                self._spawn_close(dashboard_id, websocket)
 
-        Args:
-            websocket: WebSocket connection
-            feed_ids: Set of feed IDs to send state for
-        """
-        for feed_id in feed_ids:
-            if websocket not in self.connections.get(dashboard_id, []):
-                return
-            if feed_id in self.latest:
-                event = self.latest[feed_id]
-                message = FeedEventMessage.from_feed_event(event)
-                try:
-                    await websocket.send_text(message.model_dump_json())
-                except Exception as e:
-                    self.logger.error(f"Failed to send initial state for feed {feed_id}: {e}")
+    async def _send_initial_batch(
+        self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
+    ) -> bool:
+        if websocket not in self.connections.get(dashboard_id, []):
+            return True
+        lock = self._send_locks.setdefault(websocket, asyncio.Lock())
+        async with lock:
+            if self._send_locks.get(websocket) is not lock:
+                return True
+            for feed_id in feed_ids:
+                # Read the cache under the same lock as live sends: do not capture
+                # an old value and then queue it behind a newer live delivery.
+                event = self.latest.get(feed_id)
+                if event is not None:
+                    message = FeedEventMessage.from_feed_event(event)
+                    if not await self._send_unlocked(
+                        dashboard_id, websocket, message.model_dump_json(), feed_id
+                    ):
+                        return False
+        return True
 
     async def disconnect_dashboard(self, dashboard_id: UUID) -> None:
         """Revoke all membership before awaiting best-effort socket closure."""
@@ -280,6 +321,7 @@ class DataHub:
         self.dashboard_feeds.pop(dashboard_id, None)
         for websocket in connections:
             self._connection_feeds.pop(websocket, None)
+            self._send_locks.pop(websocket, None)
         if not connections:
             return
         tasks = {
@@ -323,6 +365,7 @@ class DataHub:
         if websocket in connections:
             connections.remove(websocket)
             self._connection_feeds.pop(websocket, None)
+            self._send_locks.pop(websocket, None)
             if connections:
                 self._update_dashboard_feeds(dashboard_id)
             self.logger.info(f"Unregistered connection for dashboard {dashboard_id}")
