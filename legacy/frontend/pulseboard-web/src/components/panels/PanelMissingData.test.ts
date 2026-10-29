@@ -89,6 +89,26 @@ describe('panels with an explicitly missing feed', () => {
     expect(panel.findComponent({ name: 'VChart' }).exists()).toBe(false)
   })
 
+  for (const reload of ['remount', 'feedIds refresh'] as const) {
+    it(`keeps the recovered time-series buffer after ${reload}`, async () => {
+      let panel = show(PanelTimeseries)
+      await publish({ value: 100 })
+      await publish({ status: 'missing', error: 'Unavailable', value: 999 })
+      await publish({ value: 300 })
+      expect(panel.findComponent({ name: 'VChart' }).props('option').series[0].data).toEqual([300])
+
+      if (reload === 'remount') {
+        panel.unmount()
+        panel = show(PanelTimeseries)
+      } else {
+        await panel.setProps({ feedIds: ['feed-1'] })
+      }
+
+      expect(panel.findComponent({ name: 'VChart' }).props('option').series[0].data).toEqual([300])
+      expect(store.getHistory('feed-1').map(event => event.payload.value)).toEqual([100, 999, 300])
+    })
+  }
+
   for (const [name, component] of [['stat', PanelStat], ['time-series', PanelTimeseries]] as const) {
     it(`shows No data for a ${name} missing event without usable error text`, async () => {
       const panel = show(component)
