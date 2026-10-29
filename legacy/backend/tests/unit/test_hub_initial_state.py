@@ -85,12 +85,20 @@ async def test_multi_feed_initial_snapshot_precedes_queued_live_updates(monkeypa
     websocket = HeldFirstSend()
     live_attempted = {value: asyncio.Event() for value in (1, 2)}
     send_one = hub._send_one
+    send_batch = hub._send_initial_batch
 
     async def observe_live(*args, **kwargs):
         live_attempted[json.loads(args[2])["payload"]["value"]].set()
         return await send_one(*args, **kwargs)
 
+    async def ordered_batch(dashboard_id, socket, feed_ids):
+        # Refresh derives an unordered set difference. Select one valid traversal
+        # so both entry points hold A before reaching B, independently of UUID hashes.
+        assert set(feed_ids) == {first_feed, second_feed}
+        return await send_batch(dashboard_id, socket, [first_feed, second_feed])
+
     monkeypatch.setattr(hub, "_send_one", observe_live)
+    monkeypatch.setattr(hub, "_send_initial_batch", ordered_batch)
     if refresh:
         await hub.register_connection(dashboard, websocket, set())
         initial = hub.refresh_dashboard_feeds(dashboard, websocket, [first_feed, second_feed])
