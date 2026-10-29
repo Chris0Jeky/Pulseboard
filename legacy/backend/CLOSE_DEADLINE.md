@@ -23,9 +23,11 @@ operation has its existing semantics.
 Live broadcasts already give each dashboard's concurrent sends one five-second
 wait (`SEND_TIMEOUT_SECONDS`). Registration and subscription refresh now apply the
 same deadline once to their whole cached initial-state batch, including time queued
-behind another send. Failure, timeout or caller cancellation revokes that connection
+behind another send. Timeout or caller cancellation revokes that connection
 before starting best-effort closure. Cancellation propagates to the caller; a
 cancellation-resistant send is retained until it settles, without awaiting it.
+An ordinary initial-send exception retains the existing behavior: log the error,
+keep the connection and attempt the remaining cached feeds in their input order.
 
 Initial batches and live messages share a per-connection send lock. Cached values
 are read while holding that lock, and membership/subscription checks run after lock

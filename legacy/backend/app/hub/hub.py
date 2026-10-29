@@ -274,7 +274,7 @@ class DataHub:
         self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
     ) -> None:
         """Bound the whole initial batch, including time queued behind another send."""
-        cached_feeds = feed_ids & self.latest.keys()
+        cached_feeds = [feed_id for feed_id in feed_ids if feed_id in self.latest]
         if not cached_feeds:
             return
         task = asyncio.create_task(
@@ -295,7 +295,7 @@ class DataHub:
                 self._spawn_close(dashboard_id, websocket)
 
     async def _send_initial_batch(
-        self, dashboard_id: UUID, websocket: WebSocket, feed_ids: Set[UUID]
+        self, dashboard_id: UUID, websocket: WebSocket, feed_ids: List[UUID]
     ) -> bool:
         if websocket not in self.connections.get(dashboard_id, []):
             return True
@@ -309,10 +309,11 @@ class DataHub:
                 event = self.latest.get(feed_id)
                 if event is not None:
                     message = FeedEventMessage.from_feed_event(event)
-                    if not await self._send_unlocked(
+                    # Preserve initial-state semantics: a transient send error is
+                    # logged, but the remaining cached feeds are still attempted.
+                    await self._send_unlocked(
                         dashboard_id, websocket, message.model_dump_json(), feed_id
-                    ):
-                        return False
+                    )
         return True
 
     async def disconnect_dashboard(self, dashboard_id: UUID) -> None:
