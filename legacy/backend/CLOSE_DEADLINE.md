@@ -74,3 +74,9 @@ unordered refresh feed set). They require cached B=0 before B=1/B=2. A separate
 case queues the initial batch behind a live send and checks that newer cached B
 cannot be followed by an older queued B. All use explicit task/event barriers and
 synthetic transports, without real sockets, listeners or live feeds.
+
+`tests/unit/test_hub_delivery_sequences.py` separately checks sequence retirement
+on unsubscribe, individual unregister and dashboard disconnect, including cached
+state delivery on re-subscription/registration and isolation of another dashboard.
+A failed newer cached send must leave both older/newer queued live updates eligible:
+the failed snapshot cannot advance the successful-delivery watermark.
