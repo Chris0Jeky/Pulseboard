@@ -14,3 +14,12 @@ accessible labels and an alternative daily-count table where appropriate.
 from the implementation. Captures are generated test artifacts, not a separate
 mockup or a promise that production data exists. Use the synthetic scenario for
 public screenshots and retain the visible synthetic marking.
+
+The README loop in `docs/assets/Pulseboard-loop.svg` is a synthetic illustration,
+not a hosting receipt. Its seven project labels follow the probe registrations in
+`src/projects.mjs`; Taskdeck remains local-only. The sample Alibi event uses the
+registered `puzzle.completed` name. D1 holds bounded records as well as aggregates:
+Voices feedback carries no user or survey key. It retains a per-message UUID v4
+for idempotency; surveys and ratings use the separate hashed survey-key contract
+in `VOICES.md`. The loop retains a static composition
+under `prefers-reduced-motion: reduce`.
