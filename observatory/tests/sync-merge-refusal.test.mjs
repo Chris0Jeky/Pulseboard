@@ -11,6 +11,29 @@ const HEAD = 'a'.repeat(40);
 const workflow = readFileSync(new URL('../../.github/workflows/sync-sites.yml', import.meta.url), 'utf8');
 const helper = fileURLToPath(new URL('../adapters/sync-merge-refusal.mjs', import.meta.url));
 
+function mergeScript(source) {
+  // Workflows sit outside observatory's eol=lf attributes in Windows checkouts.
+  source = source.replaceAll('\r\n', '\n');
+  const step = source.split('      - name: Merge when every check succeeds\n')[1];
+  assert.ok(step, 'real workflow merge step exists');
+  return step.split('        run: |\n')[1].split('\n').map(line => line.startsWith('          ') ? line.slice(10) : line).join('\n');
+}
+
+for (const [name, newline] of [['LF', '\n'], ['CRLF', '\r\n']]) {
+  test(`merge-step extraction preserves the shell script from ${name} workflow text`, () => {
+    const source = [
+      '      - name: Merge when every check succeeds',
+      '        shell: bash',
+      '        run: |',
+      '          if true; then',
+      "            printf '%s\\n' 'inert fixture'",
+      '          fi',
+      '',
+    ].join(newline);
+    assert.equal(mergeScript(source), "if true; then\n  printf '%s\\n' 'inert fixture'\nfi\n");
+  });
+}
+
 // Execute the real merge step with inert command fakes. Any git command is the
 // replay boundary; the fake fails immediately instead of touching a repository.
 function runMergeStep(t, state, observedHead = HEAD) {
@@ -31,9 +54,7 @@ function runMergeStep(t, state, observedHead = HEAD) {
     "api graphql "*) printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}' ;;
     *) echo 'unexpected gh call' >&2; exit 98 ;;
   esac\n`);
-  const step = workflow.split('      - name: Merge when every check succeeds\n')[1];
-  assert.ok(step, 'real workflow merge step exists');
-  const script = step.split('        run: |\n')[1].split('\n').map(line => line.startsWith('          ') ? line.slice(10) : line).join('\n');
+  const script = mergeScript(workflow);
   const trace = join(root, 'replay.txt');
   const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], {
     cwd: root, encoding: 'utf8', timeout: 5000,
