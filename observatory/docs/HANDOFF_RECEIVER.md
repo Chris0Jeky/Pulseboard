@@ -67,14 +67,17 @@ an explicit reviewed update, not silently replace accepted evidence.
 `makeHandoff` remains the synchronous **v1** exporter. The async
 `makeIdentifiedHandoff(snapshot, signal, stale)` in `public/desk-handoff.mjs` produces **v2**, preserving
 all v1 fields and adding the verified fingerprint. The receiver accepts both real contracts.
-The default Desk export is deliberately not switched until consumers support them.
+The default Desk export remains v1 pending the owner choice tracked in
+[#169](https://github.com/Chris0Jeky/Pulseboard/issues/169#issuecomment-6240648678).
 
-Current Agent-HQ `scripts/intake.py`, inspected at `6d296c69c19830973dbedb8ce66dcda70ebf9f5f`,
-accepts only schema 1 and expects string `generatedAt` and `evidence`. Real Desk exports have a
-numeric millisecond timestamp and structured aggregate evidence. Its title/casefold-based fallback
-fingerprint is also not this new subject identity. Do not claim compatibility by renaming schema 1
-to 2. Coordinate a separately tested consumer change with real producer fixtures before switching
-that path. Native Taskdeck import, estate-console proposal staging and re-observation remain #22 work.
+The initial Agent-HQ `scripts/intake.py` inspection at
+`6d296c69c19830973dbedb8ce66dcda70ebf9f5f` found a v1-only string-field contract and a
+different title-based identity. That is historical: [#169's later consumer checkpoint](https://github.com/Chris0Jeky/Pulseboard/issues/169#issuecomment-6205608323)
+records `scripts/pulseboard_handoff.py` accepting both real schemas and validating the
+producer's fingerprint. This is recorded source compatibility, not a fresh native or
+installed-integration proof. Use the real producer fixtures to qualify a selected consumer;
+never obtain compatibility by renaming schema strings or silently remapping old identities.
+Native Taskdeck import, estate-console proposal staging and reviewed re-observation remain #22 work.
 
 Input is strict UTF-8 JSON, at most 256 KiB. Only exact contract fields and `live`/`demo` modes are
 accepted. Duplicate JSON keys (including escaped aliases), prototype-shaped keys, unknown fields,

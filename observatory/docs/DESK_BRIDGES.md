@@ -175,9 +175,13 @@ should treat the packet as approval to edit, merge, deploy or contact users.
 An alert's evidence drawer offers **Prepare identified handoff (v2)** beside the
 original v1 task handoff. The v2 path preserves all v1 fields and adds the stable
 subject fingerprint defined in [HANDOFF_RECEIVER.md](HANDOFF_RECEIVER.md). It is
-explicitly selected: the original button and synchronous `makeHandoff` remain v1
-until downstream consumers are reconciled. Do not simply change schema strings
-in a legacy consumer or treat the fingerprint as authentication.
+explicitly selected: the original button and synchronous `makeHandoff` remain v1.
+[#169's compatibility checkpoint](https://github.com/Chris0Jeky/Pulseboard/issues/169#issuecomment-6240648678)
+records consumer support for both versions; choosing a new default remains an owner decision.
+The v2 identity hashes `[project, rule.id, rule.version]`, excluding title, time and
+evidence. A rule-version change creates a new subject identity. Changing the algorithm
+requires a new schema version, never a different hash under `/2`. Do not treat a
+fingerprint as authentication.
 
 The identified file goes through the same exact-file preview and review checkbox
 as every other Desk export. Hash preparation is asynchronous: closing/replacing
