@@ -20,8 +20,8 @@ npm run build:sdk -- alibi ../../Alibi public/pulseboard.js 0.12.0   # pin a rel
   lowercase `-prerelease` (`src/release-label.mjs`). The SDK inlines the same pattern, so such a build counts under its
   own release instead of `unattributed`.
 - In the stdout form, keep `--silent` so npm does not put lifecycle banners into the JavaScript.
-  On Windows or in any shell without `/tmp`, direct the output to a scratch path you control,
-  or use the builder's destination arguments shown above.
+  In Windows PowerShell 5.1, use the destination-argument form above instead of `>`: redirection
+  re-encodes the output as UTF-16LE. The builder writes the artifact directly and checks its bytes.
 - The output is deterministic and LF-only. Its header names the SDK version from
   [`SDK_VERSION`](../sdk/pulseboard-sdk.mjs), the project, and the SHA-256 of the body below the header. The writer refuses absolute paths, `..`, symlinked parents that
   leave the repository, symlink targets, the installer's reserved paths, and any existing file that is not
