@@ -9,7 +9,7 @@ wave (slice 6) lands; nothing here changes the collector's admission lists.
 
 ```sh
 cd observatory
-npm run build:sdk -- alibi                                   # print the artifact to stdout
+npm run --silent build:sdk -- alibi > /tmp/pulseboard.js      # POSIX shell: write only JavaScript
 npm run build:sdk -- alibi ../../Alibi public/pulseboard.js   # write it inside a host checkout
 npm run build:sdk -- alibi ../../Alibi public/pulseboard.js 0.12.0   # pin a release
 ```
@@ -19,8 +19,11 @@ npm run build:sdk -- alibi ../../Alibi public/pulseboard.js 0.12.0   # pin a rel
   owner decision q-28), which also accepts any well-formed version: `MAJOR.MINOR.PATCH` with an optional short
   lowercase `-prerelease` (`src/release-label.mjs`). The SDK inlines the same pattern, so such a build counts under its
   own release instead of `unattributed`.
-- The output is deterministic and LF-only. Its header names `pulseboard-sdk 3.3.0`, the project, and the
-  SHA-256 of the body below the header. The writer refuses absolute paths, `..`, symlinked parents that
+- In the stdout form, keep `--silent` so npm does not put lifecycle banners into the JavaScript.
+  In Windows PowerShell 5.1, use the destination-argument form above instead of `>`: redirection
+  re-encodes the output as UTF-16LE. The builder writes the artifact directly and checks its bytes.
+- The output is deterministic and LF-only. Its header names the SDK version from
+  [`SDK_VERSION`](../sdk/pulseboard-sdk.mjs), the project, and the SHA-256 of the body below the header. The writer refuses absolute paths, `..`, symlinked parents that
   leave the repository, symlink targets, the installer's reserved paths, and any existing file that is not
   an unedited SDK artifact (the header hash must match), so it never overwrites host code.
 - The artifact embeds only the client contract: id, label, origin, collector
@@ -56,7 +59,7 @@ Pulseboard.track('puzzle.completed', { puzzle: 'castle-3', seconds: 212, hints: 
 Pulseboard.consent.get();   // { counts, diagnostics, journeys, decided, region, blocked }
 Pulseboard.consent.set({ journeys: false });     // records a decision, as the switches do
 Pulseboard.consent.open();  // opens the switches (for a "Privacy choices" link)
-Pulseboard.version;         // '3.3.0'
+Pulseboard.version;         // SDK version embedded in this artifact
 ```
 
 Every call returns `true` when the item was queued and `false` when it was dropped. Nothing throws into the
